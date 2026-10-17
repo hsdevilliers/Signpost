@@ -48,8 +48,8 @@ Acceptance
 Tasks
 - [ ] `tools/wowhead_env.py` discovers base path + `dataEnv`; documented in API notes.
 - [ ] `wowhead_zones.py`, `wowhead_quests.py` (Horde + neutral quests, zones ≤ 32), `wowhead_entities.py`,
-  `wowhead_professions.py` (all five), `wowhead_class.py --class HUNTER` (spells, trainers, all hunter class quest chains with
-  `newInForever` flags), `wowhead_travel.py`.
+  `wowhead_professions.py` (every profession, primary and secondary), `wowhead_class.py --class HUNTER` (spells, trainers, all
+  hunter class quest chains with `newInForever` flags), `wowhead_travel.py`.
 - [ ] Data pack generated into `../Signpost_Data/`; `tools/report_gaps.py` output committed to the private repo as `data-gaps.md`.
 
 Acceptance
@@ -60,8 +60,10 @@ Acceptance
 
 Tasks
 - [ ] Move PLAN §5 to `docs/GUIDE-FORMAT.md`; `Core/Player.lua`, `Engine/Directives.lua`, `Engine/Registry.lua` (guides,
-  chapters, `#include`, best-match selection, `#professions` with parse-time `.prof` gating and the runtime profession-mismatch
-  notice), `Engine/Parser.lua` with line-numbered errors; `tools/guide_lint.py`.
+  chapters, `#include`, best-match selection), `Engine/Professions.lua` (profession registry, the character's profession plan
+  defaulting to `#professions`, parse-time `.prof` gating, `.hub`/`@level`/`@zone` anchors and track merging with stable step ids,
+  the adopt-learned-profession offer — PLAN §3.8), `Engine/Parser.lua` with line-numbered errors; `tools/guide_lint.py`
+  (incl. track anchors).
 - [ ] `Classes/HUNTER.lua` with `trainerSpells`, `classQuests`, `.tame`/`.ammo` directives, the `.train class` expansion and the
   "class quest available here" soft check. No other file references a class/race/faction (CI: `tools/check_repo.py`).
 - [ ] `Engine/Context.lua` (quest log by questID, completed set, spells, skills, taxi, bags).
@@ -117,7 +119,9 @@ Acceptance
 
 Tasks
 - [ ] Barrens → Thousand Needles chapters; `#dungeon` chapters auto-inserted at level with pre-quests placed earlier.
-- [ ] Profession interleave for skill 1–150 across the five professions, gated with `.prof`; Hunter Class tab.
+- [ ] Profession modules and tracks for the Troll Hunter's default plan (Skinning, Leatherworking, First Aid, Cooking, Fishing) to
+  skill 150, chapters marked with `.hub`; profession plan picker in the Settings tab; Hunter Class tab.
+- [ ] §3.8 profession seam test (the guide with a stub Herbalism + Alchemy plan), then delete the stubs.
 - [ ] Zone/dungeon chapters from Razor Hill onward moved to `Guides/Chapters/` and `#include`d.
 - [ ] §3.5 seam acceptance test (stub Orc Warrior guide + empty `Classes/WARRIOR.lua`), then delete the stub.
 - [ ] Travel steps for every zone change ≤ 30 generated with `guide_travel.py`, reviewed, pasted into the chapters.
@@ -126,7 +130,8 @@ Tasks
 Acceptance
 - [ ] `guide_lint.py --strict`: 0 unknown IDs, 0 uncovered transitions, 0 unrouted class quests for chapters ≤ 30; `.todo`s listed
   with reasons; 1–30 played with < 5 manual corrections per 10 levels and never without a pin when changing zones.
-- [ ] The seam test passes with zero edits outside `Classes/` and `Guides/`.
+- [ ] The seam test passes with zero edits outside `Classes/` and `Guides/`; the profession seam test passes with zero edits outside
+  `Professions/` and `Guides/Professions/`.
 
 ## Phase 7 — Content 31–60 (drafted now, verified from Nov 4)
 
@@ -160,6 +165,10 @@ Acceptance
 
 - 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,
   WoWInterface search "no matches".
+- 2026-10-17, user decision: **profession seam** — any race + class guide works with any combination of primary and secondary
+  professions (PLAN §3.8, CLAUDE.md). Done now: PLAN/CLAUDE.md, `Professions/` and `Guides/Professions/` scaffolding, the CI seam
+  check covers profession names, the probe enumerates professions from the client without naming any, and the old
+  `hideProfessions` flag is migrated away (character DB version 2). The engine side is Phase 2 work.
 - Pulled forward from Phase 2: a minimal `Core/Player.lua` (class/race/faction/level only). The probe needs the player's
   identity and Player.lua is the only file allowed to read it.
 - Libraries are vendored in `Libs/` (versions in `Libs/README.md`) instead of `.pkgmeta` externals: the play machine installs

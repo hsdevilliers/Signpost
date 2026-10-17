@@ -150,6 +150,17 @@ describe("SavedVariables", function()
 		assert.are.equal(3, db.dbVersion)
 	end)
 
+	it("migrates a version-1 character table (the profession plan replaced hideProfessions)", function()
+		local ns = addon.load({
+			before = function()
+				G.SignpostCharDB = { dbVersion = 1, hideProfessions = false, progress = { someGuide = 3 } }
+			end,
+		})
+		assert.is_nil(ns.char.hideProfessions)
+		assert.are.equal(2, ns.char.dbVersion)
+		assert.are.same({ someGuide = 3 }, ns.char.progress)
+	end)
+
 	it("does not migrate a brand-new table", function()
 		local ns = addon.load()
 		local db = {}
@@ -237,6 +248,26 @@ describe("Util", function()
 		assert.are.equal(1617, ns.Util.NpcIDFromGUID("GameObject-0-1465-1-47-1617-00004F2B3C"))
 		assert.is_nil(ns.Util.NpcIDFromGUID("Player-1465-0A1B2C3D"))
 		assert.is_nil(ns.Util.NpcIDFromGUID(nil))
+	end)
+
+	it("enumerates every profession the client defines without naming any", function()
+		G.Enum = { Profession = { Alpha = 1, Beta = 2 } }
+		G.C_TradeSkillUI = {
+			GetProfessionSkillLineID = function(enum)
+				return enum * 100
+			end,
+			GetProfessionInfoBySkillLineID = function(skillLine)
+				return { professionID = skillLine }
+			end,
+			GetAllProfessionTradeSkillLines = function()
+				return { 100, 300 }
+			end,
+		}
+		local result = ns.Util.Professions()
+		assert.are.same({ enum = 1, skillLine = 100, info = { professionID = 100 } }, result.byEnum.Alpha)
+		assert.are.same({ enum = 2, skillLine = 200, info = { professionID = 200 } }, result.byEnum.Beta)
+		assert.are.same({ 100, 300 }, result.tradeSkillLines)
+		assert.are.same({ professionID = 300 }, result.bySkillLine[300])
 	end)
 
 	it("rounds with a scale", function()

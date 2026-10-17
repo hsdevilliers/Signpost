@@ -92,6 +92,7 @@ local APIS = {
 	"GetSkillLineInfo",
 	"C_TradeSkillUI.GetAllProfessionTradeSkillLines",
 	"C_TradeSkillUI.GetProfessionInfoBySkillLineID",
+	"C_TradeSkillUI.GetProfessionSkillLineID",
 	"GetNumTrainerServices",
 	"GetTrainerServiceInfo",
 	"GetTrainerServiceItemLink",

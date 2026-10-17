@@ -5,7 +5,7 @@ local SavedVars = {}
 ns.SavedVars = SavedVars
 
 SavedVars.DB_VERSION = 1
-SavedVars.CHAR_VERSION = 1
+SavedVars.CHAR_VERSION = 2
 
 -- probe and mapDump are written on demand by /signpost probe and /signpost dumpmaps.
 SavedVars.defaults = {
@@ -19,16 +19,21 @@ SavedVars.defaults = {
 	posLog = {},
 }
 
--- `guide` (the selected guide id) is set by the guide registry; progress is kept per guide id.
+-- `guide` (the selected guide id) is set by the guide registry; progress is kept per guide id. `professions`, the
+-- character's profession plan (PLAN §3.8), stays unset until chosen: unset means the guide's default.
 SavedVars.charDefaults = {
 	progress = {},
 	automation = {},
-	hideProfessions = false,
 }
 
 -- migrations[n] upgrades a table from version n - 1 to n.
 SavedVars.migrations = {}
-SavedVars.charMigrations = {}
+SavedVars.charMigrations = {
+	-- 2: the per-character profession plan replaces the all-or-nothing hideProfessions flag.
+	[2] = function(db)
+		db.hideProfessions = nil
+	end,
+}
 
 function SavedVars.ApplyDefaults(target, defaults)
 	for key, value in pairs(defaults) do

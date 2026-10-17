@@ -30,8 +30,14 @@ class SeamTest(unittest.TestCase):
         text = 'local a = "HUNTER"\nlocal b = "Troll"\n-- horde only\nlocal ok = ns.Player.classFile\n'
         self.assertEqual([p.split(":")[1] for p in check_repo.seam_violations("Core/X.lua", text)], ["1", "2", "3"])
 
+    def test_flags_profession_names_and_keys(self):
+        text = '-- Skinning first\nlocal key = "leatherworking"\nlocal plan = ns.char.professions\nlocal x = "firstaid"\n'
+        self.assertEqual([p.split(":")[1] for p in check_repo.seam_violations("Engine/X.lua", text)], ["1", "2", "4"])
+
     def test_ignores_longer_words(self):
-        self.assertEqual(check_repo.seam_violations("Core/X.lua", "HUNTERS Trolls human-readable Hordes\n"), [])
+        self.assertEqual(
+            check_repo.seam_violations("Core/X.lua", "HUNTERS Trolls human-readable Hordes determining Professions\n"), []
+        )
 
     def test_forbidden_paths(self):
         files = ["tools/cache/q.json", "Data/Quests.generated.lua", "tools/dev.local.json", "tools/bin/x.exe", "ok.lua"]

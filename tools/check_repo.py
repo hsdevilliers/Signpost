@@ -1,7 +1,8 @@
 """Repository guards run by CI (and before every commit):
 
 1. Nothing Wowhead-derived or machine-local is tracked (tools/cache/, *.generated.lua, the data pack, dev config).
-2. The class/race/faction seam: addon code outside Classes/ and Guides/ never names a class, race or faction.
+2. The class/race/faction/profession seam: addon code outside Classes/, Professions/ and Guides/ never names a class,
+   race, faction or profession.
 3. Both TOCs are identical except for X-Flavor-TOC, start with `## Interface:`, list only files that exist and list
    every addon Lua file.
 
@@ -29,8 +30,8 @@ FORBIDDEN = [
     (re.compile(r"(^|/)tools/bin/"), "downloaded tool binaries"),
 ]
 
-# Addon code that may name classes, races and factions (CLAUDE.md "Class/race/faction seam").
-SEAM_EXEMPT = ("Classes/", "Guides/", "tests/", "Libs/", "tools/", "docs/", ".github/")
+# Addon code that may name classes, races, factions and professions (CLAUDE.md "Class/race/faction/profession seam").
+SEAM_EXEMPT = ("Classes/", "Professions/", "Guides/", "tests/", "Libs/", "tools/", "docs/", ".github/")
 SEAM_SUFFIXES = (".lua", ".xml", ".toc")
 _CLASS = "WARRIOR|PALADIN|HUNTER|ROGUE|PRIEST|DEATHKNIGHT|SHAMAN|MAGE|WARLOCK|MONK|DRUID|DEMONHUNTER|EVOKER"
 _CLASS_NAMES = "Warrior|Paladin|Hunter|Rogue|Priest|Death Knight|Shaman|Mage|Warlock|Monk|Druid|Demon Hunter|Evoker"
@@ -38,12 +39,17 @@ _RACES = (
     "Human|Orc|Dwarf|NightElf|Night Elf|Scourge|Undead|Tauren|Gnome|Troll|BloodElf|Blood Elf|Draenei|Goblin|"
     "Worgen|Pandaren|Skyborne"
 )
+_PROFESSIONS = (
+    "Alchemy|Blacksmithing|Enchanting|Engineering|Herbalism|Inscription|Jewelcrafting|Leatherworking|Mining|Skinning|"
+    "Tailoring|First ?Aid|Cooking|Fishing"
+)
 SEAM_PATTERNS = [
     re.compile(rf"\b(?:{_CLASS}|{_CLASS_NAMES}|{_RACES})\b"),
     re.compile(r"\b(?:horde|alliance)\b", re.I),
+    re.compile(rf"\b(?:{_PROFESSIONS})\b", re.I),
 ]
 
-ADDON_DIRS = ("Core/", "Engine/", "Classes/", "Data/", "Guides/", "UI/", "Automation/")
+ADDON_DIRS = ("Core/", "Engine/", "Classes/", "Professions/", "Data/", "Guides/", "UI/", "Automation/")
 
 
 def tracked_files(root: Path) -> list[str]:
@@ -71,7 +77,10 @@ def seam_violations(path: str, text: str) -> list[str]:
         for pattern in SEAM_PATTERNS:
             match = pattern.search(line)
             if match:
-                problems.append(f"{path}:{number}: '{match.group()}' outside Classes/ and Guides/ (use ns.Player)")
+                problems.append(
+                    f"{path}:{number}: '{match.group()}' outside Classes/, Professions/ and Guides/ "
+                    "(use ns.Player or the profession plan)"
+                )
                 break
     return problems
 

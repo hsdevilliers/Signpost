@@ -21,6 +21,8 @@ local RESET = {
 	"C_Item",
 	"C_TaxiMap",
 	"C_XMLUtil",
+	"C_TradeSkillUI",
+	"Enum",
 	"issecretvalue",
 }
 

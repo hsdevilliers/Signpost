@@ -267,7 +267,7 @@ snapshots.PLAYER_LEVEL_UP = function()
 end
 
 snapshots.SKILL_LINES_CHANGED = function()
-	return { professions = Util.Professions() }
+	return { professions = Util.LearnedProfessions() }
 end
 
 local function learnedSpell(spellID)

@@ -180,12 +180,8 @@ function Util.PlayerPosition(withChain)
 	return pos
 end
 
--- Skill-line IDs of First Aid, Leatherworking, Cooking, Fishing, Skinning (Classic values, unchanged on Forever).
-Util.PROFESSION_SKILL_LINES = { 129, 165, 185, 356, 393 }
-
--- The profession APIs as this client shapes them (GetProfessions slots, the Classic skill-line list if present,
--- C_TradeSkillUI lookups by skill line).
-function Util.Professions()
+-- The professions this character has learned, as GetProfessions/GetProfessionInfo report them.
+function Util.LearnedProfessions()
 	local result = { slots = Util.Pack(Util.Call(GetProfessions)), info = {} }
 	for i = 1, result.slots.n do
 		local index = result.slots[i]
@@ -193,17 +189,34 @@ function Util.Professions()
 			result.info[i] = Util.Pack(Util.Call(GetProfessionInfo, index))
 		end
 	end
-	if GetNumSkillLines then
-		result.skillLines = {}
-		for i = 1, Util.Call(GetNumSkillLines) or 0 do
-			result.skillLines[i] = Util.Pack(Util.Call(GetSkillLineInfo, i))
+	return result
+end
+
+-- Every profession the client defines, primary and secondary, without naming any (the profession seam, PLAN §3.8):
+-- Enum.Profession -> skill line -> profession info, plus each skill line GetAllProfessionTradeSkillLines lists.
+-- VERIFY(beta): C_TradeSkillUI.GetProfessionSkillLineID exists on Forever (probe: professions.byEnum).
+function Util.Professions()
+	local result = Util.LearnedProfessions()
+	local tradeSkill = C_TradeSkillUI
+	if not tradeSkill then
+		return result
+	end
+	result.byEnum = {}
+	local professions = Enum and Enum.Profession
+	if type(professions) == "table" then
+		for key, value in pairs(professions) do
+			local skillLine = Util.Call(tradeSkill.GetProfessionSkillLineID, value)
+			result.byEnum[key] = {
+				enum = value,
+				skillLine = skillLine,
+				info = skillLine and Util.Call(tradeSkill.GetProfessionInfoBySkillLineID, skillLine),
+			}
 		end
 	end
-	local tradeSkill = C_TradeSkillUI
-	if tradeSkill then
-		result.tradeSkillLines = Util.Call(tradeSkill.GetAllProfessionTradeSkillLines)
-		result.bySkillLine = {}
-		for _, skillLine in ipairs(Util.PROFESSION_SKILL_LINES) do
+	result.tradeSkillLines = Util.Call(tradeSkill.GetAllProfessionTradeSkillLines)
+	result.bySkillLine = {}
+	if type(result.tradeSkillLines) == "table" then
+		for _, skillLine in ipairs(result.tradeSkillLines) do
 			result.bySkillLine[skillLine] = Util.Call(tradeSkill.GetProfessionInfoBySkillLineID, skillLine)
 		end
 	end

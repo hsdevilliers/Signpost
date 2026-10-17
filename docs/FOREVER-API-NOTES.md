@@ -167,6 +167,9 @@ Maps and travel
 - [ ] `C_QuestLog.GetAllCompletedQuestIDs()` populated at `PLAYER_ENTERING_WORLD` or only after a `QUEST_LOG_UPDATE`? (A new character
   has none: re-run `/signpost probe` after turning in a few quests, relog, probe again.)
 - [ ] `GetProfessions()` return shape with professions learned; which slot **First Aid** occupies. (Re-probe after training.)
+- [ ] Every profession from the client without naming any (profession seam, PLAN §3.8): does `C_TradeSkillUI.GetProfessionSkillLineID`
+  exist and map each `Enum.Profession` value to a skill line? What are the eleven 29xx skill lines that
+  `GetAllProfessionTradeSkillLines()` lists next to the nine Classic primaries (2933–2948)? [probe: professions.byEnum, bySkillLine]
 - [ ] Taxi UI at a flight master: `TaxiFrame` or `FlightMapFrame`? Which `TakeTaxiNode` argument (index or nodeID) works? (`/signpost
   debug on`, open a flight master: the log keeps both node lists and which frame was shown.)
 - [ ] Setting the hearth without `ConfirmBinder`: what does the innkeeper's gossip option do, does `CONFIRM_BINDER` fire, and what confirms

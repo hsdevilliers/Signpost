@@ -6,7 +6,9 @@
 ## What this is
 A World of Warcraft: **Forever** addon: a RestedXP-style leveling-guide **engine** whose first (and for now only) guide is a
 **Horde Troll Hunter** route with **Skinning + Leatherworking** and all secondary professions (**First Aid, Cooking, Fishing**), levels 1–60.
-The engine, UI, DSL and data layer are class/race/faction-agnostic so other classes and races can be added later as guide files plus a class module.
+The engine, UI, DSL and data layer are class/race/faction-agnostic so other classes and races can be added later as guide files plus a class module,
+and profession-agnostic: those five professions are only that guide's default plan — any race + class guide works with any combination of
+primary and secondary professions, each profession being a module plus a route track (PLAN §3.8).
 Full plan: `docs/PLAN.md`. Client/API discoveries: `docs/FOREVER-API-NOTES.md`. Progress log: `docs/PROGRESS.md`.
 
 Read `docs/PLAN.md` before doing anything. Work phase by phase; do not start a later phase until the current
@@ -32,8 +34,10 @@ Signpost/                 PUBLIC repo, MIT
   Engine/      directive registry, guide/chapter registry (#include, best-match selection), DSL parser, conditions, progression,
                Travel (waypoint paths, transport state machine, travel-graph routing)
   Classes/     one module per class (HUNTER.lua first): trainer spells by level, class-only directives, Class tab builder, hooks
+  Professions/ one module per profession: skill line, primary/secondary, gathering/crafting, rank caps, profession-only directives
   Data/        Schema.lua ONLY: empty tables + field docs; ns.DB = Signpost_Data or ns.EmptyDB
   Guides/      guide files (metadata + #include list + race-specific chapters), Chapters/ (shared zone/dungeon chapter library),
+               Professions/ (one route track per profession, inserted into any guide at .hub anchors),
                Travel/Borders.lua (hand-authored zone crossings, overridden by learned ones)
   UI/          StepFrame (overlay), Journal (big window), Pins (map/minimap), Options
   Automation/  quest accept/turn-in, gossip, taxi, trainer, vendor, hearth
@@ -65,20 +69,25 @@ text, validation and learned positions.
   No Ace3 GUI. No custom skins. If a template does not exist on Forever, record it in the API notes and pick the nearest Blizzard template.
 - Generated data stores IDs, names, numbers and coordinates only. **Never copy quest/NPC description text from Wowhead.**
   **Nothing Wowhead-derived (cache, generated tables, gap reports) is ever committed to the public repo**; `.gitignore` enforces it and CI fails if `tools/cache/` or `*.generated.lua` appear.
-- **Class/race/faction seam:** the strings `HUNTER`, `Troll`, `Horde` (and any class/race/faction token) may appear only in
-  `Classes/`, `Guides/`, tests and docs. Everything else reads `ns.Player.*`. Class-specific behavior goes into the class module via
-  the registries (`ns.Classes:Register`, `ns.Directives:Register`, `ns.Guides:Register`, `ns.Chapters:Register`). CI greps for violations.
+- **Class/race/faction/profession seam:** the strings `HUNTER`, `Troll`, `Horde` (and any class/race/faction token or profession
+  name/key, e.g. `Skinning`, `leatherworking`) may appear only in `Classes/`, `Professions/`, `Guides/`, tests and docs. Everything else
+  reads `ns.Player.*` and the character's profession plan. Class-specific behavior goes into the class module and profession-specific
+  behavior into the profession module and its track, via the registries (`ns.Classes:Register`, `ns.Professions:Register`,
+  `ns.Directives:Register`, `ns.Guides:Register`, `ns.Chapters:Register`). CI (`tools/check_repo.py`) greps for violations.
 - **Travel is explicit:** a guide never changes zone between two steps without travel steps in between (`.path` waypoints to the
   border, `.zone`, `.fly`, `.boat`, `.zeppelin`, `.home`), each with its own pin. `guide_lint.py --strict` must report 0 uncovered
   transitions before a chapter is considered done; use `tools/guide_travel.py` to generate the steps, never hand-wave "go to X".
 - Decided product behaviors (do not re-litigate): professions appear **only** as interleaved route steps (no Professions tab);
   dungeon chapters are **auto-inserted** at their level with a Skip toggle; multi-reward quests default to **highest vendor-sell value**
-  when the guide has no `.reward`; Leatherworking specialization is a `.todo` step at level 40.
+  when the guide has no `.reward`; Leatherworking specialization is a `.todo` step at level 40 (in the Leatherworking track).
 - **Out of scope, never add:** talent builds or talent-point reminders, Legacy-system (account-wide perk) picks or reminders, gear/BiS advice.
 - **One addon, many guides, both factions:** new characters (Orc Warlock and Tauren Shaman are planned; Alliance guides later) are added as
   `Guides/<Name>.lua` + `Classes/<CLASS>.lua` in this addon. Never propose a separate addon, a core/guide split, or a cross-addon API for them.
-  Nothing outside `Guides/` may assume Horde: every data record and travel node carries a faction field, and exporters take `--faction`. `.prof` gates resolve against the guide's
-  `#professions` header at parse time, never against the player's current professions.
+  Nothing outside `Guides/` may assume Horde: every data record and travel node carries a faction field, and exporters take `--faction`.
+- **Any profession plan for any guide:** a guide's `#professions` header is only its default; each character has its own plan (0–2 primary
+  professions + any secondaries). `.prof` gates resolve at parse time against that plan, never against the player's current professions.
+  Profession steps come from per-profession tracks (`Guides/Professions/`) inserted at `.hub` anchors, so adding a profession never edits
+  chapters or engine code. Exporters cover every profession, not only the default plan's.
 - **Class quests are mandatory content:** every class quest chain for the character's class (Classic-era and Forever's new ones, e.g. the
   weapon-upgrade chains) must be routed or explicitly `#skipquest`-ed with a reason; the lint enforces it against `Classes/<CLASS>.lua:classQuests`.
 - Coordinates are stored as `uiMapID, x, y` with x/y in 0–100 percent of that map. Convert to yards with HereBeDragons when needed.
