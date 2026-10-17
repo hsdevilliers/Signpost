@@ -33,6 +33,9 @@ database fills in during the launch period.
 | Quest log/tracker | Use Blizzard's; do not replace or restyle | user |
 | Look & feel | Stock Blizzard components everywhere (Dungeon Journal addon as the model) | user |
 | Route philosophy | **Balanced**: efficient, visits all zones/dungeons/class/profession quests, "nice adventure" | user |
+| Group (elite) quests | **Optional** at the recommended level, with a skip toggle; when skipped, the route offers them again about 5 levels later where it passes that town (auto-skipped if already done). Tagged from the quest type (Wowhead) or the client's quest tag | user (2026-10-17) |
+| Route drafting | `tools/guide_draft.py` drafts chapters from the data pack (candidate pool, prerequisite order, town loops, simulated level, travel steps); chapters are then refined by hand and must pass `guide_lint.py --strict` | user (2026-10-17) |
+| Quest XP | From QuestieDB's XP table (Classic values, with its maintainers' permission) plus the Wowhead exporter for Forever's new quests, kept as facts in the private pack for planning | user (2026-10-17) |
 | Gear | Do **not** optimize for gear; user has a separate BiS-by-level addon and will farm on their own schedule | user |
 | Talents & Legacy system | **Out of scope, entirely.** No talent builds, no talent-point reminders, no Legacy (account-wide perk) picks or reminders. The guide is route + quests + professions + class quests only | user |
 | Class quests | **All class quest lines available to the character's class are in the route**, including Forever's new ones (trainer-offered lines, the new weapon-upgrade chains, the level-10 pet chain). The class module declares the list; the linter fails if a class quest is neither routed nor explicitly `.skipquest`-ed with a reason | user |
@@ -610,6 +613,24 @@ Beta cap is 30: chapters to 30 get verified in beta; 31–60 are drafted from Wo
 | 53–58 | Western/Eastern Plaguelands, Dire Maul (54), Stratholme (55), Scholomance (57) | Argent Dawn hubs |
 | 55–60 | Winterspring + Silithus + **new Forever max-level zones (e.g. Mount Hyjal at 60)** | finish to 60; rugged leather to 300 |
 
+**Quest selection and order (decided 2026-10-17; `tools/guide_draft.py` does the bookkeeping, the author the judgment):**
+1. *Candidate pool* — every quest the guide's faction/race/class may take in the zones the route visits (race/class masks,
+   side, level, prerequisites, chains, mutually exclusive alternatives, profession requirements), with giver/ender
+   positions. Dropped automatically: other faction/class/race, seasonal-event and PvP quests, repeatables (unless a
+   profession track wants them), quests behind professions the plan lacks.
+2. *Kept* — always: the class's quest chains (lint-enforced), each visited zone's main storylines, dungeon pre-quests,
+   breadcrumbs into the next zone. On value: XP and reward against cost (travel off the town loop, kill counts,
+   escort/timed objectives, whether it is still green when reached); chains judged as a whole. *Dropped*: long detours for
+   little XP, quests that go grey before the route reaches them, chains whose payoff lies in a zone the route skips.
+3. *Group quests* — optional, offered again about 5 levels later (§2).
+4. *Order* — zones by the level bands above; within a zone, town loops (pick up everything at the town, run the
+   objectives in the shortest loop over their spawn areas, turn in, take the follow-ups), prerequisites as a dependency
+   order; a simulated expected level (quest XP + kills) keeps level requirements met and places class-trainer visits,
+   dungeon chapters and profession ranks; hearth set where the route returns; flight paths on first pass; explicit travel
+   steps for every zone change (§3.6).
+5. *Per race/class* — race-specific starting chapters, shared chapters from the first common town, class content from
+   the class module and `.class` gates; restricted quests drop out through gating.
+
 The profession notes in the table describe the Troll Hunter's default plan; chapters carry only `.hub` markers, and the profession
 steps live in the tracks (§3.8). Track rules, the same for every profession: a `.skill` sticky target from the hub where the next
 material tier starts; a `.trainprof` step at the first hub with a trainer once skill is within 25 of the cap for the current rank
@@ -649,6 +670,9 @@ Acceptance
 - [ ] `Engine/Conditions.lua` for every directive in §5; `Engine/Progress.lua` with auto-advance, auto-skip, sticky, manual override, persistence.
 - [ ] `Engine/Travel.lua`: `.path` waypoint progression, `.zone` subtree check, transport state machine for `.boat`/`.zeppelin`/`.fly` (not boarded → in transit → arrived), in-transit detection per API-notes probe. `Guides/Travel/Borders.lua` seeded with the Durotar/Barrens, Barrens/Stonetalon, Barrens/Ashenvale, Barrens/Thousand Needles and Barrens/Dustwallow crossings (coords `.todo` until learned).
 - [ ] `tools/guide_travel.py` (simulate guide, find uncovered transitions, propose DSL) and the lint rule for uncovered transitions.
+- [ ] `tools/guide_draft.py` (§7 "Quest selection and order": draft chapters from the data pack for hand refinement); quest XP in
+  the questie and wowhead layers; group-quest tags from the Wowhead quest type and the client's quest tag; a `.group <questID>`
+  marker in GUIDE-FORMAT (implies `.optional`; the step frame shows it as a group quest).
 - [ ] `tests/`: busted specs for parser (every directive, error cases) and progress (auto-skip, sticky) with `tests/wow_mock.lua`.
 - [ ] `Guides/HordeTrollHunter.lua` chapters 1–12 (Durotar) fully written from Data, incl. hunter pet chain and first profession trainers.
 Acceptance

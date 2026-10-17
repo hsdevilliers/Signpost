@@ -73,6 +73,8 @@ Tasks
 - [ ] `Engine/Travel.lua`: `.path` waypoint progression, `.zone` subtree check, transport state machine for
   `.boat`/`.zeppelin`/`.fly`, in-transit detection per API-notes probe. `Guides/Travel/Borders.lua` seeded (coords `.todo`).
 - [ ] `tools/guide_travel.py` and the lint rule for uncovered transitions.
+- [ ] `tools/guide_draft.py` (PLAN §7 "Quest selection and order"); quest XP in the data layers; group-quest tags; the `.group`
+  marker in GUIDE-FORMAT.
 - [ ] `tests/`: busted specs for parser (every directive, error cases) and progress (auto-skip, sticky) with `tests/wow_mock.lua`.
 - [ ] `Guides/HordeTrollHunter.lua` chapters 1–12 (Durotar), incl. hunter pet chain and first profession trainers.
 
@@ -186,6 +188,8 @@ Acceptance
 - 2026-10-17, user decision: Phases 1–3 are built in parallel (Wave 1: eleven tracks in git worktrees against
   `docs/ENGINE.md` and `docs/GUIDE-FORMAT.md`); journal, automation and the Durotar content follow in Wave 2. Acceptance boxes
   are still ticked in order, with evidence.
+- 2026-10-17, user decisions on route authoring (PLAN §2, §7): group quests optional with a revisit about 5 levels later; a
+  drafting tool (`tools/guide_draft.py`) for chapters refined by hand; quest XP from QuestieDB's XP table plus Wowhead gaps.
 - Local toolchain (2026-10-17, approved by the user): WinLibs GCC (winget `BrechtSanders.WinLibs.POSIX.UCRT`), Lua 5.1.5 +
   LuaRocks 3.8.0 built with hererocks into the gitignored `.venv/lua51`, then busted 2.3.0 and luacheck 1.2.0 — the same
   versions as CI. Setup steps in README "Development". The earlier lupa-based stand-in runner is gone.
