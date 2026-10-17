@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 import read_savedvars
+from signpost_tools import svfiles
 
 
 class ReadSavedVarsTest(unittest.TestCase):
@@ -22,9 +23,10 @@ class ReadSavedVarsTest(unittest.TestCase):
             char_dir = root / "Realm" / "Char" / "SavedVariables"
             char_dir.mkdir(parents=True)
             (char_dir / "Signpost.lua").write_text("SignpostCharDB = {\n}\n")
-            files = read_savedvars.find_files(root, None)
+            files = svfiles.find_files(root)
             self.assertEqual([(f.variable, f.owner) for f in files], [("SignpostDB", "account"), ("SignpostCharDB", "Char - Realm")])
-            self.assertEqual(read_savedvars.read(files[0]), {"ping": {"text": "pong"}})
+            self.assertEqual(svfiles.load_db(files[0]), {"ping": {"text": "pong"}})
+            self.assertEqual(svfiles.load_db(files[1]), {})
 
 
 if __name__ == "__main__":

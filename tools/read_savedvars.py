@@ -18,48 +18,15 @@ import datetime as dt
 import json
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from signpost_tools import devconfig  # noqa: E402
-from signpost_tools.savedvars import LuaParseError, load_savedvars  # noqa: E402
+from signpost_tools.savedvars import LuaParseError  # noqa: E402
+from signpost_tools.svfiles import ACCOUNT_VAR, SVFile, find_files, load_db  # noqa: E402
 
-FILE_NAME = "Signpost.lua"
-ACCOUNT_VAR = "SignpostDB"
-CHAR_VAR = "SignpostCharDB"
 LOG_TAIL = 40
-
-
-@dataclass
-class SVFile:
-    path: Path
-    variable: str
-    owner: str  # "account" or "Character - Realm"
-
-
-def find_files(source: Path | None, config_path: Path | None) -> list[SVFile]:
-    if source is None:
-        account = devconfig.account_dir(devconfig.load_config(config_path))
-        base = account
-        account_file = account / "SavedVariables" / FILE_NAME
-    else:
-        base = source
-        account_file = next(
-            (p for p in (source / FILE_NAME, source / "SavedVariables" / FILE_NAME) if p.exists()),
-            source / FILE_NAME,
-        )
-    files = [SVFile(account_file, ACCOUNT_VAR, "account")]
-    for path in sorted(base.rglob(FILE_NAME)):
-        if path.resolve() == account_file.resolve():
-            continue
-        parts = path.relative_to(base).parts
-        # <Realm>/<Character>/SavedVariables/Signpost.lua (or <Realm>/<Character>/Signpost.lua in a synced copy)
-        owner = f"{parts[1]} - {parts[0]}" if len(parts) >= 3 else str(path.parent)
-        files.append(SVFile(path, CHAR_VAR, owner))
-    return files
-
 
 def jsonable(value: object) -> object:
     """JSON keys are strings; Lua tables mix integer and string keys (e.g. { n = 2, [1] = ..., [2] = ... })."""
@@ -165,11 +132,9 @@ def show(name: str, value: object, as_json: bool, tail: int | None) -> None:
 
 def read(sv: SVFile) -> dict:
     try:
-        variables = load_savedvars(sv.path)
+        return load_db(sv)
     except LuaParseError as exc:
         sys.exit(f"{sv.path}: cannot parse: {exc}")
-    value = variables.get(sv.variable)
-    return value if isinstance(value, dict) else {}
 
 
 def run_once(options: argparse.Namespace, files: list[SVFile]) -> None:

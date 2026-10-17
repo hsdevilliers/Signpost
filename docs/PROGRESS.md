@@ -27,7 +27,9 @@ Tasks
   2026-10-17 in `_classic_beta_\Interface\AddOns` (link/relink/unlink and the real-folder guard tested on a scratch folder
   first); `read_savedvars.py` verified end to end on SavedVariables written from the mock client; the WTF account folder is
   picked up automatically after the first login.
-- [ ] `tools/import_savedvars.py` (parse WoW SavedVariables Lua → JSON, `--merge-learned` into the data pack).
+- [ ] `tools/import_savedvars.py` (parse WoW SavedVariables Lua → JSON, `--merge-learned` into the data pack). — `--json` and
+  `--maps` (Maps.lua from `/signpost dumpmaps`, keeping Wowhead zone IDs) done and unit-tested; `--merge-learned` lands with
+  `Core/Learn.lua` (until then `/signpost debug on` records the raw NPC positions and zone crossings).
 
 Acceptance
 - [ ] Addon loads on the beta with no "out of date" flag and no Lua errors; `/signpost probe` output read by

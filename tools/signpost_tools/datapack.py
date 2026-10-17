@@ -75,6 +75,27 @@ def write_table(out_dir: Path, file_name: str, value: object, tool: str) -> None
     write_lua(out_dir / file_name, header(tool), [(f"{GLOBAL}.{TABLE_FILES[file_name]}", value)])
 
 
+def read_table(out_dir: Path, file_name: str) -> object:
+    """The current contents of one table file, or None if the file is missing."""
+    path = out_dir / file_name
+    if not path.exists():
+        return None
+    return load_savedvars(path).get(f"{GLOBAL}.{TABLE_FILES[file_name]}")
+
+
+def update_table(out_dir: Path, file_name: str, value: dict, tool: str, origin: str) -> None:
+    """Write one table and record it in _meta (count, date, origin); the pack's source becomes "generated"."""
+    write_table(out_dir, file_name, value, tool)
+    today = dt.date.today().isoformat()
+    meta = read_meta(out_dir) or {"schema": SCHEMA, "tables": {}}
+    meta["source"] = "generated"
+    meta["generated"] = today
+    tables = meta.get("tables") if isinstance(meta.get("tables"), dict) else {}
+    tables[TABLE_FILES[file_name]] = {"count": len(value), "exported": today, "from": origin}
+    meta["tables"] = tables
+    write_meta(out_dir, meta, tool)
+
+
 def init_stub(out_dir: Path, force: bool = False) -> list[Path]:
     """Write an empty pack that loads in the client and matches the schema. Refuses to replace real export data."""
     meta = read_meta(out_dir)

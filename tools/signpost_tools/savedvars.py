@@ -20,6 +20,8 @@ class LuaParseError(ValueError):
 
 _SKIP = re.compile(r"(?:\s+|--\[(=*)\[.*?\]\1\]|--[^\n]*)*", re.S)
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# Statement targets: `SignpostDB` in SavedVariables, `Signpost_Data.quests` in the generated data pack.
+_TARGET = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
 _NUMBER = re.compile(r"-?(?:0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)")
 # How C runtimes print infinities and NaN (none of Signpost's own data contains them; other writers might).
 _SPECIAL_NUMBER = re.compile(r"(-?)(?:1\.#INF|inf|1\.#IND|1\.#QNAN|nan)(?:\(ind\))?", re.I)
@@ -182,7 +184,7 @@ class _Parser:
             self.skip()
             if self.pos >= len(self.text):
                 return result
-            name = _NAME.match(self.text, self.pos)
+            name = _TARGET.match(self.text, self.pos)
             if not name:
                 self.fail("expected a variable name")
             self.pos = name.end()  # type: ignore[union-attr]
@@ -191,7 +193,7 @@ class _Parser:
 
 
 def parse_savedvars(text: str) -> dict[str, object]:
-    """Parse the text of a SavedVariables file into {variable name: value}."""
+    """Parse the text of a SavedVariables file into {variable name: value} (dotted targets keep their dots)."""
     return _Parser(text.lstrip("﻿")).statements()
 
 
