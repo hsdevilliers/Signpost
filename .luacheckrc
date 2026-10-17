@@ -1,0 +1,152 @@
+-- luacheck config: the WoW client runs Lua 5.1 plus the globals listed here.
+std = "lua51"
+max_line_length = 120
+codes = true
+
+exclude_files = { "Libs/", "tools/bin/", ".venv/", "dist/", ".release/" }
+
+ignore = {
+	"211/ADDON_NAME", -- every file opens with `local ADDON_NAME, ns = ...`
+	"212/self",
+}
+
+-- Globals the addon may set (CLAUDE.md: SavedVariables and names the client requires).
+globals = {
+	"SignpostDB",
+	"SignpostCharDB",
+	"SLASH_SIGNPOST1",
+	"SLASH_SIGNPOST2",
+	"SlashCmdList",
+	"Signpost_OnAddonCompartmentClick",
+}
+
+read_globals = {
+	-- Lua extensions in the client
+	"wipe",
+	"tinsert",
+	"debugstack",
+	"geterrorhandler",
+	"seterrorhandler",
+	"time",
+	"issecretvalue",
+	-- the optional data pack, libraries, other addons
+	"Signpost_Data",
+	"LibStub",
+	"BugGrabber",
+	-- frames, fonts, constants
+	"UIParent",
+	"DEFAULT_CHAT_FRAME",
+	"UISpecialFrames",
+	"Minimap",
+	"TaxiFrame",
+	"FlightMapFrame",
+	"ChatFontNormal",
+	"GameFontHighlightSmall",
+	"BACKDROP_DIALOG_32_32",
+	"Enum",
+	"WOW_PROJECT_ID",
+	-- API namespaces
+	"C_AddOns",
+	"C_CVar",
+	"C_CreatureInfo",
+	"C_GossipInfo",
+	"C_Item",
+	"C_Map",
+	"C_MerchantFrame",
+	"C_QuestLog",
+	"C_Spell",
+	"C_TaxiMap",
+	"C_Timer",
+	"C_TooltipInfo",
+	"C_TradeSkillUI",
+	"C_XMLUtil",
+	-- API functions
+	"ButtonFrameTemplate_HideButtonBar",
+	"ButtonFrameTemplate_HidePortrait",
+	"CreateFrame",
+	"CreateVector2D",
+	"GetActiveQuestID",
+	"GetActiveTitle",
+	"GetAddOnMemoryUsage",
+	"GetAddOnMetadata",
+	"GetAvailableQuestInfo",
+	"GetAvailableTitle",
+	"GetBindLocation",
+	"GetBuildInfo",
+	"GetClassAtlas",
+	"GetExpansionLevel",
+	"GetFileIDFromPath",
+	"GetInventorySlotInfo",
+	"GetLocale",
+	"GetMaxLevelForPlayerExpansion",
+	"GetMaxPlayerLevel",
+	"GetMerchantItemID",
+	"GetMerchantItemInfo",
+	"GetMerchantItemLink",
+	"GetMerchantNumItems",
+	"GetMinimapShape",
+	"GetMinimapZoneText",
+	"GetNumActiveQuests",
+	"GetNumAvailableQuests",
+	"GetNumClasses",
+	"GetNumQuestChoices",
+	"GetNumQuestItems",
+	"GetNumQuestRewards",
+	"GetNumSkillLines",
+	"GetNumTrainerServices",
+	"GetProfessionInfo",
+	"GetProfessions",
+	"GetQuestID",
+	"GetQuestItemInfo",
+	"GetQuestItemLink",
+	"GetRealZoneText",
+	"GetRewardMoney",
+	"GetRewardXP",
+	"GetSkillLineInfo",
+	"GetSubZoneText",
+	"GetTime",
+	"GetTitleText",
+	"GetTrainerServiceCost",
+	"GetTrainerServiceInfo",
+	"GetTrainerServiceItemLink",
+	"GetTrainerServiceLevelReq",
+	"GetTrainerServiceSkillLine",
+	"GetTrainerServiceTypeFilter",
+	"GetZoneText",
+	"IsInInstance",
+	"IsIndoors",
+	"IsQuestCompletable",
+	"IsTradeskillTrainer",
+	"NumTaxiNodes",
+	"QuestGetAutoAccept",
+	"QuestIsFromAreaTrigger",
+	"TaxiNodeCost",
+	"TaxiNodeGetType",
+	"TaxiNodeName",
+	"TaxiNodePosition",
+	"UnitClass",
+	"UnitClassBase",
+	"UnitCreatureFamily",
+	"UnitExists",
+	"UnitFactionGroup",
+	"UnitGUID",
+	"UnitLevel",
+	"UnitName",
+	"UnitOnTaxi",
+	"UnitPosition",
+	"UnitRace",
+	"UnitXP",
+	"UnitXPMax",
+	"UpdateAddOnMemoryUsage",
+}
+
+-- Specs and the mock define the WoW globals they need.
+files["tests/"] = {
+	std = "+busted",
+	globals = { "WowMock" },
+	allow_defined_top = true,
+	ignore = { "111", "112", "113", "121", "122", "143", "211/ADDON_NAME" },
+}
+
+-- The local busted stand-in defines busted's globals for the spec files it loads.
+files["tests/run.lua"] = { ignore = { "111", "131" } }

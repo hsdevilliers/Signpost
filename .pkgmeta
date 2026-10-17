@@ -1,0 +1,29 @@
+package-as: Signpost
+
+# The libraries are vendored in Libs/ because the play machine installs with a plain `git clone`, so they must be
+# in the repo; Libs/README.md lists each one's source and version. This list only declares the CurseForge relations.
+embedded-libraries:
+  - libstub
+  - callbackhandler
+  - herebedragons
+  - libdatabroker-1-1
+  - libdbicon-1-0
+
+# Not shipped in release zips (tools/package.py reads this list).
+ignore:
+  - .claude
+  - .github
+  - .venv
+  - docs
+  - incoming
+  - tests
+  - tools
+  - CLAUDE.md
+  - .busted
+  - .editorconfig
+  - .gitattributes
+  - .gitignore
+  - .luacheckrc
+  - .pkgmeta
+  - .styluaignore
+  - stylua.toml

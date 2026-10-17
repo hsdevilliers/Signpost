@@ -1,0 +1,33 @@
+## Interface: 16001
+## Title: Signpost
+## Notes: Step-by-step leveling guide: quests, travel and professions, one step at a time.
+## Author: hsdevilliers
+## Version: @project-version@
+## IconTexture: Interface\Icons\INV_Misc_Map_01
+## AddonCompartmentFunc: Signpost_OnAddonCompartmentClick
+## SavedVariables: SignpostDB
+## SavedVariablesPerCharacter: SignpostCharDB
+## OptionalDeps: Signpost_Data
+## X-License: MIT
+## X-Website: https://github.com/hsdevilliers/Signpost
+## X-Flavor-TOC: generic
+
+Core\Init.lua
+Core\Errors.lua
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
+Libs\HereBeDragons-2.0\HereBeDragons-2.0.lua
+Libs\HereBeDragons-2.0\HereBeDragons-Pins-2.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\lib.xml
+
+Core\Util.lua
+Core\SavedVars.lua
+Core\Player.lua
+Data\Schema.lua
+Core\Slash.lua
+Core\Debug.lua
+Core\Probe.lua
+Core\MapDump.lua
+UI\Widgets.lua
