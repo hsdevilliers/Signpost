@@ -127,8 +127,8 @@ describe("SavedVariables", function()
 		})
 		assert.are.equal(2, ns.db.settings.scale)
 		assert.is_true(ns.db.debug.chat)
-		assert.is_false(ns.db.debug.enabled)
 		assert.are.same({}, ns.db.debug.counts)
+		assert.are.same({ npcs = {}, objects = {}, taxi = {}, crossings = {} }, ns.db.learned)
 	end)
 
 	it("runs the migrations newer than the stored version, in order", function()
@@ -379,9 +379,35 @@ describe("debug log", function()
 		assert.are.equal("ZONE_CHANGED_NEW_AREA", ns.db.eventLog[#ns.db.eventLog].e)
 	end)
 
-	it("records nothing while off", function()
+	it("starts recording by itself in dev builds", function()
 		local ns, mock = addon.load()
 		mock.fire("ZONE_CHANGED")
+		assert.are.equal("ZONE_CHANGED", ns.db.eventLog[#ns.db.eventLog].e)
+	end)
+
+	it("stays off for good after debug off", function()
+		addon.load()
+		SlashCmdList.SIGNPOST("debug off")
+		local saved = SignpostDB
+		local ns, mock = addon.load({
+			before = function()
+				G.SignpostDB = saved
+			end,
+		})
+		mock.fire("ZONE_CHANGED")
+		assert.are.equal(0, #ns.db.eventLog)
+		SlashCmdList.SIGNPOST("debug on")
+		assert.is_nil(ns.db.debug.optedOut)
+	end)
+
+	it("does not record by itself in release builds", function()
+		local ns, mock = addon.load({
+			before = function(m)
+				m.metadata.Version = "v1.2.3"
+			end,
+		})
+		mock.fire("ZONE_CHANGED")
+		assert.are.equal("v1.2.3", ns.version)
 		assert.are.equal(0, #ns.db.eventLog)
 	end)
 end)

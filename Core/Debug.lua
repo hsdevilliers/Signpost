@@ -421,8 +421,10 @@ ns.Slash:Register("debug", function(args)
 	local db = ns.db
 	local sub = (args or ""):lower()
 	if sub == "on" then
+		db.debug.optedOut = nil
 		Debug:SetEnabled(true)
 	elseif sub == "off" then
+		db.debug.optedOut = true
 		Debug:SetEnabled(false)
 	elseif sub == "pos" then
 		if not db.debug.enabled then
@@ -444,8 +446,11 @@ ns.Slash:Register("debug", function(args)
 end, L["event log to SavedVariables: on | off | pos | chat | clear | throw"])
 
 -- Logging survives /reload; position sampling does not (it is meant for one transport ride or crossing at a time).
+-- Dev builds (git checkouts) record by themselves so no beta session is lost to a forgotten command; `debug off` opts
+-- out for good and `debug on` opts back in. Release builds record only after `debug on`.
 ns.Events:RegisterMessage("DB_READY", function()
-	if ns.db.debug.enabled then
+	local debug = ns.db.debug
+	if debug.enabled or (ns.isDev and not debug.optedOut) then
 		Debug:SetEnabled(true)
 	end
 end)

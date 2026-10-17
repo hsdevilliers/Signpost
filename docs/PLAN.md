@@ -504,7 +504,8 @@ never quest/NPC prose.
 - `Signpost` — **public GitHub repo, MIT.** Addon code, `Guides/` (IDs + coordinates, as every leveling addon ships), `tools/` (exporter
   *code*), `Data/Schema.lua`. `.gitignore` blocks `tools/cache/`, `*.generated.lua`, and any `Signpost_Data/` checkout.
 - `Signpost_Data` — **private GitHub repo.** A sibling addon folder: `Signpost_Data.toc` + generated `Quests.lua`, `Npcs.lua`,
-  `Objects.lua`, `Items.lua`, `Maps.lua`, `Professions.lua`, `Hunter.lua`, `_meta.lua`, plus `cache/` (raw Wowhead responses).
+  `Objects.lua`, `Items.lua`, `Maps.lua`, `Professions.lua`, `Travel.lua`, `classes/<CLASS>.lua`, `_meta.lua`, plus `cache/` (raw
+  Wowhead responses).
   The exporters are run with `--out ../Signpost_Data`. The main addon lists it under `## OptionalDeps` and degrades gracefully without it (§4).
 - The public README explains: "the addon runs standalone; for full names/validation build the data pack locally with `tools/`".
 - GitHub Actions in the public repo: luacheck + busted + guide lint + zip release of the public addon only.
@@ -618,7 +619,8 @@ Tasks
 - [ ] `Core/Probe.lua`: `/signpost probe` prints and stores (into `SignpostDB.probe`) the results of the **Open probes** list in `FOREVER-API-NOTES.md` (function existence, template existence via `pcall(CreateFrame, …)`, atlas existence via `C_Texture.GetAtlasInfo`, `select(4, GetBuildInfo())`, `WOW_PROJECT_ID`, `GetProfessions()` shape, taxi API shape, `issecretvalue` existence).
 - [ ] `/signpost dumpmaps` → `SignpostDB.mapDump`; `/signpost export` → copyable EditBox with JSON of learned data; `/signpost debug on|off` event log to SavedVariables.
 - [ ] Dev environment (§8b): `tools/dev.local.json` (gitignored) + `tools/dev_link.ps1`/`.sh` junctions into the beta AddOns folder; `tools/read_savedvars.py [--watch] [--from <dir>]`; `Core/Errors.lua` storing the last 50 Lua errors in SavedVariables.
-- [ ] `tools/import_savedvars.py` (parse WoW SavedVariables Lua → JSON, `--merge-learned` into the data pack).
+- [ ] `tools/import_savedvars.py` (parse WoW SavedVariables Lua → JSON; `Maps.lua` from the map dump). Its `--merge-learned` mode
+  moved to Phase 6 with `Core/Learn.lua`, its only data source (user, 2026-10-17).
 Acceptance
 - Addon loads on the beta with no "out of date" flag and no Lua errors; `/signpost probe` output read by `tools/read_savedvars.py` and pasted into API notes; `Maps.lua` generated from a real dump.
 - Dev loop proven: edit a string in `Core/Slash.lua`, user types `/reload`, `tools/read_savedvars.py` shows the new value within seconds; a deliberately thrown error appears in `SignpostDB.errors`.

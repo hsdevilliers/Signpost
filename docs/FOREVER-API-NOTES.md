@@ -10,7 +10,8 @@ Launch Nov 4, 2026. Beta ends Oct 21, 2026, level cap 30.
 
 **How to answer the open probes:** in game, `/signpost probe` and `/signpost dumpmaps`, then `/reload`; on the dev machine,
 `python tools/read_savedvars.py probe` (or `mapDump`, `errors`). Event payloads (gossip, quest dialogs, trainer, vendor, taxi,
-transports) come from `/signpost debug on` (+ `/signpost debug pos` for 1 s position samples) and `read_savedvars.py eventLog posLog`.
+transports) come from the event recorder — on by itself in dev builds, otherwise `/signpost debug on` — plus `/signpost debug pos`
+for 1 s position samples, read with `read_savedvars.py eventLog posLog`.
 Raw probe output per build is kept in `docs/probes/<build>.json` (no account, realm or character names).
 
 ## Verified in the client: beta 1.60.1.70450 (2026-10-17, `/signpost probe` — `docs/probes/1.60.1.70450.json`)

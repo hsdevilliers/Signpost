@@ -38,7 +38,8 @@ StyLua 2.6.0 goes in `tools\bin\stylua.exe` (from the StyLua GitHub releases).
 ## Commands
 
 `/signpost` (alias `/sign`) lists the commands. The developer commands `probe`, `dumpmaps` and `debug` write to
-SavedVariables, which `tools/read_savedvars.py` reads after a `/reload`.
+SavedVariables, which `tools/read_savedvars.py` reads after a `/reload`. Dev builds (git checkouts) record events by
+themselves; `/signpost debug off` stops that for good, `/signpost debug on` turns it back on.
 
 ## License
 

@@ -50,7 +50,7 @@ Signpost/                 PUBLIC repo, MIT
 
 Signpost_Data/            PRIVATE repo — never pushed anywhere public
   Signpost_Data.toc       ## Interface: 16001; defines global table Signpost_Data
-  Quests.lua Npcs.lua Objects.lua Items.lua Maps.lua Professions.lua Hunter.lua _meta.lua   (GENERATED; never hand-edit)
+  _meta.lua Quests.lua Npcs.lua Objects.lua Items.lua Maps.lua Professions.lua Travel.lua classes/<CLASS>.lua   (GENERATED; never hand-edit)
   cache/                       raw Wowhead responses
   data-gaps.md
 ```

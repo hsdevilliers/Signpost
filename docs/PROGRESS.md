@@ -27,9 +27,9 @@ Tasks
   2026-10-17 in `_classic_beta_\Interface\AddOns` (link/relink/unlink and the real-folder guard tested on a scratch folder
   first); `read_savedvars.py` verified end to end on SavedVariables written from the mock client; the WTF account folder is
   picked up automatically after the first login.
-- [ ] `tools/import_savedvars.py` (parse WoW SavedVariables Lua → JSON, `--merge-learned` into the data pack). — `--json` and
-  `--maps` (Maps.lua from `/signpost dumpmaps`, keeping Wowhead zone IDs) done and unit-tested; `--merge-learned` lands with
-  `Core/Learn.lua` (until then `/signpost debug on` records the raw NPC positions and zone crossings).
+- [x] `tools/import_savedvars.py` (parse WoW SavedVariables Lua → JSON; `Maps.lua` from the map dump). — `--json` and `--maps`
+  done and unit-tested; Maps.lua generated from the beta dump. Its `--merge-learned` mode moved to Phase 6 with `Core/Learn.lua`
+  (user, 2026-10-17); until then the debug recorder keeps the raw NPC positions and zone crossings.
 
 Acceptance
 - [x] Addon loads on the beta with no "out of date" flag and no Lua errors; `/signpost probe` output read by
@@ -177,7 +177,9 @@ Acceptance
 - Libraries are vendored in `Libs/` (versions in `Libs/README.md`) instead of `.pkgmeta` externals: the play machine installs
   with a plain `git clone`, so the libraries must be in the repo. `.pkgmeta` declares them as embedded libraries.
 - `Core/Init.lua` and `Core/Errors.lua` load before the libraries, so an error in a library on Forever is recorded too.
-- Data pack class files follow PLAN §3.5/§6 (`classes/<CLASS>.lua`); CLAUDE.md's layout still says `Hunter.lua`.
+- Data pack class files follow PLAN §3.5/§6 (`classes/<CLASS>.lua`); CLAUDE.md's layout updated to match (user, 2026-10-17).
+- 2026-10-17, user decision: dev builds (git checkouts) record events by themselves (`/signpost debug off` opts out for good,
+  `/signpost debug on` opts back in); release builds record only after `/signpost debug on`.
 - Local toolchain (2026-10-17, approved by the user): WinLibs GCC (winget `BrechtSanders.WinLibs.POSIX.UCRT`), Lua 5.1.5 +
   LuaRocks 3.8.0 built with hererocks into the gitignored `.venv/lua51`, then busted 2.3.0 and luacheck 1.2.0 — the same
   versions as CI. Setup steps in README "Development". The earlier lupa-based stand-in runner is gone.
