@@ -1,4 +1,6 @@
 local addon = dofile("tests/helpers/addon.lua")
+-- Client globals are set through G, the real global table (see tests/helpers/addon.lua).
+local G = addon.G
 
 local function find(list, predicate)
 	for _, item in ipairs(list) do
@@ -120,7 +122,7 @@ describe("SavedVariables", function()
 	it("keeps stored values and fills in only what is missing", function()
 		local ns = addon.load({
 			before = function()
-				SignpostDB = { dbVersion = 1, settings = { scale = 2 }, debug = { chat = true } }
+				G.SignpostDB = { dbVersion = 1, settings = { scale = 2 }, debug = { chat = true } }
 			end,
 		})
 		assert.are.equal(2, ns.db.settings.scale)
@@ -223,7 +225,7 @@ describe("Util", function()
 	end)
 
 	it("replaces secret values when the client can identify them", function()
-		issecretvalue = function(value)
+		G.issecretvalue = function(value)
 			return value == "SECRET"
 		end
 		assert.are.same({ a = "<secret>", b = 1 }, ns.Util.Sanitize({ a = "SECRET", b = 1 }))
@@ -283,7 +285,7 @@ describe("data pack", function()
 			{ _meta = { schema = 1, source = "stub", generated = "2026-10-17" }, quests = { [1] = { n = "Q" } } }
 		local ns = addon.load({
 			before = function()
-				Signpost_Data = pack
+				G.Signpost_Data = pack
 			end,
 		})
 		assert.is_true(ns.dataPackAtLoad)
@@ -296,7 +298,7 @@ describe("data pack", function()
 	it("runs without a pack whose schema differs", function()
 		local ns = addon.load({
 			before = function()
-				Signpost_Data = { _meta = { schema = 99 } }
+				G.Signpost_Data = { _meta = { schema = 99 } }
 			end,
 		})
 		assert.are.equal(ns.EmptyDB, ns.DB)
@@ -335,7 +337,7 @@ describe("debug log", function()
 		local saved = SignpostDB
 		local ns, mock = addon.load({
 			before = function()
-				SignpostDB = saved
+				G.SignpostDB = saved
 			end,
 		})
 		mock.fire("ZONE_CHANGED_NEW_AREA")
@@ -370,9 +372,9 @@ describe("probe", function()
 
 	it("reports a slash command that collides with ours", function()
 		local ns = addon.load()
-		SLASH_SOMEONEELSE1 = "/sign"
+		G.SLASH_SOMEONEELSE1 = "/sign"
 		SlashCmdList.SIGNPOST("probe")
-		SLASH_SOMEONEELSE1 = nil
+		G.SLASH_SOMEONEELSE1 = nil
 		assert.are.same({ SLASH_SOMEONEELSE1 = "/sign" }, ns.db.probe.build.slashCollisions)
 	end)
 end)
@@ -386,7 +388,7 @@ describe("dumpmaps", function()
 		}
 		local ns, mock = addon.load({
 			before = function()
-				C_Map = {
+				G.C_Map = {
 					GetBestMapForUnit = function()
 						return 3
 					end,

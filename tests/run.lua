@@ -122,7 +122,8 @@ local function runBlock(block)
 end
 
 for _, path in ipairs(arg) do
-	local chunk = assert(loadfile(path))
+	-- Like busted, run each spec file in its own environment: its global assignments stay out of _G.
+	local chunk = setfenv(assert(loadfile(path)), setmetatable({}, { __index = _G }))
 	local fileBlock = newBlock(path, root)
 	root.children[#root.children + 1] = fileBlock
 	current = fileBlock

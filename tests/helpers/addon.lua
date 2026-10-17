@@ -3,6 +3,10 @@ local wowMock = dofile("tests/wow_mock.lua")
 
 local M = {}
 
+-- The real global table, which the addon and the mock use. busted runs each spec file in its own environment, so a
+-- spec's plain global assignments never reach the addon: specs set client globals through addon.G.
+M.G = _G
+
 function M.files()
 	local files = {}
 	for line in io.lines("Signpost.toc") do
