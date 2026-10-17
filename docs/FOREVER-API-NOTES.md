@@ -73,9 +73,15 @@ Player, values, items, professions
   `UnitXP`, `UnitXPMax` are plain numbers.
 - Ammo and quivers exist: `GetInventorySlotInfo("AmmoSlot")` → slot 0 (`INVSLOT_AMMO` = 0); 2516 Light Shot (Projectile/Bullet,
   `INVTYPE_AMMO`), 2512 Rough Arrow (Projectile/Arrow), 2101 Light Quiver (Quiver, `INVTYPE_BAG`) are in the client's item data.
-- Professions: `C_TradeSkillUI.GetProfessionInfoBySkillLineID` resolves 129 First Aid (secondary), 165 Leatherworking (primary),
-  185 Cooking, 356 Fishing, 393 Skinning — the Classic skill-line IDs are unchanged. A new level-1 character has no
-  `GetProfessions()` slots (shape with professions learned is still open).
+- Professions, enumerated without naming any (second probe): `C_TradeSkillUI.GetProfessionSkillLineID(Enum.Profession.X)` exists and
+  maps the twelve Classic professions to their Classic skill lines — primaries Blacksmithing 164, Leatherworking 165, Alchemy 171,
+  Herbalism 182, Mining 186, Tailoring 197, Engineering 202, Enchanting 333, Skinning 393; secondaries First Aid 129, Cooking 185,
+  Fishing 356 (`GetProfessionInfoBySkillLineID` → `isPrimaryProfession`, `profession` = the enum value). Jewelcrafting, Inscription and
+  Archaeology map to skill line 0: not on Forever. `GetAllProfessionTradeSkillLines()` lists the nine primaries, one child line per
+  primary (2937–2948, `parentProfessionID` = the primary, `expansionName` = the profession's name) and two test lines named
+  "Test Profession [DNT]" (2933, 2934) to filter out; it does not list the secondaries.
+- `GetProfessions()` returns **7** values on Forever (retail: 5); all nil on a character without professions. Which value is
+  First Aid is still open.
 
 Maps and travel
 - The map root is **947 Azeroth** (parentMapID 0); 946 does not exist. `C_Map.GetMapChildrenInfo(947, nil, true)` returns 57 maps:
@@ -141,7 +147,7 @@ Maps and travel
 | NPC id from unit | `UnitGUID("npc")` → `"Creature-0-…-…-…-<npcID>-…"`; field 6 of the `-`-separated GUID (`ns.Util.NpcIDFromGUID`) |
 | Items in bags | `C_Item.GetItemCount(itemID)`, `C_Container.GetContainerNumSlots`, `C_Container.GetContainerItemInfo`; event `BAG_UPDATE_DELAYED` |
 | Spells known | `IsPlayerSpell(spellID)` / `IsSpellKnown(spellID)` / `C_SpellBook.IsSpellKnown`; `C_Spell.GetSpellInfo(spellID).name` |
-| Professions | `GetProfessions()` → prof1, prof2, arch, fishing, cooking; `GetProfessionInfo(idx)`; `C_TradeSkillUI.GetProfessionInfoBySkillLineID(129/165/185/356/393)` works for all five (incl. First Aid). The Classic `GetSkillLineInfo` API is gone. Events `SKILL_LINES_CHANGED`, `TRADE_SKILL_LIST_UPDATE` |
+| Professions | Learned: `GetProfessions()` (7 values on Forever — meaning still open) → `GetProfessionInfo(idx)` → skill line. All professions: iterate `Enum.Profession` → `C_TradeSkillUI.GetProfessionSkillLineID(value)` (0 = not on Forever) → `C_TradeSkillUI.GetProfessionInfoBySkillLineID(id)`. The Classic `GetSkillLineInfo` API is gone. Events `SKILL_LINES_CHANGED`, `TRADE_SKILL_LIST_UPDATE` |
 | Trainer | `TRAINER_SHOW`, `GetNumTrainerServices()`, `GetTrainerServiceInfo(i)`, `GetTrainerServiceSkillLine(i)`, `GetTrainerServiceItemLink(i)`, `GetTrainerServiceCost(i)`, `BuyTrainerService(i)`, `SetTrainerServiceTypeFilter("available", true)`; spell ID via `C_TooltipInfo.GetTrainerService(i)` (open probe) |
 | Vendor | `MERCHANT_SHOW`, `GetMerchantNumItems()`, **`C_MerchantFrame.GetItemInfo(i)`** (`GetMerchantItemInfo` is gone), `GetMerchantItemID(i)`, `GetMerchantItemLink(i)`, `BuyMerchantItem(i, qty)` |
 | Taxi | Both shapes exist: `C_TaxiMap.GetAllTaxiNodes(uiMapID)` / `GetTaxiNodesForMap(uiMapID)` and `NumTaxiNodes()`/`TaxiNodeName(i)`/`TaxiNodeGetType(i)`/`TakeTaxiNode`. Which UI opens at a flight master and which `TakeTaxiNode` argument works: open probe |
@@ -166,10 +172,8 @@ Maps and travel
 - [ ] Launch client folder name (after Nov 4): `_classic_`? `_forever_`? other?
 - [ ] `C_QuestLog.GetAllCompletedQuestIDs()` populated at `PLAYER_ENTERING_WORLD` or only after a `QUEST_LOG_UPDATE`? (A new character
   has none: re-run `/signpost probe` after turning in a few quests, relog, probe again.)
-- [ ] `GetProfessions()` return shape with professions learned; which slot **First Aid** occupies. (Re-probe after training.)
-- [ ] Every profession from the client without naming any (profession seam, PLAN §3.8): does `C_TradeSkillUI.GetProfessionSkillLineID`
-  exist and map each `Enum.Profession` value to a skill line? What are the eleven 29xx skill lines that
-  `GetAllProfessionTradeSkillLines()` lists next to the nine Classic primaries (2933–2948)? [probe: professions.byEnum, bySkillLine]
+- [ ] What each of the **7** `GetProfessions()` values holds once professions are learned, and which one is **First Aid** — the
+  profession plan is detected from these (PLAN §3.8). (Train a primary and First Aid, then `/signpost probe` and `/reload`.)
 - [ ] Taxi UI at a flight master: `TaxiFrame` or `FlightMapFrame`? Which `TakeTaxiNode` argument (index or nodeID) works? (`/signpost
   debug on`, open a flight master: the log keeps both node lists and which frame was shown.)
 - [ ] Setting the hearth without `ConfirmBinder`: what does the innkeeper's gossip option do, does `CONFIRM_BINDER` fire, and what confirms

@@ -25,7 +25,7 @@ database fills in during the launch period.
 | Name | **Signpost** — folder `Signpost`, data pack `Signpost_Data`, SavedVariables `SignpostDB`/`SignpostCharDB`, slash `/signpost` (alias `/sign`), repos `Signpost` + `Signpost_Data` | user (2026-10-17) |
 | Target client | WoW: Forever only (Mainline API, Interface 16001) | research, see API notes |
 | Character | Horde, Troll, Hunter | user |
-| Professions | **Any combination per character, for every race/class guide**: 0–2 primary professions and any of the secondary ones (§3.8). The Troll Hunter guide's default plan: Skinning, Leatherworking, First Aid, Cooking, Fishing | user (2026-10-17) |
+| Professions | **Any combination per character, for every race/class guide**: 0–2 primary professions and any of the secondary ones (§3.8). The plan is **detected from the professions the character has learned**; the guide's `#professions` (Troll Hunter: Skinning, Leatherworking, First Aid, Cooking, Fishing) only suggests professions for free slots | user (2026-10-17) |
 | Data source | Wowhead WoW: Forever DB via offline export → Lua tables; re-export as DB fills in | user |
 | Automation | Full: accept/turn-in, flights, train skills (plus vendor restock, hearth set) — all toggles | user |
 | Testing | User has Forever beta access now (beta ends Oct 21; level cap 30) | user |
@@ -36,7 +36,7 @@ database fills in during the launch period.
 | Gear | Do **not** optimize for gear; user has a separate BiS-by-level addon and will farm on their own schedule | user |
 | Talents & Legacy system | **Out of scope, entirely.** No talent builds, no talent-point reminders, no Legacy (account-wide perk) picks or reminders. The guide is route + quests + professions + class quests only | user |
 | Class quests | **All class quest lines available to the character's class are in the route**, including Forever's new ones (trainer-offered lines, the new weapon-upgrade chains, the level-10 pet chain). The class module declares the list; the linter fails if a class quest is neither routed nor explicitly `.skipquest`-ed with a reason | user |
-| Profession presentation | **Interleaved in the route only.** No Professions tab; `.skill`/`.trainprof`/`.craft` steps carry the profession info. The steps come from per-profession tracks inserted at route hubs; the character's plan is chosen in the Settings tab (§3.8) | user |
+| Profession presentation | **Interleaved in the route only.** No Professions tab; `.skill`/`.trainprof`/`.craft` steps carry the profession info. The steps come from per-profession tracks inserted at route hubs; the character's plan is detected automatically (§3.8) | user |
 | Distribution | **Open source on GitHub (MIT).** Addon code is public. Everything Wowhead-derived lives in a **private** repo as a separate dependency addon `Signpost_Data` (§6) | user |
 | LW specialization | **Decide later**: a `.todo "Choose Leatherworking specialization"` step at level 40 (in the Leatherworking track, §3.8); route to 40 is specialization-neutral | user |
 | Dungeon side-chapters | **Auto-inserted into the main route at the recommended level** as `#dungeon` chapters; each has a one-click skip toggle | user |
@@ -120,9 +120,8 @@ Layout (one frame built from `ButtonFrameTemplate`, which supplies portrait, tit
     trainer (name, zone, coords) and required materials. There is no separate professions view.
   - **Hunter** — pet quest chain at 10, ammo/quiver reminders (if Forever still has ammo — probe), trainer visits by level,
     "Train now" list of untrained ranks for current level (from spell IDs in Data).
-  - **Settings** — all toggles (also registered under Options → AddOns via `Settings.RegisterCanvasLayoutCategory`), and the
-    character's **profession plan** (two primary-profession dropdowns + a checkbox per secondary profession, defaulting to the
-    guide's `#professions`; §3.8).
+  - **Settings** — all toggles (also registered under Options → AddOns via `Settings.RegisterCanvasLayoutCategory`), the
+    character's **detected profession plan** (read-only) and the professions it declined, each with a button to restore it (§3.8).
 - Step detail tooltip on hover: quest IDs, objective list, Wowhead link text (copyable via `EditBox`), "learned position" if any.
 
 ### 3.3 Step engine behavior (`Engine/`)
@@ -133,7 +132,8 @@ Layout (one frame built from `ButtonFrameTemplate`, which supplies portrait, tit
 - **Sticky steps** (`.sticky`): remain active alongside the current step until satisfied (e.g. "skin everything until 75").
   Shown as a second line in the step frame.
 - **Conditional steps**: `.class`, `.race`, `.prof`, `.hc` gates; steps for other setups are dropped at parse time (`.prof` against
-  the character's profession plan, §3.8). Changing the plan re-parses the guide; step ids are stable across plans, so progress is kept.
+  the character's detected profession plan, §3.8). A plan change (a profession learned, unlearned or declined) re-parses the guide;
+  step ids are stable across plans, so progress is kept.
 - **Manual override** always wins: `<`/`>`/skip never get undone by auto-skip within the same session unless a quest event proves otherwise.
 - **Dungeon chapters** (`#chapter … #dungeon`) are ordinary chapters in the main sequence, placed at the recommended level.
   Their first step is a `.note` summarizing the run (quests inside, pre-quests already collected by earlier steps). A chapter-level
@@ -273,10 +273,10 @@ Classes/SHAMAN.lua                -- trainerSpells, classQuests (totem chains as
 Shared chapters gain lines for the new characters' class quests, gated with `.class`, and the linter's coverage checks run per guide.
 Their professions need no chapter edits at all: profession steps come from profession tracks (§3.8).
 
-**`#professions` header = the guide's default profession plan.** A guide declares a default:
-`#professions skinning,leatherworking,firstaid,cooking,fishing`. Each character's own plan (§3.8) overrides it. `.prof` gates resolve at
-**parse time against the character's plan**, never the player's learned skills — a level-1 character has none yet, so skill-based gating
-would drop every profession step.
+**`#professions` header = the guide's profession suggestions.** A guide declares
+`#professions skinning,leatherworking,firstaid,cooking,fishing`; it fills the free slots of each character's detected plan (§3.8).
+`.prof` gates resolve at **parse time against that plan** — never against the learned skills alone, because a level-1 character has
+none yet and would lose every "learn this profession" step.
 
 **Selection and progress.** The registry picks by race+class (an Orc Warlock logs in → the warlock guide), progress is per character and
 per guide, and Learn data is account-wide — the second and third characters inherit every corrected coordinate from the first.
@@ -296,15 +296,23 @@ Checked 2026-10-17: no "Signpost" addon found on CurseForge in a web search — 
 
 ### 3.8 Professions are a seam too — any race + class with any profession combination
 
-Decision (user, 2026-10-17): every guide works with **any combination of primary professions (0–2) and any subset of the secondary
-professions**. A guide's `#professions` header is only its default plan; professions are as independent of the guide as the guide is of
-the faction.
+Decisions (user, 2026-10-17): every guide works with **any combination of primary professions (0–2) and any subset of the secondary
+professions**, and each character's combination is **detected from the professions it has learned** — nobody picks it. A guide's
+`#professions` header only suggests professions for free slots; professions are as independent of the guide as the guide is of the
+faction.
 
-**The profession plan** belongs to the character: `SignpostCharDB.professions = { primary = { key, key }, secondary = { key, ... } }`,
-unset = the selected guide's `#professions`. It is chosen in the journal's Settings tab (two primary dropdowns, one checkbox per
-secondary) or with `/signpost professions <key>,<key>,...`; there is still no Professions tab. When the player learns a primary profession
-that is not in the plan, the step frame offers once to adopt it ("You learned Mining — follow Mining instead of Skinning?"); declining
-keeps the plan. An empty plan means no profession steps at all.
+**The profession plan is detected** (`Engine/Professions.lua`), on login and whenever the character learns or unlearns a profession
+(`SKILL_LINES_CHANGED`; learned professions come from `GetProfessions()` → `GetProfessionInfo` → skill line → profession module):
+1. every profession the character has learned, primary or secondary, is in the plan;
+2. free primary slots (2 minus the learned primaries) are filled with the guide's `#professions` primaries, in header order, skipping
+   learned and declined ones — a new character is routed to learn the guide's suggestions; one that learned Mining keeps a suggestion
+   only for its still-free slot;
+3. the guide's secondary professions stay in the plan until learned or declined;
+4. **declining is automatic too**: skipping a track's step that teaches the profession (its first `.trainprof`) marks it declined for
+   the character (`SignpostCharDB.declinedProfessions[key] = true`), so the next suggestion takes the slot; going back (`<`) over that
+   step undoes it.
+There is no picker and still no Professions tab: the journal's Settings tab shows the detected plan and the declined professions, each
+with a button to restore it. A character with no free slots and nothing suggested simply gets no profession steps.
 
 **Profession modules** (`Professions/<KEY>.lua`, registered with `ns.Professions:Register(key, {...})`, the counterpart of
 `Classes/`): skill line ID, primary or secondary, gathering or crafting, rank caps (Apprentice/Journeyman/Expert/Artisan — Classic
@@ -314,7 +322,7 @@ ranges, reagents, trainers per faction for **every** profession), so a module st
 
 **Profession tracks** (`Guides/Professions/<key>.lua`): the route steps for one profession — learn and train ranks, gathering stickies
 per zone band, crafting batches with their materials, profession quests, the LW specialization `.todo` — written **once** and inserted
-into any guide whose character plan includes that profession:
+into any guide whose character's detected plan includes that profession:
 - chapters mark every town the route passes through with `.hub <name>` on the step that is there (e.g. `.hub orgrimmar`,
   `.hub crossroads`); hubs are faction-neutral names, so the same track serves every guide that visits the town;
 - a track step says where it belongs: `@hub <name>` (the first visit to that hub at or after the track's previous step), or
@@ -327,12 +335,13 @@ into any guide whose character plan includes that profession:
 
 **Seam rule (CI):** profession names and keys may appear only in `Professions/`, `Guides/`, tests and docs — the same rule and the
 same check (`tools/check_repo.py`) as classes, races and factions. Engine and UI code read `ns.Player.professions` (learned) and the
-character's plan.
+detected plan.
 
-**Acceptance test for the profession seam** (Phase 6): the Troll Hunter guide, unchanged, runs with a different plan — e.g. Herbalism +
-Alchemy and no secondaries — after adding only `Professions/HERBALISM.lua`, `Professions/ALCHEMY.lua` and their tracks (stubs are fine):
-the merged route contains their steps at the right hubs, the Skinning/Leatherworking steps are gone, the linter passes, and no file outside
-`Professions/` and `Guides/Professions/` changed. Delete the stubs afterwards unless they are real content.
+**Acceptance test for the profession seam** (Phase 6): the Troll Hunter guide, unchanged, serves a character that has learned
+Herbalism + Alchemy and declined the secondary professions, after adding only `Professions/HERBALISM.lua`, `Professions/ALCHEMY.lua` and
+their tracks (stubs are fine): the detected plan is Herbalism + Alchemy, the merged route contains their steps at the right hubs, the
+Skinning/Leatherworking/secondary steps are gone, the linter passes, and no file outside `Professions/` and `Guides/Professions/`
+changed. A busted spec covers the same with a mocked `GetProfessions`. Delete the stubs afterwards unless they are real content.
 
 ## 4. Architecture
 
@@ -345,7 +354,7 @@ Core/Learn.lua       records NPC/object positions when interacting (self-healing
 Core/Player.lua      ns.Player: class/classFile/race/raceFile/faction/level/professions (the only place UnitClass/UnitRace are called)
 Engine/Directives.lua registry: name → { parse, isSatisfied, targets, describe }; core directives registered here, class ones from Classes/
 Engine/Registry.lua  ns.Guides (guide metadata + selection for ns.Player) and ns.Chapters (shared chapter library, #include)
-Engine/Professions.lua ns.Professions registry (modules from Professions/), the character's profession plan, merging the plan's
+Engine/Professions.lua ns.Professions registry (modules from Professions/), detecting the character's profession plan, merging the plan's
                      profession tracks into the parsed route at .hub/@level/@zone anchors (§3.8)
 Engine/Parser.lua    DSL text → guide table (resolve #include → gate by class/race/faction/prof → chapters → steps → directives); line-numbered errors
 Engine/Conditions.lua dispatches to Directives[...].isSatisfied / targets for a step
@@ -387,8 +396,9 @@ Guides are plain text inside a Lua long string. One directive per line, `--` com
 #class   HUNTER                         -- comma list or * ; used for gating defaults
 #race    Troll                          -- comma list or *
 #faction Horde
-#professions skinning,leatherworking,firstaid,cooking,fishing   -- the DEFAULT plan; the character's plan overrides it and .prof gates
-                                                                -- resolve against that plan at parse time (§3.8)
+#professions skinning,leatherworking,firstaid,cooking,fishing   -- SUGGESTIONS for free profession slots; each character's plan is
+                                                                -- detected from what it has learned, and .prof gates resolve
+                                                                -- against that plan at parse time (§3.8)
 
 #include durotar-1-6                    -- pull a shared chapter from Guides/Chapters/ (resolved before gating)
 #chapter 1-6 Valley of Trials            -- "#chapter <levelRange> <name>"  (inline chapter; same syntax inside the library)
@@ -457,7 +467,7 @@ step
 ```
 A profession track (`Guides/Professions/<key>.lua`, §3.8) uses the same step syntax; each step names its anchor in the route:
 ```
-#track skinning                           -- merged into any guide whose character plan includes skinning
+#track skinning                           -- merged into any guide whose character's detected plan includes skinning
 step @hub orgrimmar                       -- at the first route step marked .hub orgrimmar (after this track's previous step)
   .trainprof skinning                     -- learn/raise profession at trainer; satisfied when skill line known / next rank learned
 step @level 6                             -- at the first route step whose expected level is >= 6
@@ -469,8 +479,9 @@ Rules the parser enforces:
 - Names in `>>` text are display overrides only. At **authoring/lint** time every ID must exist in the data pack or be marked `.todo`;
   at **runtime** the data pack is optional — unknown IDs fall back to the `>>` text or `Quest #1234`.
 - Gating: `.class HUNTER,ROGUE`, `.class !HUNTER`, `.race Troll`, `.faction Horde` filter a step (or a single directive line when placed
-  inline after it) at parse time against `ns.Player`; `.prof skinning` filters against the character's profession plan (default: the
-  guide's `#professions`; never the player's learned skills — §3.8). `.hc` reserved for Hardcore (future).
+  inline after it) at parse time against `ns.Player`; `.prof skinning` filters against the character's detected profession plan
+  (learned professions + the guide's `#professions` suggestions for free slots − declined ones; never the learned skills alone —
+  §3.8). `.hc` reserved for Hardcore (future).
 - Profession steps belong in profession tracks, not in chapters; a chapter `.prof` gate is reserved for route steps that only make
   sense with a profession (e.g. a detour to a fishing quest giver). Every track step must find its anchor in each guide that uses it.
 - Class-only directives (`.tame`, `.ammo`, …) exist only when that class module is loaded; using one in a shared chapter without a
@@ -620,7 +631,7 @@ Acceptance
 - Every Durotar/Barrens quest a Troll Hunter can take is in the pack's `Quests.lua` with start/end entity and ≥1 coordinate (or listed in gaps). Lua files load under `luac -p` and in-game; the main addon also loads cleanly with the pack disabled.
 
 ### Phase 2 — DSL, parser, engine
-- [ ] Move §5 to `docs/GUIDE-FORMAT.md`; implement `Core/Player.lua`, `Engine/Directives.lua` (registry + core directives), `Engine/Registry.lua` (guides, chapters, `#include`, best-match selection), `Engine/Professions.lua` (profession registry, the character's profession plan defaulting to `#professions`, parse-time `.prof` gating, `.hub`/`@level`/`@zone` anchors and track merging with stable step ids, the adopt-learned-profession offer — §3.8), `Engine/Parser.lua` with line-numbered errors; `tools/guide_lint.py` (incl. track anchors); `tools/check_repo.py` seam tokens cover profession names.
+- [ ] Move §5 to `docs/GUIDE-FORMAT.md`; implement `Core/Player.lua`, `Engine/Directives.lua` (registry + core directives), `Engine/Registry.lua` (guides, chapters, `#include`, best-match selection), `Engine/Professions.lua` (profession registry, profession plan detection — learned professions + `#professions` suggestions for free slots − declined ones, recomputed on `SKILL_LINES_CHANGED` — parse-time `.prof` gating, `.hub`/`@level`/`@zone` anchors and track merging with stable step ids — §3.8), `Engine/Parser.lua` with line-numbered errors; `tools/guide_lint.py` (incl. track anchors); `tools/check_repo.py` seam tokens cover profession names.
 - [ ] `Classes/HUNTER.lua` with `trainerSpells`, `classQuests` (from the export; the level-10 pet chain first), `.tame`/`.ammo` directives, the `.train class` expansion and the "class quest available here" soft check. No other file references HUNTER/Troll/Horde (lint rule in CI: grep outside `Classes/` and `Guides/`).
 - [ ] `Engine/Context.lua` (quest log by questID, completed set via `C_QuestLog.GetAllCompletedQuestIDs` + `IsQuestFlaggedCompleted`, spells, skills, taxi, bags).
 - [ ] `Engine/Conditions.lua` for every directive in §5; `Engine/Progress.lua` with auto-advance, auto-skip, sticky, manual override, persistence.
@@ -656,7 +667,7 @@ Acceptance
 ### Phase 6 — Content 12–30 + professions + dungeons (verify in beta while it lasts; afterwards on launch)
 - [ ] Barrens → Thousand Needles chapters; `#dungeon` chapters auto-inserted at level (RFC, Hall of Thanes, Ruins of Lordaeron, WC, SFK, RFK, SM) with their pre-quests placed in the preceding zone steps.
 - [ ] Profession modules and tracks for the Troll Hunter's default plan (Skinning, Leatherworking, First Aid, Cooking, Fishing) to skill
-  150 (§7 track rules), chapters marked with `.hub`; profession plan picker in the Settings tab; Hunter Class tab.
+  150 (§7 track rules), chapters marked with `.hub`; the detected plan and declined professions in the Settings tab; Hunter Class tab.
 - [ ] Run the §3.8 profession seam test (the guide with a stub Herbalism + Alchemy plan), then delete the stubs.
 - [ ] Move every zone/dungeon chapter from Razor Hill onward into `Guides/Chapters/` and `#include` them; only the troll starting chapters stay guide-specific.
 - [ ] Run the §3.5 seam acceptance test (stub Orc Warrior guide + empty `Classes/WARRIOR.lua`), then delete the stub.

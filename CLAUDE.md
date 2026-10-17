@@ -71,7 +71,7 @@ text, validation and learned positions.
   **Nothing Wowhead-derived (cache, generated tables, gap reports) is ever committed to the public repo**; `.gitignore` enforces it and CI fails if `tools/cache/` or `*.generated.lua` appear.
 - **Class/race/faction/profession seam:** the strings `HUNTER`, `Troll`, `Horde` (and any class/race/faction token or profession
   name/key, e.g. `Skinning`, `leatherworking`) may appear only in `Classes/`, `Professions/`, `Guides/`, tests and docs. Everything else
-  reads `ns.Player.*` and the character's profession plan. Class-specific behavior goes into the class module and profession-specific
+  reads `ns.Player.*` and the detected profession plan. Class-specific behavior goes into the class module and profession-specific
   behavior into the profession module and its track, via the registries (`ns.Classes:Register`, `ns.Professions:Register`,
   `ns.Directives:Register`, `ns.Guides:Register`, `ns.Chapters:Register`). CI (`tools/check_repo.py`) greps for violations.
 - **Travel is explicit:** a guide never changes zone between two steps without travel steps in between (`.path` waypoints to the
@@ -84,8 +84,10 @@ text, validation and learned positions.
 - **One addon, many guides, both factions:** new characters (Orc Warlock and Tauren Shaman are planned; Alliance guides later) are added as
   `Guides/<Name>.lua` + `Classes/<CLASS>.lua` in this addon. Never propose a separate addon, a core/guide split, or a cross-addon API for them.
   Nothing outside `Guides/` may assume Horde: every data record and travel node carries a faction field, and exporters take `--faction`.
-- **Any profession plan for any guide:** a guide's `#professions` header is only its default; each character has its own plan (0–2 primary
-  professions + any secondaries). `.prof` gates resolve at parse time against that plan, never against the player's current professions.
+- **Any profession plan for any guide, detected per character:** each character's plan (0–2 primary professions + any secondaries) is
+  detected from the professions it has learned; the guide's `#professions` header only suggests professions for free slots, and skipping
+  a profession's learn step declines it. There is no picker. `.prof` gates resolve at parse time against that detected plan — never
+  against the learned skills alone, which would drop every "learn this profession" step on a new character.
   Profession steps come from per-profession tracks (`Guides/Professions/`) inserted at `.hub` anchors, so adding a profession never edits
   chapters or engine code. Exporters cover every profession, not only the default plan's.
 - **Class quests are mandatory content:** every class quest chain for the character's class (Classic-era and Forever's new ones, e.g. the

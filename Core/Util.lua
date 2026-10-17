@@ -194,7 +194,7 @@ end
 
 -- Every profession the client defines, primary and secondary, without naming any (the profession seam, PLAN §3.8):
 -- Enum.Profession -> skill line -> profession info, plus each skill line GetAllProfessionTradeSkillLines lists.
--- VERIFY(beta): C_TradeSkillUI.GetProfessionSkillLineID exists on Forever (probe: professions.byEnum).
+-- On beta 1.60.1.70450 this yields the twelve Classic professions; Enum entries Forever lacks map to skill line 0.
 function Util.Professions()
 	local result = Util.LearnedProfessions()
 	local tradeSkill = C_TradeSkillUI

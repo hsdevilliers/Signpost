@@ -1,6 +1,6 @@
 {
  "addons": {
-  "dataPack": "Signpost_Data 2026-10-17, source stub, schema 1",
+  "dataPack": "Signpost_Data 2026-10-17, source generated, schema 1",
   "dataPackAtLoad": true,
   "dataPackGlobal": "table",
   "info": {
@@ -68,8 +68,8 @@
    }
   },
   "memoryKB": {
-   "Signpost": 1712.6875,
-   "Signpost_Data": 5.0322265625
+   "Signpost": 2895.0771484375,
+   "Signpost_Data": 108.96875
   },
   "versionCheck": true
  },
@@ -199,6 +199,7 @@
    "C_TooltipInfo.GetTrainerService": "function",
    "C_TradeSkillUI.GetAllProfessionTradeSkillLines": "function",
    "C_TradeSkillUI.GetProfessionInfoBySkillLineID": "function",
+   "C_TradeSkillUI.GetProfessionSkillLineID": "function",
    "C_XMLUtil.GetTemplateInfo": "function",
    "CombatLogGetCurrentEventInfo": "nil",
    "CompleteQuest": "function",
@@ -300,7 +301,7 @@
    "seterrorhandler": "function"
   },
   "unexpectedlyPresent": {},
-  "wanted": 153
+  "wanted": 154
  },
  "atlases": {
   "Class": true,
@@ -446,14 +447,14 @@
   "hbd": {
    "world": {
     "instance": 1,
-    "x": -4254.4,
-    "y": -613.4
+    "x": -4253.2,
+    "y": -610.5
    },
    "zone": {
     "map": 1411,
     "mapType": 3,
-    "x": 43.35,
-    "y": 68.7
+    "x": 43.32,
+    "y": 68.62
    },
    "zoneSize": {
     "1": 5287.49951171875,
@@ -505,13 +506,13 @@
    "minimapZone": "Valley of Trials",
    "realZone": "Durotar",
    "subzone": "Valley of Trials",
-   "t": 217617.9,
+   "t": 218859.7,
    "taxi": false,
-   "wx": -4254.4,
-   "wy": -613.4,
+   "wx": -4253.2,
+   "wy": -610.5,
    "wz": 0,
-   "x": 43.35,
-   "y": 68.7,
+   "x": 43.32,
+   "y": 68.62,
    "zone": "Durotar"
   },
   "roots": {
@@ -881,14 +882,238 @@
   }
  },
  "professions": {
+  "byEnum": {
+   "Alchemy": {
+    "enum": 3,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": true,
+     "maxSkillLevel": 0,
+     "profession": 3,
+     "professionID": 171,
+     "professionName": "Alchemy",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 171
+   },
+   "Archaeology": {
+    "enum": 14,
+    "info": {
+     "expansionName": "",
+     "isPrimaryProfession": false,
+     "maxSkillLevel": 0,
+     "professionID": 0,
+     "professionName": "",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 0
+   },
+   "Blacksmithing": {
+    "enum": 1,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": true,
+     "maxSkillLevel": 0,
+     "profession": 1,
+     "professionID": 164,
+     "professionName": "Blacksmithing",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 164
+   },
+   "Cooking": {
+    "enum": 5,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": false,
+     "maxSkillLevel": 0,
+     "profession": 5,
+     "professionID": 185,
+     "professionName": "Cooking",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 185
+   },
+   "Enchanting": {
+    "enum": 9,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": true,
+     "maxSkillLevel": 0,
+     "profession": 9,
+     "professionID": 333,
+     "professionName": "Enchanting",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 333
+   },
+   "Engineering": {
+    "enum": 8,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": true,
+     "maxSkillLevel": 0,
+     "profession": 8,
+     "professionID": 202,
+     "professionName": "Engineering",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 202
+   },
+   "FirstAid": {
+    "enum": 0,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": false,
+     "maxSkillLevel": 0,
+     "profession": 0,
+     "professionID": 129,
+     "professionName": "First Aid",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 129
+   },
+   "Fishing": {
+    "enum": 10,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": false,
+     "maxSkillLevel": 0,
+     "profession": 10,
+     "professionID": 356,
+     "professionName": "Fishing",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 356
+   },
+   "Herbalism": {
+    "enum": 4,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": true,
+     "maxSkillLevel": 0,
+     "profession": 4,
+     "professionID": 182,
+     "professionName": "Herbalism",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 182
+   },
+   "Inscription": {
+    "enum": 13,
+    "info": {
+     "expansionName": "",
+     "isPrimaryProfession": false,
+     "maxSkillLevel": 0,
+     "professionID": 0,
+     "professionName": "",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 0
+   },
+   "Jewelcrafting": {
+    "enum": 12,
+    "info": {
+     "expansionName": "",
+     "isPrimaryProfession": false,
+     "maxSkillLevel": 0,
+     "professionID": 0,
+     "professionName": "",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 0
+   },
+   "Leatherworking": {
+    "enum": 2,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": true,
+     "maxSkillLevel": 0,
+     "profession": 2,
+     "professionID": 165,
+     "professionName": "Leatherworking",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 165
+   },
+   "Mining": {
+    "enum": 6,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": true,
+     "maxSkillLevel": 0,
+     "profession": 6,
+     "professionID": 186,
+     "professionName": "Mining",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 186
+   },
+   "Skinning": {
+    "enum": 11,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": true,
+     "maxSkillLevel": 0,
+     "profession": 11,
+     "professionID": 393,
+     "professionName": "Skinning",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 393
+   },
+   "Tailoring": {
+    "enum": 7,
+    "info": {
+     "expansionName": "Unknown",
+     "isPrimaryProfession": true,
+     "maxSkillLevel": 0,
+     "profession": 7,
+     "professionID": 197,
+     "professionName": "Tailoring",
+     "skillLevel": 0,
+     "skillModifier": 0,
+     "sourceCounter": 0
+    },
+    "skillLine": 197
+   }
+  },
   "bySkillLine": {
-   "129": {
+   "164": {
     "expansionName": "Unknown",
-    "isPrimaryProfession": false,
+    "isPrimaryProfession": true,
     "maxSkillLevel": 0,
-    "profession": 0,
-    "professionID": 129,
-    "professionName": "First Aid",
+    "profession": 1,
+    "professionID": 164,
+    "professionName": "Blacksmithing",
     "skillLevel": 0,
     "skillModifier": 0,
     "sourceCounter": 0
@@ -904,24 +1129,207 @@
     "skillModifier": 0,
     "sourceCounter": 0
    },
-   "185": {
+   "171": {
     "expansionName": "Unknown",
-    "isPrimaryProfession": false,
+    "isPrimaryProfession": true,
     "maxSkillLevel": 0,
-    "profession": 5,
-    "professionID": 185,
-    "professionName": "Cooking",
+    "profession": 3,
+    "professionID": 171,
+    "professionName": "Alchemy",
     "skillLevel": 0,
     "skillModifier": 0,
     "sourceCounter": 0
    },
-   "356": {
+   "182": {
     "expansionName": "Unknown",
-    "isPrimaryProfession": false,
+    "isPrimaryProfession": true,
     "maxSkillLevel": 0,
-    "profession": 10,
-    "professionID": 356,
-    "professionName": "Fishing",
+    "profession": 4,
+    "professionID": 182,
+    "professionName": "Herbalism",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "186": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "profession": 6,
+    "professionID": 186,
+    "professionName": "Mining",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "197": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "profession": 7,
+    "professionID": 197,
+    "professionName": "Tailoring",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "202": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "profession": 8,
+    "professionID": 202,
+    "professionName": "Engineering",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2933": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "professionID": 2933,
+    "professionName": "Test Profession [DNT]",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2934": {
+    "expansionName": "Classic",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 2933,
+    "parentProfessionName": "Test Profession [DNT]",
+    "professionID": 2934,
+    "professionName": "Test Profession [DNT]",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2937": {
+    "expansionName": "Alchemy",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 171,
+    "parentProfessionName": "Alchemy",
+    "profession": 3,
+    "professionID": 2937,
+    "professionName": "Alchemy",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2938": {
+    "expansionName": "Blacksmithing",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 164,
+    "parentProfessionName": "Blacksmithing",
+    "profession": 1,
+    "professionID": 2938,
+    "professionName": "Blacksmithing",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2940": {
+    "expansionName": "Enchanting",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 333,
+    "parentProfessionName": "Enchanting",
+    "profession": 9,
+    "professionID": 2940,
+    "professionName": "Enchanting",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2941": {
+    "expansionName": "Engineering",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 202,
+    "parentProfessionName": "Engineering",
+    "profession": 8,
+    "professionID": 2941,
+    "professionName": "Engineering",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2944": {
+    "expansionName": "Herbalism",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 182,
+    "parentProfessionName": "Herbalism",
+    "profession": 4,
+    "professionID": 2944,
+    "professionName": "Herbalism",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2945": {
+    "expansionName": "Leatherworking",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 165,
+    "parentProfessionName": "Leatherworking",
+    "profession": 2,
+    "professionID": 2945,
+    "professionName": "Leatherworking",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2946": {
+    "expansionName": "Mining",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 186,
+    "parentProfessionName": "Mining",
+    "profession": 6,
+    "professionID": 2946,
+    "professionName": "Mining",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2947": {
+    "expansionName": "Skinning",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 393,
+    "parentProfessionName": "Skinning",
+    "profession": 11,
+    "professionID": 2947,
+    "professionName": "Skinning",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "2948": {
+    "expansionName": "Tailoring",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "parentProfessionID": 197,
+    "parentProfessionName": "Tailoring",
+    "profession": 7,
+    "professionID": 2948,
+    "professionName": "Tailoring",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "333": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "profession": 9,
+    "professionID": 333,
+    "professionName": "Enchanting",
     "skillLevel": 0,
     "skillModifier": 0,
     "sourceCounter": 0
@@ -970,17 +1378,17 @@
   "early": {
    "addonLoaded": {
     "completed": 0,
-    "t": 217517.067
+    "t": 218831.599
    },
    "enteringWorld": {
     "completed": 0,
     "isLogin": true,
     "isReload": false,
-    "t": 217555.086
+    "t": 218835.325
    },
    "firstQuestLogUpdate": {
     "completed": 0,
-    "t": 217559.038
+    "t": 218837.33
    }
   },
   "logEntries": 0
@@ -1011,7 +1419,7 @@
   },
   "method": "C_XMLUtil.GetTemplateInfo"
  },
- "time": 1792234733,
+ "time": 1792235974,
  "values": {
   "UnitHealth": {
    "arithmetic": false,

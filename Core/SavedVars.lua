@@ -19,8 +19,8 @@ SavedVars.defaults = {
 	posLog = {},
 }
 
--- `guide` (the selected guide id) is set by the guide registry; progress is kept per guide id. `professions`, the
--- character's profession plan (PLAN §3.8), stays unset until chosen: unset means the guide's default.
+-- `guide` (the selected guide id) is set by the guide registry; progress is kept per guide id. The profession plan is
+-- detected, not stored (PLAN §3.8); only the professions a character declined will be kept here.
 SavedVars.charDefaults = {
 	progress = {},
 	automation = {},
@@ -29,7 +29,7 @@ SavedVars.charDefaults = {
 -- migrations[n] upgrades a table from version n - 1 to n.
 SavedVars.migrations = {}
 SavedVars.charMigrations = {
-	-- 2: the per-character profession plan replaces the all-or-nothing hideProfessions flag.
+	-- 2: the detected profession plan (with per-profession decline) replaces the all-or-nothing hideProfessions flag.
 	[2] = function(db)
 		db.hideProfessions = nil
 	end,

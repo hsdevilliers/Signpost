@@ -37,11 +37,11 @@ Acceptance
   both addons loaded (Camelot TOC chosen; the data pack's plain TOC loaded too), the only recorded error was the deliberate
   one, every probe section ran; results in `docs/FOREVER-API-NOTES.md` (raw: `docs/probes/1.60.1.70450.json`); `Maps.lua`
   (57 maps) committed to the private pack.
-- [ ] Dev loop proven: edit a string in `Core/Slash.lua`, user types `/reload`, `tools/read_savedvars.py` shows the new value
-  within seconds; a deliberately thrown error appears in `SignpostDB.errors`. — The error half is done (`/signpost debug
-  throw` arrived in `SignpostDB.errors` with its stack). For the edit half `PING_TEXT` is now "pong 2: edited after the first
-  beta run": in game `/reload` (or a fresh login), `/signpost ping`, `/reload`, then `read_savedvars.py ping`. (A value set by
-  newly loaded code reaches the file at the *next* reload, so the check needs ping + reload after the code is loaded.)
+- [x] Dev loop proven: edit a string in `Core/Slash.lua`, user types `/reload`, `tools/read_savedvars.py` shows the new value
+  within seconds; a deliberately thrown error appears in `SignpostDB.errors`. — 2026-10-17: `/signpost debug throw` arrived in
+  `SignpostDB.errors` with its stack; after changing `PING_TEXT`, a login + `/signpost ping` + `/reload` brought back "pong 2:
+  edited after the first beta run". (A value set by newly loaded code reaches the file at the *next* reload.) The same session
+  migrated the character DB to version 2 in the live client.
 
 ## Phase 1 — Wowhead export (1–30 first)
 
@@ -60,9 +60,10 @@ Acceptance
 
 Tasks
 - [ ] Move PLAN §5 to `docs/GUIDE-FORMAT.md`; `Core/Player.lua`, `Engine/Directives.lua`, `Engine/Registry.lua` (guides,
-  chapters, `#include`, best-match selection), `Engine/Professions.lua` (profession registry, the character's profession plan
-  defaulting to `#professions`, parse-time `.prof` gating, `.hub`/`@level`/`@zone` anchors and track merging with stable step ids,
-  the adopt-learned-profession offer — PLAN §3.8), `Engine/Parser.lua` with line-numbered errors; `tools/guide_lint.py`
+  chapters, `#include`, best-match selection), `Engine/Professions.lua` (profession registry, profession plan detection —
+  learned professions + `#professions` suggestions for free slots − declined ones — parse-time `.prof` gating,
+  `.hub`/`@level`/`@zone` anchors and track merging with stable step ids — PLAN §3.8), `Engine/Parser.lua` with line-numbered
+  errors; `tools/guide_lint.py`
   (incl. track anchors).
 - [ ] `Classes/HUNTER.lua` with `trainerSpells`, `classQuests`, `.tame`/`.ammo` directives, the `.train class` expansion and the
   "class quest available here" soft check. No other file references a class/race/faction (CI: `tools/check_repo.py`).
@@ -120,7 +121,7 @@ Acceptance
 Tasks
 - [ ] Barrens → Thousand Needles chapters; `#dungeon` chapters auto-inserted at level with pre-quests placed earlier.
 - [ ] Profession modules and tracks for the Troll Hunter's default plan (Skinning, Leatherworking, First Aid, Cooking, Fishing) to
-  skill 150, chapters marked with `.hub`; profession plan picker in the Settings tab; Hunter Class tab.
+  skill 150, chapters marked with `.hub`; the detected plan and declined professions in the Settings tab; Hunter Class tab.
 - [ ] §3.8 profession seam test (the guide with a stub Herbalism + Alchemy plan), then delete the stubs.
 - [ ] Zone/dungeon chapters from Razor Hill onward moved to `Guides/Chapters/` and `#include`d.
 - [ ] §3.5 seam acceptance test (stub Orc Warrior guide + empty `Classes/WARRIOR.lua`), then delete the stub.
@@ -169,6 +170,8 @@ Acceptance
   professions (PLAN §3.8, CLAUDE.md). Done now: PLAN/CLAUDE.md, `Professions/` and `Guides/Professions/` scaffolding, the CI seam
   check covers profession names, the probe enumerates professions from the client without naming any, and the old
   `hideProfessions` flag is migrated away (character DB version 2). The engine side is Phase 2 work.
+- 2026-10-17, user decision: the profession plan is **detected from the professions a character has learned** (no picker); the guide's
+  `#professions` only suggests professions for free slots, and skipping a learn step declines a profession (PLAN §3.8).
 - Pulled forward from Phase 2: a minimal `Core/Player.lua` (class/race/faction/level only). The probe needs the player's
   identity and Player.lua is the only file allowed to read it.
 - Libraries are vendored in `Libs/` (versions in `Libs/README.md`) instead of `.pkgmeta` externals: the play machine installs
