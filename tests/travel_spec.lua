@@ -779,6 +779,21 @@ describe(".home", function()
 		assert.is_false(home.isSatisfied({}, ctx, {}))
 	end)
 
+	it("starts afresh from a state saved before the computer restarted (GetTime counts from its start)", function()
+		local ns, mock, ctx = load()
+		hearthstone()
+		local home = directive(ns, "home")
+		ctx.bind = "Razor Hill"
+		G.GetSubZoneText = function()
+			return "Razor Hill"
+		end
+		ctx:MoveTo(1411, 51, 41)
+		local saved = { since = ctx.t + 100000 }
+		assert.is_false(home.isSatisfied({}, ctx, saved))
+		mock.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", HEARTH_SPELL)
+		assert.is_true(home.isSatisfied({}, ctx, saved))
+	end)
+
 	it("recognizes the hearthstone by its spell's name when the item gives no spell ID", function()
 		local ns = load()
 		G.C_Item = {

@@ -318,6 +318,30 @@ step
 		assert.are.equal(1, #ns.Progress:Sticky())
 	end)
 
+	it("keeps counting a .craft step's casts after a reload (its state comes back from SavedVariables)", function()
+		local FORGE = "#chapter 1-6 Forge\nstep\n  .craft 2018,3\nstep\n  .note Done.\n"
+		local content = {
+			chapters = { forge = FORGE },
+			guide = { id = "test-forge", name = "Forge", levels = { 1, 10 }, text = "#include forge\n" },
+		}
+		local ns, world, mock = start(nil, content)
+		assert.are.equal("forge:1", current(ns))
+		event(world, mock, "UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", 2018)
+		event(world, mock, "UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-2", 2018)
+		event(world, mock, "UNIT_SPELLCAST_SUCCEEDED", "target", "Cast-3", 2018) -- not the player's
+		assert.are.equal("forge:1", current(ns))
+
+		local saved = ns.Util.CopyTable(ns.char)
+		contextMock.uninstall()
+		local reloaded, world2, mock2 = start(function()
+			G.SignpostCharDB = saved
+		end, content)
+		assert.are.equal("forge:1", current(reloaded))
+		assert.are.same({ "Craft Spell #2018 (2/3)" }, reloaded.StepFrame.DescribeLines(reloaded.Progress:Current()))
+		event(world2, mock2, "UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-4", 2018)
+		assert.are.equal("forge:2", current(reloaded))
+	end)
+
 	it("lets what Learn records stand in for the data pack's quest givers", function()
 		local ns, world, mock = start(function()
 			G.UnitGUID = function(unit)

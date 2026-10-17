@@ -665,6 +665,8 @@ local LOG_KINDS = { monster = "kill", item = "item", object = "object" }
 -- items, kill credit, spells, then explore; the quest log need not): a log objective whose text names a pack
 -- objective's NPC, object or item is that one; the others take the first unpaired pack objective of their kind.
 -- Returns { [log index] = pack index }.
+-- VERIFY(beta): C_QuestLog.GetQuestObjectives' text names the creature, item or object as the pack does, and its type
+-- is "monster", "item" or "object" for those objectives.
 local function pairObjectives(objectives, list)
 	local paired, taken, names = {}, {}, {}
 	for j, objective in ipairs(list) do
@@ -1133,7 +1135,14 @@ Directives:Register("craft", {
 		watchCasts(args.spellID, state)
 	end,
 	isSatisfied = function(args, _, state)
-		return type(state) == "table" and (state.count or 0) >= args.count
+		if type(state) ~= "table" then
+			return false
+		end
+		if state.started then
+			-- a state ns.Progress restored from SavedVariables (after a /reload) has no watcher yet: count from here on
+			watchCasts(args.spellID, state)
+		end
+		return (state.count or 0) >= args.count
 	end,
 	describe = function(args, _, state)
 		local done = type(state) == "table" and state.count or 0

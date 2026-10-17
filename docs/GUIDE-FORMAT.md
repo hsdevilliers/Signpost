@@ -82,7 +82,10 @@ step @hub orgrimmar                    -- a track step: exactly one anchor (trac
 
 A list is comma-separated without spaces. An item prefixed `!` is negated. A gate passes when any plain item matches;
 a list of only negated items passes when none of them matches; mixed lists need a plain match and no negated match.
-A gate line anywhere in a step gates the whole step. A step whose directive lines are all gated away is dropped.
+Items compare case-insensitively. A gate line anywhere in a step gates the whole step (several gate lines must all
+pass). A step whose directive lines are all gated away is dropped. A trailing gate (several are allowed) stands at the
+very end of the line or right before `>>`; a gate anywhere else in the arguments is an error. `.hc` takes no list; with
+no profession plan, `.prof` sees an empty plan.
 
 ## Directives
 
@@ -98,31 +101,36 @@ Core directives (`Engine/Directives.lua`):
 | `.goto <map>,<x>,<y>[,<radius>]` | the player is within radius yards (default 10) — only if it is the step's only completable directive; otherwise it just places the pin | yes |
 | `.accept <questID>` | the quest is in the log, or flagged completed | quest giver (data pack) or the step's `.goto` |
 | `.turnin <questID>` | the quest is flagged completed | quest ender |
-| `.complete <questID>[,<objective>]` | that objective (or all) is finished, or the quest is complete or turned in | objective area |
+| `.complete <questID>[,<objective>]` | that objective (its number in the quest log, from 1) or all are finished, or the quest is complete or turned in | objective area |
 | `.optional <questID>` | — (modifier: this quest's directives don't block completion) | |
-| `.reward <questID>,<choice\|itemID>` | — (read by automation) | |
-| `.train <spellID>` / `.train class` | the spell is known; `class` = every spell the class module lists for the current level | trainer |
-| `.trainprof <key>` | the profession is learned, or its maximum skill rose since the step became current | trainer |
+| `.reward <questID>,<choice\|itemID>` | — (read by automation); a value up to 10 is a choice index, a larger one an item ID | |
+| `.train <spellID>` / `.train class` | the spell is known; `class` = every spell the class module lists at or below the player's level | trainer |
+| `.trainprof <key>` | the profession is learned, or its maximum skill rose since the step became current, or there is nothing to train (its top rank, or skill more than 25 below the maximum) | trainer |
 | `.skill <key> <N>` | skill ≥ N | |
 | `.craft <spellID>,<count>` | the player cast that recipe `count` times since the step became current | |
 | `.fish <map>,<x>,<y>` | — (pin for a fishing spot; pair with `.skill`/`.collect`) | yes |
 | `.buy <itemID>,<count>` / `.collect <itemID>,<count>` | at least `count` in bags | vendor / source |
 | `.use <itemID>` | — (quest-item button; pair with `.complete`) | |
 | `.level <N>` | player level ≥ N | |
-| `.todo "<reason>"` | never (the step shows the reason; the lint counts it) | |
+| `.todo "<reason>"` | never (the step shows the reason; the lint counts it); the quotes are optional (the lint warns without them) | |
 | `.note <text>`, `.text <text>`, `.link <url>` | — (display; `.link` is copyable in the journal) | |
-| `.sticky <directive line>` | the inner directive; it stays active beside later steps until satisfied | per inner |
-| `.hub <name>` | — (marks a visit to a town for profession tracks) | |
+| `.sticky <directive line>` | the inner directive, which must be one that can be satisfied (never a gate, `.sticky`, `.optional`, `.hub`, `.note`, ...); it stays active beside later steps until satisfied once. A step with nothing but sticky directives completes at once | per inner |
+| `.hub <name>` | — (marks a visit to a town for profession tracks; one per step) | |
+
+`.complete` pins: the data pack's objective records are references in the source's own order, not the quest log's;
+each quest log objective is paired with the pack objective whose NPC, object or item its text names, else with the
+next one of its kind (`monster` → kill, `item`, `object`). Kill-credit objectives pin the creatures that give the
+credit, item objectives the creatures and objects the item drops from, explore objectives their area.
 
 Travel directives (`Engine/Travel.lua`):
 
 | Directive | Satisfied when | Pin |
 |---|---|---|
-| `.path <map>,<x>,<y> ; <map>,<x>,<y> ; ...` | the last waypoint is reached (each within 15 yd, in order) | next waypoint (minimap), all (world map, with lines) |
+| `.path <map>,<x>,<y> ; <map>,<x>,<y> ; ...` | the last waypoint is reached (each within 15 yd, in order; reaching a later waypoint counts the earlier ones) | next waypoint (minimap), all (world map, with lines) |
 | `.zone <map>` | the player's map is `<map>` or below it in the map tree | |
 | `.fp <map>,<node name>` | the flight path is known | flight master |
-| `.fly <node name>` | the player was on a taxi and has landed in the node's zone | flight master, then the node |
-| `.boat <map>,<x>,<y> > <map>,<x>,<y>` / `.zeppelin ...` | in the destination's zone, or within 200 yd of the arrival dock, after boarding | departure, then arrival |
+| `.fly <node name>` | the player was on a taxi and has landed at the node (within 200 yd; in its zone when its position is unknown) | flight master, then the node |
+| `.boat <map>,<x>,<y> > <map>,<x>,<y>` / `.zeppelin ...` | in the destination's zone, or within 200 yd of the arrival dock, after boarding (a boarding detected at the departure dock, or the player having been outside the arrival area during the step) | departure, then arrival |
 | `.hs <inn name>` | `GetBindLocation()` is the inn | innkeeper |
 | `.home` | the zone changed to the bind location's after the hearthstone cast | |
 
@@ -139,7 +147,11 @@ replaces that line's description; `.text`/`.note` add lines of their own.
 Every step gets an id that survives gate and profession-plan changes, so saved progress keeps pointing at the right step:
 `<sourceId>:<n>`, where `<sourceId>` is the registered chapter id or the guide id (for steps in the guide's own text),
 or `track:<key>` for track steps, and `<n>` is the 1-based position of the step in that source text **before** gating
-and merging.
+and merging. Every `step` line counts, also one whose step is dropped as broken.
+
+Chapter ids: the first `#chapter` of a source gets the source's id, the k-th `<sourceId>#<k>`; steps before a
+guide's first `#chapter` belong to the implicit chapter (named after the `Register` name, else `#guide`, else the id),
+which counts as the guide source's first chapter.
 
 ## Track merging
 
@@ -152,7 +164,29 @@ step:
 - `@zone <map>` — before the first route step whose first `.goto`/`.path` target is in `<map>` or below it.
 
 Several tracks anchored at the same place keep plan order. A track step without a match is dropped with an error (the
-lint reports it per guide).
+lint reports it per guide). Each anchor is searched from the place of the track's previous step on: `@hub` from that
+step's route step (the same visit or a later one), `@level` and `@zone` from its gap. A merged step takes the chapter
+of the place it lands in: inside a chapter, that chapter; between two chapters, never a dungeon chapter when the other
+is not (a dungeon's Skip must not skip profession steps), else the earlier chapter when a step in that gap is `@hub`,
+else the later one.
+
+## Parsing rules
+
+What `Engine/Parser.lua` and `tools/guide_lint.py` both do where the tables above leave it open:
+
+- `#chapter` and `#include` end the step being read (a directive line after them and before the next `step` is "outside
+  a step"); `#skipquest` and the metadata headers do not. A repeated guide header is an error; the first valid one
+  counts. Header lists (`#professions`, `#class`, `#race`) are trimmed, so a space after a comma is fine.
+- Including the same chapter twice is an error; the second `#include` is skipped (its step ids would collide).
+- A step with nothing besides gates, `.optional` and `.hub` is an error ("step has no directives") and is dropped. A step
+  whose lines are all gated away is dropped silently. A step with only `.sticky` lines is kept.
+- A malformed gate on its own line drops the whole step for every player (so it is never shown to the wrong class); a
+  malformed trailing gate drops only its line. `>>` is not allowed on gate lines, `.optional` or `.hub`, and an empty
+  `>>` text is an error.
+- Text after a route step's `step` (an anchor, say) is an error and the step is kept; a track step without exactly one
+  valid anchor is dropped.
+- Directive names match exactly as written: `.Accept` is unknown. `.skill <key> <N>` takes a space, not a comma.
+- `#skipquest` is accepted in guides and chapters only (not in profession tracks).
 
 ## Errors
 

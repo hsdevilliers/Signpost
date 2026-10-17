@@ -592,7 +592,9 @@ local function readTaxiMap()
 	local count = Util.Call(NumTaxiNodes)
 	for slot = 1, type(count) == "number" and count or 0 do
 		local kind = Util.Call(TaxiNodeGetType, slot)
-		add(Util.Call(TaxiNodeName, slot), kind == "CURRENT" or kind == "REACHABLE", kind == "CURRENT", "slot", slot)
+		-- DISTANT: known, but not reachable from this flight master (Engine/Context.lua reads it the same way)
+		local known = kind == "CURRENT" or kind == "REACHABLE" or kind == "DISTANT"
+		add(Util.Call(TaxiNodeName, slot), known, kind == "CURRENT", "slot", slot)
 	end
 	local mapID = Util.Call(C_Map and C_Map.GetBestMapForUnit, "player")
 	local list = mapID and Util.Call(C_TaxiMap and C_TaxiMap.GetAllTaxiNodes, mapID)
@@ -784,7 +786,20 @@ end
 
 -- State machines ------------------------------------------------------------------------------------------------------
 
+-- GetTime() counts from the computer's start, and ns.Progress saves directive states: a time saved before a restart
+-- lies in the future, and would keep the comparisons below from ever passing.
+local function fresh(state, context)
+	local t = now(context)
+	if state.since ~= nil and state.since > t then
+		state.since = nil
+	end
+	if state.dockAt ~= nil and state.dockAt > t then
+		state.dockAt = nil
+	end
+end
+
 local function begin(state, context)
+	fresh(state, context)
 	if state.since == nil then
 		state.since = now(context)
 		state.phase = state.phase or "waiting"
@@ -924,6 +939,7 @@ end
 
 -- .home: a hearthstone cast since the step's state began (or just before), then the bind location or a teleport.
 local function homeUpdate(context, state)
+	fresh(state, context)
 	if state.since == nil then
 		state.since = now(context)
 	end
