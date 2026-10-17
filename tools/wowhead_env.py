@@ -2,10 +2,11 @@
 
     python tools/wowhead_env.py [--cache DIR] [--force]
 
-Run this on your own machine (Claude Code does not access Wowhead). It fetches about ten sample pages — one request
+Run this on your own machine (Claude Code does not access Wowhead). It fetches about twenty sample pages — one request
 every 2 seconds, cached under ../Signpost_Data/cache/wowhead — and prints, for each, only what the parsers need to
-know: HTTP status, which page markers exist, listview templates and field names, mapper and infobox shape, dataEnv
-candidates. No page text is printed, so the report can be pasted to Claude Code to adapt the parsers.
+know: HTTP status, which page markers exist, listview templates, field names and value shapes, how many NPC rows match
+the travel/trainer patterns, mapper and infobox shape, dataEnv candidates. No page text is printed, so the report can be
+pasted to Claude Code to adapt the parsers.
 """
 
 from __future__ import annotations
@@ -22,8 +23,11 @@ from signpost_tools import devconfig, wowhead  # noqa: E402
 
 DEFAULT_CACHE = devconfig.REPO_ROOT.parent / "Signpost_Data" / "cache" / "wowhead"
 
-# Classic-era pages that should exist in any Forever database: Durotar, its first quest and quest giver, a copper
-# vein, Light Shot, the zone list, and the Hunter class-quest category.
+# (label, path[, flavor]). Classic-era pages that should exist in any Forever database: Durotar, its first quest and
+# quest giver, a copper vein, Light Shot, the zone list, and the Hunter class-quest category. Then one page per
+# exporter stage: a primary and a secondary profession (skill page and recipe list), the Hunter class page and ability
+# list, two zone pages with flight masters, innkeepers and zeppelin masters (travel), and how a missing quest looks
+# here and in the Classic database (the class stage's `new` flag).
 SAMPLES = [
     ("landing", ""),
     ("zones", "zones"),
@@ -36,6 +40,17 @@ SAMPLES = [
     ("object 1731", "object=1731"),
     ("item 2516", "item=2516"),
     ("item 2516 xml", "item=2516&xml"),
+    ("skill Leatherworking", "skill=165"),
+    ("recipes Leatherworking", "spells=11.165"),
+    ("skill First Aid", "skill=129"),
+    ("recipes First Aid", "spells=9.129"),
+    ("class Hunter", "class=3"),
+    ("hunter abilities", "spells=7.3"),
+    ("zone Orgrimmar", "zone=1637"),
+    ("zone The Barrens", "zone=17"),
+    ("missing quest", "quest=999999"),
+    ("classic quest 4641", "quest=4641", wowhead.CLASSIC_FLAVOR),
+    ("classic missing quest", "quest=999999", wowhead.CLASSIC_FLAVOR),
 ]
 
 
@@ -47,9 +62,9 @@ def main() -> None:
 
     client = wowhead.Wowhead(options.cache, force=options.force)
     report = {"user_agent": wowhead.USER_AGENT, "base": client.url(""), "pages": {}}
-    for label, path in SAMPLES:
+    for label, path, *flavor in SAMPLES:
         try:
-            page = client.get(path)
+            page = client.get(path, *flavor)
         except wowhead.WowheadError as error:
             report["pages"][label] = {"error": str(error)}
             continue
