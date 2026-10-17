@@ -1,0 +1,18 @@
+# Wowhead-derived data never enters this public repo (CLAUDE.md); tools/check_repo.py fails CI if it appears.
+tools/cache/
+*.generated.lua
+Signpost_Data/
+
+# Dev machine state
+tools/dev.local.json
+tools/bin/
+incoming/
+.venv/
+__pycache__/
+*.pyc
+.luacheckcache
+.claude/settings.local.json
+
+# Build output
+dist/
+.release/

@@ -1,0 +1,144 @@
+# Signpost — progress
+
+Mirrors `docs/PLAN.md` §8 (phases) and §9 (beta burn-down). Tick a box only with evidence: the commit that did it, or for
+anything observed in the client, output read back with `tools/read_savedvars.py`. A phase starts only when every
+acceptance box of the previous phase is ticked.
+
+## Phase 0 — Skeleton + beta probes (beta closes Oct 21)
+
+Tasks
+- [ ] Bootstrap per §8a: `git init` both repos, `.gitignore`s, `.claude/settings.json` (additional directory
+  `../Signpost_Data`), `gh repo create` for both remotes.
+- [ ] Public repo scaffold per CLAUDE.md layout; both TOCs; `.luacheckrc`; `.editorconfig`; `stylua.toml`; `.pkgmeta` with the
+  libs; `LICENSE` (MIT); `.gitignore`; `.github/workflows/ci.yml` (luacheck, busted, guide lint, release zip).
+- [ ] Private sibling repo `Signpost_Data`: `Signpost_Data.toc` (`## Interface: 16001`, defines global `Signpost_Data`), empty
+  table files matching `Data/Schema.lua`, `cache/` directory, README with the export commands.
+- [ ] `Core/Init.lua`, `SavedVars.lua`, `Slash.lua` with `/signpost`, `/signpost debug`.
+- [ ] `Core/Probe.lua`: `/signpost probe` prints and stores (into `SignpostDB.probe`) the results of the open probes.
+- [ ] `/signpost dumpmaps` → `SignpostDB.mapDump`; `/signpost export` → copyable EditBox with JSON of learned data;
+  `/signpost debug on|off` event log to SavedVariables.
+- [ ] Dev environment (§8b): `tools/dev.local.json` (gitignored) + `tools/dev_link.ps1`/`.sh`; `tools/read_savedvars.py
+  [--watch] [--from <dir>]`; `Core/Errors.lua` storing the last 50 Lua errors in SavedVariables.
+- [ ] `tools/import_savedvars.py` (parse WoW SavedVariables Lua → JSON, `--merge-learned` into the data pack).
+
+Acceptance
+- [ ] Addon loads on the beta with no "out of date" flag and no Lua errors; `/signpost probe` output read by
+  `tools/read_savedvars.py` and pasted into API notes; `Maps.lua` generated from a real dump.
+- [ ] Dev loop proven: edit a string in `Core/Slash.lua`, user types `/reload`, `tools/read_savedvars.py` shows the new value
+  within seconds; a deliberately thrown error appears in `SignpostDB.errors`.
+
+## Phase 1 — Wowhead export (1–30 first)
+
+Tasks
+- [ ] `tools/wowhead_env.py` discovers base path + `dataEnv`; documented in API notes.
+- [ ] `wowhead_zones.py`, `wowhead_quests.py` (Horde + neutral quests, zones ≤ 32), `wowhead_entities.py`,
+  `wowhead_professions.py` (all five), `wowhead_class.py --class HUNTER` (spells, trainers, all hunter class quest chains with
+  `newInForever` flags), `wowhead_travel.py`.
+- [ ] Data pack generated into `../Signpost_Data/`; `tools/report_gaps.py` output committed to the private repo as `data-gaps.md`.
+
+Acceptance
+- [ ] Every Durotar/Barrens quest a Troll Hunter can take is in the pack's `Quests.lua` with start/end entity and ≥1 coordinate
+  (or listed in gaps). Lua files load under `luac -p` and in-game; the main addon also loads cleanly with the pack disabled.
+
+## Phase 2 — DSL, parser, engine
+
+Tasks
+- [ ] Move PLAN §5 to `docs/GUIDE-FORMAT.md`; `Core/Player.lua`, `Engine/Directives.lua`, `Engine/Registry.lua` (guides,
+  chapters, `#include`, best-match selection, `#professions` with parse-time `.prof` gating and the runtime profession-mismatch
+  notice), `Engine/Parser.lua` with line-numbered errors; `tools/guide_lint.py`.
+- [ ] `Classes/HUNTER.lua` with `trainerSpells`, `classQuests`, `.tame`/`.ammo` directives, the `.train class` expansion and the
+  "class quest available here" soft check. No other file references a class/race/faction (CI: `tools/check_repo.py`).
+- [ ] `Engine/Context.lua` (quest log by questID, completed set, spells, skills, taxi, bags).
+- [ ] `Engine/Conditions.lua` for every directive; `Engine/Progress.lua` with auto-advance, auto-skip, sticky, manual override,
+  persistence.
+- [ ] `Engine/Travel.lua`: `.path` waypoint progression, `.zone` subtree check, transport state machine for
+  `.boat`/`.zeppelin`/`.fly`, in-transit detection per API-notes probe. `Guides/Travel/Borders.lua` seeded (coords `.todo`).
+- [ ] `tools/guide_travel.py` and the lint rule for uncovered transitions.
+- [ ] `tests/`: busted specs for parser (every directive, error cases) and progress (auto-skip, sticky) with `tests/wow_mock.lua`.
+- [ ] `Guides/HordeTrollHunter.lua` chapters 1–12 (Durotar), incl. hunter pet chain and first profession trainers.
+
+Acceptance
+- [ ] Walking a fresh beta troll hunter through Durotar with only chat output (`/signpost debug`) advances steps correctly without
+  manual input, except at `.todo` steps.
+- [ ] The Durotar → Barrens exit is written as `.path` + `.zone` steps and advances waypoint by waypoint;
+  `guide_lint.py --strict` reports 0 uncovered transitions for chapters 1–12.
+
+## Phase 3 — Step frame + pins
+
+Tasks
+- [ ] `UI/StepFrame.lua` per §3.1; `UI/Pins.lua` with HBD; icon/atlas table verified via probe.
+- [ ] Waypoint paths on minimap and world map; transport steps swap departure/arrival pins; "in transit" text.
+- [ ] Options: lock, scale, alpha, hide-in-combat, show-next-steps, waypoint radius; stored in `SignpostDB.settings`.
+
+Acceptance
+- [ ] Default screen shows exactly the step frame, minimap pin(s), world map pin(s). Pins update within 1 s of a step change. No
+  errors when `C_Map.GetPlayerMapPosition` returns nil (instances, transports).
+- [ ] Razor Hill → Barrens → Ratchet → boat → Booty Bay is pinned turn by turn with no step that lacks a target.
+
+## Phase 4 — Journal window
+
+Tasks
+- [ ] `UI/Journal.lua` per §3.2 with Route, Class (from the active class module; hidden if none) and Settings tabs; guide dropdown;
+  inline dungeon chapters with Skip; profession-step hover details; `UIPanelWindows`; LibDBIcon + compartment entry.
+- [ ] Search; jump-to-step; 5 s highlight; guide dropdown.
+
+Acceptance
+- [ ] Indistinguishable in style from Blizzard's Spellbook/Quest map; Esc closes it; no taint warnings when opened in combat.
+
+## Phase 5 — Automation
+
+Tasks
+- [ ] Quest accept/turn-in/gossip per §3.4; reward selection (guide `.reward` → highest vendor-sell value → stop if unknown);
+  Shift bypass; "guide quests only" mode.
+- [ ] Taxi (both API shapes), trainer (spell-ID matched, gold reserve), vendor (`.buy`), hearth set/use (secure button).
+- [ ] Settings tab + Options panel entries; every automation defaults off.
+
+Acceptance
+- [ ] A Durotar run with all toggles on needs one NPC click per interaction and nothing else; multi-reward quests pick the highest
+  vendor value (stopping only when item data isn't loaded); holding Shift disables everything.
+
+## Phase 6 — Content 12–30 + professions + dungeons
+
+Tasks
+- [ ] Barrens → Thousand Needles chapters; `#dungeon` chapters auto-inserted at level with pre-quests placed earlier.
+- [ ] Profession interleave for skill 1–150 across the five professions, gated with `.prof`; Hunter Class tab.
+- [ ] Zone/dungeon chapters from Razor Hill onward moved to `Guides/Chapters/` and `#include`d.
+- [ ] §3.5 seam acceptance test (stub Orc Warrior guide + empty `Classes/WARRIOR.lua`), then delete the stub.
+- [ ] Travel steps for every zone change ≤ 30 generated with `guide_travel.py`, reviewed, pasted into the chapters.
+- [ ] `Core/Learn.lua` self-healing positions incl. zone crossings and docks; `--merge-learned` import; gap report shrinking.
+
+Acceptance
+- [ ] `guide_lint.py --strict`: 0 unknown IDs, 0 uncovered transitions, 0 unrouted class quests for chapters ≤ 30; `.todo`s listed
+  with reasons; 1–30 played with < 5 manual corrections per 10 levels and never without a pin when changing zones.
+- [ ] The seam test passes with zero edits outside `Classes/` and `Guides/`.
+
+## Phase 7 — Content 31–60 (drafted now, verified from Nov 4)
+
+- [ ] Chapters per §7, each step `VERIFY(launch)` until confirmed; travel steps for every transition.
+- [ ] Every hunter class chain 31–60 routed; coverage lint passes for the full guide at launch.
+- [ ] "Report this step" button → `SignpostDB.reports`; `/signpost export` includes it.
+- [ ] Weekly Wowhead re-export during the launch month and `tools/diff_data.py`.
+
+## Phase 8 — Polish / packaging
+
+- [ ] Performance pass (`/signpost perf`); memory < 10 MB with all data loaded (else split and load lazily).
+- [ ] Optional "Back to route" nudge (§3.6).
+- [ ] Optional `tools/package_lite.py --guide <id>` (only if asked).
+- [ ] Localization table complete; README with screenshots and install steps; tagged GitHub releases built by CI.
+
+## Beta burn-down (PLAN §9; before Oct 21, 2026)
+
+- [ ] Phase 0 entirely.
+- [ ] `/signpost dumpmaps` (one dump covers the whole client map tree); `C_TaxiMap` dumps at each flight master visited
+  (`/signpost debug on` records `TAXIMAP_OPENED`).
+- [ ] One of each UI event payload (`QUEST_DETAIL`, `GOSSIP_SHOW`, `TRAINER_SHOW`, `MERCHANT_SHOW`, `TAXIMAP_OPENED`) via
+  `/signpost debug on`.
+- [ ] One boat or zeppelin ride (Orgrimmar → Undercity) and one flight with `/signpost debug on` + `/signpost debug pos`.
+- [ ] Confirm ammo/quivers, First Aid in `GetProfessions()`, atlases/templates, `UIDropDownMenuTemplate`, `UnitXP` secrecy (all in
+  `/signpost probe`).
+- [ ] Walk 1–12 on a troll hunter with `/signpost debug on` (NPC positions at quest/gossip events, the Durotar → Barrens crossing).
+
+## Notes
+
+- 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,
+  WoWInterface search "no matches".
