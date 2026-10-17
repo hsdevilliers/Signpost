@@ -50,19 +50,25 @@ local L = ns.L
 --                                                                    -- keeps: drops/objDrops then hold only those on
 --                                                                    -- the maps of the quests that need it, if any
 -- maps[uiMapID]     = { n = name, t = mapType, parent = uiMapID, wowhead = zoneID, flags = n, group = mapGroupID,
+--                       lmin = level, lmax = level,             -- the zone's level range (Wowhead), when it has one
 --                       world = { instance, x0, y0, x1, y1 },   -- world yards of the map's top-left and bottom-right
 --                       rect = { minX, maxX, minY, maxY },      -- the map's rectangle on its parent map (0-1)
 --                       taxi = { { id = nodeID, n = name, x = pct, y = pct, faction = 0 | 1 | 2 }, ... },  -- continent
 --                       dungeons = { { id = journalInstanceID, n = name, x = pct, y = pct }, ... } }
 -- professions[skillLineID] = { n = name, trainers = { npcIDs },
 --                       recipes = { [spellID] = { item = itemID, skill = { orange, yellow, green, grey },
---                                   reagents = { [itemID] = count }, src = "trainer" | "vendor" | "drop" } } }
--- classes[classFile] = { spells = { [level] = { spellIDs } }, trainers = { npcIDs },
+--                                   reagents = { [itemID] = count }, src = "trainer" | "vendor" | "drop" | "quest" } },
+--                       quests = { questIDs } or { { id, n, l, quests = { questIDs } }, ... } }
+--                                                                    -- profession unlock quests: read by the guide
+--                                                                    -- lint, not exported yet
+-- classes[classFile] = { spells = { [level] = { spellIDs } }, trainers = { npcIDs },  -- classes/<CLASS>.lua
 --                       quests = { { id = chainID, n = name, l = level, quests = { questIDs }, new = bool }, ... } }
--- travel            = { flightMasters = { [npcID] = { node = name, p = coordinate, side = side } },
+--                                                                    -- l absent when unknown, new when not checked
+-- travel            = { flightMasters = { [npcID] = { node = name, p = coordinate, side = side } },  -- node absent
+--                                                                    -- when no client flight node is within 100 yd
 --                       transports = { { kind = "boat" | "zeppelin", from = coordinate, to = coordinate,
---                                        side = side } },
---                       inns = { [npcID] = { p = coordinate, side = side } },
+--                                        side = side, npcs = { npcID, npcID } } },   -- npcs: the two masters
+--                       inns = { [npcID] = { p = coordinate, side = side, n = bindLocationName } },
 --                       crossings = { { from = coordinate, to = coordinate, name = text, src = ... } } }
 -- _meta             = { schema = DATA_SCHEMA, source = "stub" | "generated", generated = "YYYY-MM-DD",
 --                       tables = { [name] = { count = n } },

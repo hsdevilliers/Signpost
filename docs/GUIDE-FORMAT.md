@@ -129,7 +129,7 @@ Travel directives (`Engine/Travel.lua`):
 | `.path <map>,<x>,<y> ; <map>,<x>,<y> ; ...` | the last waypoint is reached (each within 15 yd, in order; reaching a later waypoint counts the earlier ones) | next waypoint (minimap), all (world map, with lines) |
 | `.zone <map>` | the player's map is `<map>` or below it in the map tree | |
 | `.fp <map>,<node name>` | the flight path is known | flight master |
-| `.fly <node name>` | the player was on a taxi and has landed at the node (within 200 yd; in its zone when its position is unknown) | flight master, then the node |
+| `.fly <node name>` | the player was on a taxi and has landed at the node (within 200 yd; when the node's position is unknown, any landing counts) | flight master, then the node |
 | `.boat <map>,<x>,<y> > <map>,<x>,<y>` / `.zeppelin ...` | in the destination's zone, or within 200 yd of the arrival dock, after boarding (a boarding detected at the departure dock, or the player having been outside the arrival area during the step) | departure, then arrival |
 | `.hs <inn name>` | `GetBindLocation()` is the inn | innkeeper |
 | `.home` | the zone changed to the bind location's after the hearthstone cast | |

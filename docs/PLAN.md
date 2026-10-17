@@ -580,9 +580,10 @@ on `QUEST_ACCEPTED`, `QUEST_TURNED_IN`, `GOSSIP_SHOW`, `TRAINER_SHOW`, `MERCHANT
 player's position); flight-master and dock positions on `TAXIMAP_OPENED` and on boarding; **zone crossings** on `ZONE_CHANGED_NEW_AREA`
 (last position in the old zone + first in the new one). `tools/import_savedvars.py --merge-learned` folds all of it into the data pack with `src="learned"`.
 
-Secondary sources (cross-check only; note licenses): QuestieDB Forever branch (GPL — do not copy tables into this repo; use for
-diffing), wago.tools Forever client tables (authoritative quest/spell/item IDs; no coordinates), Warcraft Wiki Forever quest pages
-(CC BY-SA; good for new-quest discovery), ForeverChanges (change lists).
+Other sources (note licenses): QuestieDB Forever branch — since 2026-10-17 a layer of the private pack (decided above:
+`tools/questie_import.py`, facts only; GPL, so never copied into this public repo), wago.tools Forever client tables
+(authoritative quest/spell/item IDs; no coordinates; cross-check only), Warcraft Wiki Forever quest pages (CC BY-SA; good for
+new-quest discovery), ForeverChanges (change lists).
 
 ## 7. Route outline — Balanced Horde Troll Hunter 1–60 (skeleton; every chapter is `.todo` until Data confirms it)
 
