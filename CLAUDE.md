@@ -57,7 +57,8 @@ Signpost_Data/            PRIVATE repo — never pushed anywhere public
   data-gaps.md
 ```
 The public addon **must run without the data pack** (guides carry their own IDs and coordinates); the pack only adds names,
-positions, entity links (who starts/ends a quest, chains, where things are), validation and learned positions. It holds only what the
+positions, entity links (who starts/ends a quest, chains, where things are), quest XP (for route planning), validation and learned
+positions. It holds only what the
 route needs: quest progress and objectives come from the in-game quest log, and items appear only when the route touches them (quest
 starters, objective items with their drop sources, things a step buys or collects, profession materials) — names and sources, never
 stats or prices.
@@ -94,7 +95,8 @@ game.
   transitions before a chapter is considered done; use `tools/guide_travel.py` to generate the steps, never hand-wave "go to X".
 - Decided product behaviors (do not re-litigate): professions appear **only** as interleaved route steps (no Professions tab);
   dungeon chapters are **auto-inserted** at their level with a Skip toggle; multi-reward quests default to **highest vendor-sell value**
-  when the guide has no `.reward`; Leatherworking specialization is a `.todo` step at level 40 (in the Leatherworking track).
+  when the guide has no `.reward`; Leatherworking specialization is a `.todo` step at level 40 (in the Leatherworking track);
+  group (elite) quests are optional and, when skipped, offered again about 5 levels later (PLAN §2, §7 "Quest selection and order").
 - **Out of scope, never add:** talent builds or talent-point reminders, Legacy-system (account-wide perk) picks or reminders, gear/BiS advice.
 - **One addon, many guides, both factions:** new characters (Orc Warlock and Tauren Shaman are planned; Alliance guides later) are added as
   `Guides/<Name>.lua` + `Classes/<CLASS>.lua` in this addon. Never propose a separate addon, a core/guide split, or a cross-addon API for them.
