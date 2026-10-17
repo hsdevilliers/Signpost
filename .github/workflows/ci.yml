@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Repository guards (no Wowhead-derived files, class/race/faction seam, TOCs)
+        run: python tools/check_repo.py
+
+      - name: Python tool tests
+        run: python -m unittest discover -s tools/tests -t tools -v
+
+      - name: Guide lint
+        run: |
+          if [ -f tools/guide_lint.py ]; then
+            python tools/guide_lint.py --strict
+          else
+            echo "tools/guide_lint.py arrives in Phase 2"
+          fi
+
+      - uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.1.5"
+
+      - uses: leafo/gh-actions-luarocks@v6
+
+      - name: Install luacheck and busted
+        run: |
+          luarocks install luacheck
+          luarocks install busted
+
+      - name: luacheck
+        run: luacheck .
+
+      - name: busted
+        run: busted
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: JohnnyMorganz/stylua-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: 2.6.0
+          args: --check .
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [checks, format]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build the addon zip (public addon only; the data pack is never packaged)
+        run: python tools/package.py --version "${GITHUB_REF_NAME}" --out dist
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/*.zip --title "${GITHUB_REF_NAME}" --generate-notes

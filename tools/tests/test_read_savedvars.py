@@ -1,0 +1,31 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+import read_savedvars
+
+
+class ReadSavedVarsTest(unittest.TestCase):
+    def test_json_handles_mixed_lua_keys(self):
+        # e.g. the probe's packed results: { n = 2, [1] = false, [2] = "message" }
+        self.assertEqual(
+            json.loads(read_savedvars.to_json({"n": 2, 1: False, 2: "message"})),
+            {"n": 2, "1": False, "2": "message"},
+        )
+
+    def test_finds_account_and_character_files_in_a_copied_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SavedVariables").mkdir()
+            (root / "SavedVariables" / "Signpost.lua").write_text('SignpostDB = {\n["ping"] = {\n["text"] = "pong",\n},\n}\n')
+            char_dir = root / "Realm" / "Char" / "SavedVariables"
+            char_dir.mkdir(parents=True)
+            (char_dir / "Signpost.lua").write_text("SignpostCharDB = {\n}\n")
+            files = read_savedvars.find_files(root, None)
+            self.assertEqual([(f.variable, f.owner) for f in files], [("SignpostDB", "account"), ("SignpostCharDB", "Char - Realm")])
+            self.assertEqual(read_savedvars.read(files[0]), {"ping": {"text": "pong"}})
+
+
+if __name__ == "__main__":
+    unittest.main()
