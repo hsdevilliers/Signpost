@@ -257,7 +257,11 @@ describe("slash commands", function()
 	it("stores the ping marker", function()
 		local ns = addon.load()
 		SlashCmdList.SIGNPOST("ping")
-		assert.are.same({ text = "pong", time = 1790000000, version = "dev" }, ns.db.ping)
+		-- the text itself changes with every dev-loop check, so only its shape is pinned here
+		assert.are.equal("string", type(ns.db.ping.text))
+		assert.is_true(#ns.db.ping.text > 0)
+		assert.are.equal(1790000000, ns.db.ping.time)
+		assert.are.equal("dev", ns.db.ping.version)
 	end)
 
 	it("answers an unknown command with the command list", function()

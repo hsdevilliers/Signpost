@@ -8,7 +8,7 @@ ns.Slash = Slash
 
 -- Dev-loop marker (PLAN Phase 0 acceptance): change it, /reload, run /signpost ping, /reload again, and
 -- tools/read_savedvars.py ping shows the new text.
-local PING_TEXT = "pong"
+local PING_TEXT = "pong 2: edited after the first beta run"
 
 function Slash:Register(name, fn, help)
 	self.commands[name] = { fn = fn, help = help }
@@ -84,7 +84,7 @@ Slash:Register("export", function()
 end, L["show learned data as JSON to copy"])
 
 SLASH_SIGNPOST1 = "/signpost"
--- VERIFY(beta): nothing else claims /sign (probe: slash.collisions); drop the alias if something does.
+-- No other command claims /sign (probe on beta 1.60.1.70450); /signpost probe keeps checking for collisions.
 SLASH_SIGNPOST2 = "/sign"
 SlashCmdList.SIGNPOST = function(input)
 	Slash:Run(input)

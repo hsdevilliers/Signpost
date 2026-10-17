@@ -37,8 +37,11 @@ def find_files(source: Path | None, config_path: Path | None = None) -> list[SVF
         if path.resolve() == account_file.resolve():
             continue
         parts = path.relative_to(base).parts
-        # <Realm>/<Character>/SavedVariables/Signpost.lua (or <Realm>/<Character>/Signpost.lua in a copied folder)
-        owner = f"{parts[1]} - {parts[0]}" if len(parts) >= 3 else str(path.parent)
+        # Forever: <number>/<Character>-<Realm>/SavedVariables/Signpost.lua; Classic Era: <Realm>/<Character>/...
+        if len(parts) >= 3:
+            owner = parts[1] if "-" in parts[1] else f"{parts[1]} - {parts[0]}"
+        else:
+            owner = str(path.parent)
         files.append(SVFile(path, CHAR_VAR, owner))
     return files
 

@@ -21,8 +21,8 @@ end
 ns.version = version
 ns.isDev = version == "dev"
 
--- Which TOC file the client loaded: each TOC carries its own X-Flavor-TOC value.
--- VERIFY(beta): X- metadata is readable through C_AddOns.GetAddOnMetadata on Forever.
+-- Which TOC file the client loaded: each TOC carries its own X-Flavor-TOC value (Forever prefers _Camelot; verified on
+-- beta 1.60.1.70450).
 ns.tocFlavor = metadata("X-Flavor-TOC")
 
 -- Localization: strings are keyed by their enUS text, and a key without a translation is its own text.

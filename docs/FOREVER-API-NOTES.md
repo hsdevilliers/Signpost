@@ -4,37 +4,123 @@ Rule: three sections. **Verified** = seen in the live client or in a dated commu
 Classic-era APIs; assume true for Mainline, confirm on first use. **Open probes** = must be checked in-game with `/signpost probe` before
 code depends on it; move the result to Verified with the build number.
 
-Build at time of writing (community reports): beta `1.60.1.70338` (Oct 2026). Launch Nov 4, 2026. Beta ends Oct 21, 2026, level cap 30.
-Installed on the dev machine 2026-10-17: **`1.60.1.70450`** (from `World of Warcraft\.build.info`; product `wow_classic_beta`,
-flavor folder `_classic_beta_`, executable `WowB.exe`).
+Builds: community reports mention beta `1.60.1.70338` (Oct 2026). Installed on the dev machine 2026-10-17: **`1.60.1.70450`**
+(`World of Warcraft\.build.info`; product `wow_classic_beta`, flavor folder `_classic_beta_`, executable `WowB.exe`).
+Launch Nov 4, 2026. Beta ends Oct 21, 2026, level cap 30.
 
 **How to answer the open probes:** in game, `/signpost probe` and `/signpost dumpmaps`, then `/reload`; on the dev machine,
-`python tools/read_savedvars.py probe` (or `mapDump`, `errors`). Each probe result section is named in brackets below,
-e.g. [build], [templates]. Event payloads (gossip, quest dialogs, trainer, vendor, taxi, transports) come from
-`/signpost debug on` (+ `/signpost debug pos` for 1 s position samples) and `read_savedvars.py eventLog posLog`.
+`python tools/read_savedvars.py probe` (or `mapDump`, `errors`). Event payloads (gossip, quest dialogs, trainer, vendor, taxi,
+transports) come from `/signpost debug on` (+ `/signpost debug pos` for 1 s position samples) and `read_savedvars.py eventLog posLog`.
+Raw probe output per build is kept in `docs/probes/<build>.json` (no account, realm or character names).
 
-## Verified (from community reports, Sep–Oct 2026 — confirm on first beta login)
-- TOC `## Interface: 16001` is the Forever beta value (Warcraft Wiki TOC table; multiple Forever addons ship it). One early report
-  showed interface 120007 on build 69893; 16001 is what current addons use. → confirm with `/dump select(4, GetBuildInfo())`.
-  More evidence (2026-10-17): HereBeDragons 2.18's TOC lists `11509,16001,20506,50504,120100,120105`, LibDBIcon v12.1.1's lists
-  16001 among others, and the Forever addon "Zeppelin Signs" on CurseForge ships 16001.
-- Flavor-specific TOC suffix is `_Camelot` (Forever's internal codename): `Addon_Camelot.toc`. Keep a plain `Addon.toc` too.
-- Beta addons folder: `World of Warcraft\_classic_beta_\Interface\AddOns\`. The client only picks up new addon folders on start.
-- Forever is in the **Mainline** project family: `WOW_PROJECT_ID == WOW_PROJECT_MAINLINE`; retail unit-frame templates are present.
-  Consequence: Classic Era addons show "out of date" and generally need porting.
-  **Contradicted (2026-10-17):** HereBeDragons 2.18 detects Forever with `WOW_PROJECT_ID == WOW_PROJECT_CAMELOT`, so Forever
-  probably has its own project ID (Mainline API, separate project constant). Never branch on `WOW_PROJECT_MAINLINE`; see open probe.
+## Verified in the client: beta 1.60.1.70450 (2026-10-17, `/signpost probe` — `docs/probes/1.60.1.70450.json`)
+
+Client, TOC, addon loading
+- `GetBuildInfo()` → `"1.60.1", "70450", "Oct 15 2026", 16001` (plus two more returns, `""` and `" "`).
+- `WOW_PROJECT_ID` = **18** = `WOW_PROJECT_CAMELOT`; `WOW_PROJECT_MAINLINE` = 1, `WOW_PROJECT_CLASSIC` = 2. Forever runs the Mainline
+  API but is **its own project**: never branch on `WOW_PROJECT_MAINLINE` (prefer feature detection).
+- `GetExpansionLevel()` = 0; `GetMaxLevelForPlayerExpansion()` = 60; locale `enUS`.
+- With both `Signpost.toc` and `Signpost_Camelot.toc` present the client loads **`_Camelot`**. A plain TOC alone with
+  `## Interface: 16001` loads too, not flagged out of date (Signpost_Data ships only a plain TOC). `C_AddOns.IsAddonVersionCheckEnabled()`
+  is true. `X-` TOC fields are readable with `C_AddOns.GetAddOnMetadata`.
+- `## OptionalDeps: Signpost_Data` loads the pack first: the global `Signpost_Data` exists when Signpost's files run.
+- No load errors from LibStub, CallbackHandler-1.0, HereBeDragons 2.18, LibDataBroker-1.1 or LibDBIcon-1.0.
+- `seterrorhandler` works for addons (an error raised under `xpcall(fn, geterrorhandler(), ...)` arrives with its stack), and `xpcall`
+  passes extra arguments to the function.
+- Junctions created before the client's first start were picked up; new addon folders still need a client restart.
+- Per-character SavedVariables live in `WTF\Account\<account>\<number>\<Character>-<Realm>\SavedVariables\` — an extra numeric folder
+  and a combined `Character-Realm` folder, unlike Classic Era's `<Realm>\<Character>`.
+- Memory after login with probe and map dump held in SavedVariables: Signpost 1.7 MB (incl. libraries), stub data pack 5 KB.
+
+API surface (148 of the 153 names the probe checks are present; full list in the probe file)
+- Missing: `GetAddOnMetadata` (use `C_AddOns.GetAddOnMetadata`), `GetNumSkillLines`/`GetSkillLineInfo` (the Classic skill-line API),
+  `GetMerchantItemInfo` (use `C_MerchantFrame.GetItemInfo`), **`ConfirmBinder`** (setting the hearth needs another route; open probe).
+- Absent, as expected: `GetSpellInfo`, `GetItemInfo`, `GetItemCount`, `CombatLogGetCurrentEventInfo`.
+- Present, among others: **both taxi API shapes** (`C_TaxiMap.GetAllTaxiNodes`/`GetTaxiNodesForMap` and `NumTaxiNodes`/`TaxiNodeName`/
+  `TaxiNodeGetType`/`TaxiNodePosition`/`TakeTaxiNode`), `C_TooltipInfo.GetTrainerService`, `GetTrainerServiceSkillLine`,
+  `C_MerchantFrame.GetItemInfo`, `C_TradeSkillUI.GetProfessionInfoBySkillLineID`, `C_SpellBook.IsSpellKnown`, `C_Map.GetMapWorldSize`/
+  `GetMapRectOnMap`/`GetMapGroupID`, `C_Minimap.GetViewRadius`, `C_EncounterJournal.GetDungeonEntrancesForMap`, `C_XMLUtil.GetTemplateInfo`,
+  `GetFileIDFromPath`, `C_EventUtils.IsEventValid`, `issecretvalue`/`issecrettable`/`canaccesssecrets`/`canaccessvalue`/`scrubsecretvalues`,
+  `Settings.RegisterCanvasLayoutCategory`/`RegisterAddOnCategory`/`OpenToCategory`, `ScrollUtil.InitScrollBoxListWithScrollBar`,
+  `CreateScrollBoxListLinearView`, `CreateDataProvider`, `MenuUtil.CreateContextMenu`, `C_Timer`, `EventRegistry`.
+
+Templates, atlases, files, events, frames
+- Templates (checked with `C_XMLUtil.GetTemplateInfo`, which exists): all 21 present — `ButtonFrameTemplate`, `PortraitFrameTemplate`,
+  `BasicFrameTemplateWithInset`, `InsetFrameTemplate`, `InsetFrameTemplate3`, `PanelTabButtonTemplate`, `SearchBoxTemplate`,
+  `InputBoxTemplate`, `MinimalScrollBar` (EventFrame), `WowScrollBoxList`, `ScrollFrameTemplate`, `UIPanelScrollFrameTemplate`,
+  **`WowStyle1DropdownTemplate` (DropdownButton) and `UIDropDownMenuTemplate`**, `UIPanelButtonTemplate`, `UIPanelCloseButton`,
+  `UICheckButtonTemplate`, `SecureActionButtonTemplate`, `BackdropTemplate`, `TooltipBackdropTemplate`, `GameTooltipTemplate`.
+- Atlases present: `QuestNormal`, `QuestTurnin`, `QuestRepeatableTurnin`, `QuestDaily`, `TaxiNode_Neutral`, `TaxiNode_<faction>`,
+  `FlightMaster`, `Innkeeper`, `Class`, `Profession`, `poi-door`, `poi-workorders`, `Mailbox`, `Repair`, `Food`, and
+  `classicon-<CLASS>` from `GetClassAtlas`. **`Vendor` is missing** — use the file `Interface\GossipFrame\VendorGossipIcon`.
+- Files present (`GetFileIDFromPath`): the `Interface\GossipFrame\*GossipIcon`/`*QuestIcon` textures, `QuestBG`, `UI-QuestTitleHighlight`,
+  `UI-HorizontalBreak`, `UI-DialogBox-Border`, `Interface\Minimap\Tracking\{Class,Profession,FlightMaster,Innkeeper,Repair,Food}`,
+  `Interface\Icons\INV_Misc_Map_01` (our TOC icon).
+- Events: all 48 checked register except `LEARNED_SPELL_IN_TAB` (use `LEARNED_SPELL_IN_SKILL_LINE`).
+  `PLAYER_INTERACTION_MANAGER_FRAME_SHOW/HIDE` register (payloads still open).
+- Frames at login: `TaxiFrame` exists; `FlightMapFrame` does not (`Blizzard_FlightMap` is load-on-demand and loadable);
+  `ClassTrainerFrame` is load-on-demand (`Blizzard_TrainerUI`); `ObjectiveTrackerFrame`, `QuestMapFrame`, `WorldMapFrame`, `GossipFrame`,
+  `QuestFrame`, `MerchantFrame`, `SettingsPanel`, `AddonCompartmentFrame`, `ScriptErrorsFrame` exist; `QuestWatchFrame` and
+  `InterfaceOptionsFrame` do not.
+
+Player, values, items, professions
+- `UnitClass` → `HUNTER` (classID 3), `UnitClassBase` → `HUNTER`, `UnitRace` → `Troll` (raceID 8), `UnitFactionGroup` → `Horde`,
+  `GetClassAtlas("HUNTER")` → `classicon-HUNTER` (exists).
+- Classes: the nine Classic classes only — 1 WARRIOR, 2 PALADIN, 3 HUNTER, 4 ROGUE, 5 PRIEST, 7 SHAMAN, 8 MAGE, 9 WARLOCK, 11 DRUID.
+- Races: `C_CreatureInfo.GetRaceInfo` carries the retail race table (many NPC-only entries); Forever's new race reports the
+  clientFileString **`Skyborne`** (raceIDs 95 "High Order Skyborne", 96 "Windshaper Skyborne").
+- Secret values: **`UnitHealth` and `UnitPower` are secret** (`issecretvalue` → true, arithmetic errors). `UnitHealthMax`, `UnitLevel`,
+  `UnitXP`, `UnitXPMax` are plain numbers.
+- Ammo and quivers exist: `GetInventorySlotInfo("AmmoSlot")` → slot 0 (`INVSLOT_AMMO` = 0); 2516 Light Shot (Projectile/Bullet,
+  `INVTYPE_AMMO`), 2512 Rough Arrow (Projectile/Arrow), 2101 Light Quiver (Quiver, `INVTYPE_BAG`) are in the client's item data.
+- Professions: `C_TradeSkillUI.GetProfessionInfoBySkillLineID` resolves 129 First Aid (secondary), 165 Leatherworking (primary),
+  185 Cooking, 356 Fishing, 393 Skinning — the Classic skill-line IDs are unchanged. A new level-1 character has no
+  `GetProfessions()` slots (shape with professions learned is still open).
+
+Maps and travel
+- The map root is **947 Azeroth** (parentMapID 0); 946 does not exist. `C_Map.GetMapChildrenInfo(947, nil, true)` returns 57 maps:
+  the Classic Era uiMapIDs unchanged (Durotar 1411, Mulgore 1412, The Barrens 1413, Kalimdor 1414, Eastern Kingdoms 1415, …,
+  Orgrimmar 1454, Thunder Bluff 1456, Undercity 1458), battlegrounds 1459–1461, and the new zones **Mount Hyjal 2482** (Kalimdor),
+  **Zephras Isle 2521** (directly under Azeroth), **Darkspear Islands 2524** (orphan map type 6 under Kalimdor), **Riverglades 2548**
+  (Eastern Kingdoms) and **Shen'dralas 2652** (Kalimdor). No dungeon maps appear under the root. The dump lives in the private
+  data pack as `Maps.lua` (world rectangles, rectangles on the parent map, flight nodes).
+- Orgrimmar 1454, Thunder Bluff 1456 and Undercity 1458 are children of their continent, not of Durotar/Mulgore/Tirisfal: a
+  `.zone 1411` (Durotar) check is not satisfied inside Orgrimmar.
+- Position: `C_Map.GetBestMapForUnit` + `GetPlayerMapPosition` give zone percent (Valley of Trials: 43.35, 68.70 in 1411); `UnitPosition`
+  gives world yards with instance 1 (Kalimdor); `GetSubZoneText()` → "Valley of Trials".
+- `C_TaxiMap.GetTaxiNodesForMap(zoneMapID)` returns **every flight node of the zone's continent** (Kalimdor 38, Eastern Kingdoms 36), with
+  positions projected into the requested map, `faction` (0 neutral, 1 Horde, 2 Alliance) and `atlasName` — without visiting a flight
+  master. Stale nodes named `zzOLD…` are included (e.g. 3208 "zzOLDPowderfuse Port, Riverglades"): filter them. New nodes: Summit of
+  Eternity (559) and Tainted Foothills (3242) in Mount Hyjal; Rog'mar (3203, Horde) and Farholde Keep (3276, Alliance) in Riverglades.
+- `C_EncounterJournal.GetDungeonEntrancesForMap` exists but returns nothing for any zone or continent: dungeon entrances must come from
+  Wowhead or Learn.
+- HereBeDragons 2.18 (minor 35, Pins 17) detects Forever and `HBD:GetPlayerZonePosition()` matches `C_Map` (1411, 43.35/68.70);
+  Durotar is 5287.5 × 3525 yd.
+- Minimap: rotation off by default; `C_Minimap.GetViewRadius()` = 233.3 yd at zoom 0; 6 zoom levels.
+- Slash commands: nothing else claims `/sign` or `/signpost`.
+
+## Verified (from community reports, Sep–Oct 2026)
+- TOC `## Interface: 16001` is the Forever beta value. **Confirmed in the client** (above); also listed by HereBeDragons 2.18,
+  LibDBIcon v12.1.1 and the Forever addon "Zeppelin Signs". An early report of 120007 on build 69893 is obsolete.
+- Flavor-specific TOC suffix is `_Camelot` (Forever's internal codename). **Confirmed** (the client prefers it over the plain TOC).
+- Beta addons folder: `World of Warcraft\_classic_beta_\Interface\AddOns\`. **Confirmed.**
+- ~~Forever is in the Mainline project family: `WOW_PROJECT_ID == WOW_PROJECT_MAINLINE`~~ — **wrong**: `WOW_PROJECT_ID` is
+  `WOW_PROJECT_CAMELOT` (18). The API is Mainline-shaped (retail templates and `C_*` namespaces); Classic Era addons need porting.
 - Removed: `GetSpellInfo`, `GetItemInfo` (globals). Use `C_Spell.GetSpellInfo(id)` (returns a table) and `C_Item.GetItemInfo(id)`.
-- `CombatLogGetCurrentEventInfo` unavailable to addons (WeakAuras is absent on Forever for related reasons).
-- "Secret values": `UnitHealth` (and possibly other combat values) return values that error on arithmetic/comparison in addon code.
-- The quest log is the world map (retail-style `QuestMapFrame`); the Blizzard quest tracker exists.
-- AddOn Compartment (`## AddonCompartmentFunc`) exists (Forever addons use it). Options → AddOns panel exists (`Settings` API).
+  **Confirmed** (plus `GetItemCount`).
+- `CombatLogGetCurrentEventInfo` unavailable to addons. **Confirmed** (the function does not exist).
+- "Secret values": `UnitHealth` returns values that error on arithmetic/comparison. **Confirmed**, and `UnitPower` too.
+- The quest log is the world map (retail-style `QuestMapFrame`); the Blizzard quest tracker exists. **Confirmed** (frames exist).
+- AddOn Compartment (`## AddonCompartmentFunc`) exists; Options → AddOns panel exists (`Settings` API). **Confirmed** (frames/API).
 - Classic-style content still present: level cap 60, flight masters/taxi, Classic dungeons (modified) plus new ones
   (Hall of Thanes 13, Ruins of Lordaeron 15, Excavation Site: Wetlands 26, City of Dalaran 28, …).
 - Class content: Forever adds new class-specific quests (announced reward: large weapon upgrades); most class quests are offered by class
-  trainers at level thresholds; the hunter level-10 chain still uses a taming rod on three beasts then unlocks Tame Beast. Dual spec exists (irrelevant to us — talents are out of scope).
-- Travel changes vs Classic: new ship Wetlands ↔ Darkshore with a Hillsbrad stop; Stormwind Harbor open; new zones Riverglades, Shen'dralas, Zephras Isle (Skyborne start), Mount Hyjal (60).
-- Known Forever-specific gotcha from UnitFramesImproved: a `#` comment line **before** `## Interface:` can make the client treat the TOC as unparseable — keep `## Interface:` as the first line.
+  trainers at level thresholds; the hunter level-10 chain still uses a taming rod on three beasts then unlocks Tame Beast. Dual spec exists
+  (irrelevant to us — talents are out of scope).
+- Travel changes vs Classic: new ship Wetlands ↔ Darkshore with a Hillsbrad stop; Stormwind Harbor open; new zones Riverglades,
+  Shen'dralas, Zephras Isle (Skyborne start), Mount Hyjal (60). **Zones confirmed** in the map tree (IDs above).
+- Known Forever-specific gotcha from UnitFramesImproved: a `#` comment line **before** `## Interface:` can make the client treat the TOC as
+  unparseable — keep `## Interface:` as the first line (enforced by `tools/check_repo.py`).
 
 ## Mapping: Classic-era habit → what to write on Forever (Mainline API)
 
@@ -48,79 +134,64 @@ e.g. [build], [templates]. Event payloads (gossip, quest dialogs, trainer, vendo
 | Gossip | `C_GossipInfo.GetOptions()` (`gossipOptionID,name,icon`), `C_GossipInfo.SelectOption(id)`, `C_GossipInfo.GetAvailableQuests()`/`SelectAvailableQuest(questID)`, `GetActiveQuests()`/`SelectActiveQuest(questID)` |
 | Accept/turn-in | `AcceptQuest()`, `CompleteQuest()`, `GetNumQuestChoices()`, `GetQuestItemLink("choice", i)`, `GetQuestItemInfo("choice", i)` → name, texture, quantity, quality, isUsable, `GetQuestReward(i)`, `GetQuestID()`, `IsQuestCompletable()` |
 | Reward vendor value | `select(11, C_Item.GetItemInfo(link))` = sellPrice (per unit) × quantity; uncached items → `C_Item.RequestLoadItemDataByID(id)` then `ITEM_DATA_LOAD_RESULT(itemID, success)`; or `C_Item.IsItemDataCachedByID(id)` first |
-| Player position | `C_Map.GetBestMapForUnit("player")`, `C_Map.GetPlayerMapPosition(uiMapID,"player")` → `:GetXY()` (nil in instances) |
-| Map tree | `C_Map.GetMapInfo(id)`, `C_Map.GetMapChildrenInfo(parentID, mapType, allDescendants)`, `C_Map.GetWorldPosFromMapPos` |
+| Player position | `C_Map.GetBestMapForUnit("player")`, `C_Map.GetPlayerMapPosition(uiMapID,"player")` → `:GetXY()` (nil in instances) — verified in Durotar |
+| Map tree | Root **947**. `C_Map.GetMapInfo(id)`, `C_Map.GetMapChildrenInfo(947, nil, true)`, `C_Map.GetWorldPosFromMapPos`, `C_Map.GetMapRectOnMap` |
 | Distance/pins | HereBeDragons-2.0 (`HBD:GetPlayerZonePosition()`, `HBD:GetZoneDistance`, `HBD:GetWorldCoordinatesFromZone`, `HBD-Pins:AddMinimapIconMap/AddWorldMapIconMap`); map lines via a `Line` texture on `WorldMapFrame:GetCanvas()` positioned with `HBD-Pins`' world-map pin frames as endpoints |
 | Zone changes / transit | Events `ZONE_CHANGED_NEW_AREA`, `ZONE_CHANGED`, `ZONE_CHANGED_INDOORS`, `PLAYER_ENTERING_WORLD(isLogin, isReload)`; `UnitOnTaxi("player")`; `C_Map.GetBestMapForUnit("player")` may be nil or a transport/continent map while on a ship — see probe; `UnitPosition("player")` (world coords; nil in instances); `GetZoneText()`/`GetSubZoneText()` as last resort for dock names |
-| NPC id from unit | `UnitGUID("npc")` → `"Creature-0-…-…-…-<npcID>-…"`; `select(6, strsplit("-", guid))` |
+| NPC id from unit | `UnitGUID("npc")` → `"Creature-0-…-…-…-<npcID>-…"`; field 6 of the `-`-separated GUID (`ns.Util.NpcIDFromGUID`) |
 | Items in bags | `C_Item.GetItemCount(itemID)`, `C_Container.GetContainerNumSlots`, `C_Container.GetContainerItemInfo`; event `BAG_UPDATE_DELAYED` |
-| Spells known | `IsPlayerSpell(spellID)` / `IsSpellKnown(spellID)`; `C_Spell.GetSpellInfo(spellID).name` |
-| Professions | `GetProfessions()` → prof1, prof2, arch, fishing, cooking; `GetProfessionInfo(idx)` → name, icon, skill, maxSkill, …, skillLineID; events `SKILL_LINES_CHANGED`, `TRADE_SKILL_LIST_UPDATE`. **First Aid slot may not exist — see probes.** |
-| Trainer | `TRAINER_SHOW`, `GetNumTrainerServices()`, `GetTrainerServiceInfo(i)` → name, rank, category, `GetTrainerServiceItemLink(i)`, `GetTrainerServiceCost(i)`, `BuyTrainerService(i)`, `SetTrainerServiceTypeFilter("available", true)` |
-| Vendor | `MERCHANT_SHOW`, `GetMerchantNumItems()`, `GetMerchantItemInfo(i)`/`C_MerchantFrame.GetItemInfo(i)`, `GetMerchantItemLink(i)`, `BuyMerchantItem(i, qty)` |
-| Taxi | Retail shape: `TAXIMAP_OPENED`, `C_TaxiMap.GetAllTaxiNodes(uiMapID)` → `{nodeID,name,state,position}`, `TakeTaxiNode(nodeID)`. Classic shape: `NumTaxiNodes()`, `TaxiNodeName(i)`, `TaxiNodeGetType(i)`, `TakeTaxiNode(i)`. Support both until probed. |
-| Hearth | `GetBindLocation()`; innkeeper gossip option (icon `vendor`/binder); `CONFIRM_BINDER` popup → `ConfirmBinder()`; Hearthstone item 6948 via secure button |
-| Level/XP | `UnitLevel("player")`, `UnitXP("player")`, `UnitXPMax("player")` (**check for secret values**), event `PLAYER_LEVEL_UP(level)` |
-| Player identity (ns.Player only) | `UnitClassBase("player")` → classFile (`"HUNTER"`), `UnitClass("player")` → localized, `UnitRace("player")` → localized, raceFile (`"Troll"`), `UnitFactionGroup("player")` → `"Horde"`/`"Alliance"`; portraits via `GetClassAtlas(classFile)`; `C_CreatureInfo.GetClassInfo`/`GetRaceInfo` for tables |
+| Spells known | `IsPlayerSpell(spellID)` / `IsSpellKnown(spellID)` / `C_SpellBook.IsSpellKnown`; `C_Spell.GetSpellInfo(spellID).name` |
+| Professions | `GetProfessions()` → prof1, prof2, arch, fishing, cooking; `GetProfessionInfo(idx)`; `C_TradeSkillUI.GetProfessionInfoBySkillLineID(129/165/185/356/393)` works for all five (incl. First Aid). The Classic `GetSkillLineInfo` API is gone. Events `SKILL_LINES_CHANGED`, `TRADE_SKILL_LIST_UPDATE` |
+| Trainer | `TRAINER_SHOW`, `GetNumTrainerServices()`, `GetTrainerServiceInfo(i)`, `GetTrainerServiceSkillLine(i)`, `GetTrainerServiceItemLink(i)`, `GetTrainerServiceCost(i)`, `BuyTrainerService(i)`, `SetTrainerServiceTypeFilter("available", true)`; spell ID via `C_TooltipInfo.GetTrainerService(i)` (open probe) |
+| Vendor | `MERCHANT_SHOW`, `GetMerchantNumItems()`, **`C_MerchantFrame.GetItemInfo(i)`** (`GetMerchantItemInfo` is gone), `GetMerchantItemID(i)`, `GetMerchantItemLink(i)`, `BuyMerchantItem(i, qty)` |
+| Taxi | Both shapes exist: `C_TaxiMap.GetAllTaxiNodes(uiMapID)` / `GetTaxiNodesForMap(uiMapID)` and `NumTaxiNodes()`/`TaxiNodeName(i)`/`TaxiNodeGetType(i)`/`TakeTaxiNode`. Which UI opens at a flight master and which `TakeTaxiNode` argument works: open probe |
+| Hearth | `GetBindLocation()`; innkeeper gossip option; `CONFIRM_BINDER` popup — **`ConfirmBinder()` does not exist** (open probe); Hearthstone item 6948 via secure button |
+| Level/XP | `UnitLevel("player")`, `UnitXP("player")`, `UnitXPMax("player")` — plain numbers (verified); event `PLAYER_LEVEL_UP(level)` |
+| Player identity (ns.Player only) | `UnitClass("player")` → localized, `"HUNTER"`, classID; `UnitClassBase("player")`; `UnitRace("player")` → localized, `"Troll"`, raceID; `UnitFactionGroup("player")` → `"Horde"`/`"Alliance"`; portraits via `GetClassAtlas(classFile)` (`classicon-<CLASS>`); `C_CreatureInfo.GetClassInfo`/`GetRaceInfo` for tables — verified |
 | Pet | `UnitExists("pet")`, `UnitCreatureFamily("pet")`, `UnitGUID("pet")`; `PET_STABLE_UPDATE`, `UNIT_PET("player")` |
-| Options panel | `Settings.RegisterCanvasLayoutCategory(frame, name)` + `Settings.RegisterAddOnCategory(cat)`; open with `Settings.OpenToCategory(cat:GetID())` |
-| Minimap button | LibDataBroker-1.1 + LibDBIcon-1.0 (works on Mainline; `## AddonCompartmentFunc` for the compartment) |
-| Scroll lists | `CreateScrollBoxListLinearView()`, `view:SetElementInitializer(template, fn)`, `ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, view)`, `CreateDataProvider()`; template `MinimalScrollBar` |
-| Dropdown | `WowStyle1DropdownTemplate` + `dropdown:SetupMenu(function(dd, root) root:CreateButton(text, fn) end)`; fallback `UIDropDownMenuTemplate` (deprecated, may be absent) |
+| Options panel | `Settings.RegisterCanvasLayoutCategory(frame, name)` + `Settings.RegisterAddOnCategory(cat)`; open with `Settings.OpenToCategory(cat:GetID())` — present |
+| Minimap button | LibDataBroker-1.1 + LibDBIcon-1.0 (both load; `## AddonCompartmentFunc` for the compartment) |
+| Scroll lists | `CreateScrollBoxListLinearView()`, `view:SetElementInitializer(template, fn)`, `ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, view)`, `CreateDataProvider()`; template `MinimalScrollBar` — present |
+| Dropdown | `WowStyle1DropdownTemplate` + `dropdown:SetupMenu(function(dd, root) root:CreateButton(text, fn) end)`; `UIDropDownMenuTemplate` also exists |
 | Panel frame | `ButtonFrameTemplate` (portrait, title, inset, close); `ButtonFrameTemplate_HidePortrait`/`_HideButtonBar`; `UIPanelWindows[name] = {area="left", pushable=1, whileDead=1}`; `ShowUIPanel`/`HideUIPanel` |
 | Tabs | `PanelTabButtonTemplate`, `PanelTemplates_SetNumTabs`, `PanelTemplates_SetTab`, `PanelTemplates_TabResize` |
 | Buttons/edit | `UIPanelButtonTemplate`, `UIPanelCloseButton`, `SearchBoxTemplate`, `InputBoxTemplate` |
 | Insets/backdrop | `InsetFrameTemplate3`, `BackdropTemplate` with `BACKDROP_TOOLTIP_16_16_5555` / `BACKDROP_DIALOG_32_32` presets |
 | Parchment/quest art | `Interface\QuestFrame\QuestBG`, `Interface\QuestFrame\UI-QuestTitleHighlight`, `Interface\QuestFrame\UI-HorizontalBreak`; fonts `QuestFont`, `QuestTitleFont`, `GameFontNormal`, `GameFontHighlight`, `GameFontDisable` |
-| Pin icons | Atlases: `QuestNormal`, `QuestTurnin`, `QuestRepeatableTurnin`, `TaxiNode_Neutral`/`_Horde`, `poi-door`, `Innkeeper`, `Vendor`, `Class` trainer icons; fallback textures `Interface\GossipFrame\AvailableQuestIcon`, `ActiveQuestIcon`, `TaxiGossipIcon`, `TrainerGossipIcon`, `VendorGossipIcon`, `BinderGossipIcon` |
-| Secret guard | `if issecretvalue and issecretvalue(v) then … end` (probe existence) |
-| Error isolation | `xpcall(fn, geterrorhandler())` |
+| Pin icons | Atlases `QuestNormal`, `QuestTurnin`, `QuestRepeatableTurnin`, `TaxiNode_Neutral`/`TaxiNode_<faction>`, `FlightMaster`, `poi-door`, `Innkeeper`, `Class`, `Profession`, `Repair`, `Food`; **no `Vendor` atlas** — use `Interface\GossipFrame\VendorGossipIcon`; other fallbacks `Interface\GossipFrame\AvailableQuestIcon`, `ActiveQuestIcon`, `TaxiGossipIcon`, `TrainerGossipIcon`, `BinderGossipIcon` |
+| Secret guard | `issecretvalue(v)` exists; `UnitHealth`/`UnitPower` are secret |
+| Error isolation | `xpcall(fn, geterrorhandler(), ...)` — extra arguments are passed (`ns.SafeCall`) |
 
-## Open probes (run `/signpost probe`, paste output here with build number, then move lines to Verified)
-- [ ] `select(4, GetBuildInfo())` == 16001? `WOW_PROJECT_ID`, `WOW_PROJECT_MAINLINE` values.
-- [ ] Does `Addon_Camelot.toc` load, and does `Addon.toc` with `## Interface: 16001` also load without "out of date"?
+## Open probes (answer in game, record the evidence and build number, then move to Verified)
 - [ ] Launch client folder name (after Nov 4): `_classic_`? `_forever_`? other?
-- [ ] `C_QuestLog.GetAllCompletedQuestIDs()` populated at `PLAYER_ENTERING_WORLD` or only after a `QUEST_LOG_UPDATE`?
-- [ ] `GetProfessions()` return shape on Forever; where does **First Aid** show up (slot? `GetSkillLineInfo`? `C_TradeSkillUI.GetAllProfessionTradeSkillLines()`)?
-- [ ] `C_TradeSkillUI.GetProfessionInfoBySkillLineID` exists? Skill line IDs for Skinning (393), Leatherworking (165), First Aid (129), Cooking (185), Fishing (356) unchanged?
-- [ ] Taxi UI: `TaxiFrame` (Classic) or `FlightMapFrame` (retail)? Which `TakeTaxiNode` signature works?
-- [ ] Do `UnitXP`/`UnitXPMax`/`UnitLevel` return plain numbers (not secret)? `issecretvalue` exists?
-- [ ] Ammo/quivers present for hunters? (item 2516 Light Shot purchasable? quiver slot?) Pet at level 10 via "The Hunter's Path" (Thotar, Razor Hill) still the chain?
-- [ ] Templates exist: `ButtonFrameTemplate`, `InsetFrameTemplate3`, `PanelTabButtonTemplate`, `SearchBoxTemplate`, `MinimalScrollBar`, `WowStyle1DropdownTemplate`, `UIDropDownMenuTemplate`, `SecureActionButtonTemplate`, `BackdropTemplate`.
-- [ ] Atlases exist (`C_Texture.GetAtlasInfo`): `QuestNormal`, `QuestTurnin`, `TaxiNode_Neutral`, `Innkeeper`, `Vendor`, `poi-door`, class trainer atlases.
-- [ ] `ScrollUtil`, `CreateScrollBoxListLinearView`, `CreateDataProvider` present?
-- [ ] `Settings.RegisterCanvasLayoutCategory` / `Settings.OpenToCategory` present?
-- [ ] HereBeDragons-2.0: loads, detects Mainline, `HBD:GetPlayerZonePosition()` returns sane values in Durotar; minimap pin rotation/zoom works with Forever's minimap.
-- [ ] `C_Map.GetMapChildrenInfo` from the root (try 946 Azeroth / 947 Cosmic) returns Forever's full zone tree; record uiMapIDs for Durotar, Orgrimmar, Barrens, etc. (Classic Era values: Durotar 1411, Barrens 1413, Orgrimmar 1454 — may differ).
+- [ ] `C_QuestLog.GetAllCompletedQuestIDs()` populated at `PLAYER_ENTERING_WORLD` or only after a `QUEST_LOG_UPDATE`? (A new character
+  has none: re-run `/signpost probe` after turning in a few quests, relog, probe again.)
+- [ ] `GetProfessions()` return shape with professions learned; which slot **First Aid** occupies. (Re-probe after training.)
+- [ ] Taxi UI at a flight master: `TaxiFrame` or `FlightMapFrame`? Which `TakeTaxiNode` argument (index or nodeID) works? (`/signpost
+  debug on`, open a flight master: the log keeps both node lists and which frame was shown.)
+- [ ] Setting the hearth without `ConfirmBinder`: what does the innkeeper's gossip option do, does `CONFIRM_BINDER` fire, and what confirms
+  it (`C_PlayerInteractionManager.ConfirmationInteraction`?). (`/signpost debug on` at an innkeeper.)
+- [ ] Pet at level 10 via "The Hunter's Path" (Thotar, Razor Hill) still the chain? Is Light Shot purchasable from vendors (item exists)?
+- [ ] HereBeDragons minimap pin rotation/zoom works with Forever's minimap (Phase 3).
 - [ ] `C_GossipInfo.GetOptions()` field names on this build (`gossipOptionID` vs `orderIndex`); innkeeper bind option icon/flags.
-- [ ] **On a boat/zeppelin**: what do `C_Map.GetBestMapForUnit("player")`, `C_Map.GetPlayerMapPosition`, `UnitPosition`, `GetZoneText`/`GetSubZoneText` return at (a) the dock, (b) mid-crossing, (c) arrival? Which `ZONE_CHANGED*` events fire and in what order? (Needed for the transport state machine; log from the Orgrimmar→Undercity zeppelin.)
-- [ ] **On a flight**: `UnitOnTaxi` true for the whole flight? Does `ZONE_CHANGED_NEW_AREA` fire for zones flown over? Event on landing (`PLAYER_CONTROL_GAINED`)?
-- [ ] Does `C_Map.GetBestMapForUnit` return a sub-zone map (e.g. Orgrimmar 1454 inside Durotar 1411) so `.zone` must check the map's parent chain via `C_Map.GetMapInfo(id).parentMapID`?
-- [ ] `GetQuestReward(i)` and `AcceptQuest()` are not protected (no taint error when called from an addon event handler).
-- [ ] When a class trainer also offers a class quest: does the client fire `GOSSIP_SHOW` with a mixed options/quests list, or `QUEST_GREETING`? Does `C_GossipInfo.GetAvailableQuests()` include it alongside the "I need training" option? (Needed so `.train` + `.accept` on one NPC work in one visit.)
-- [ ] At `QUEST_COMPLETE`, does `C_Item.GetItemInfo(GetQuestItemLink("choice", i))` return sellPrice for all choices immediately, or is `ITEM_DATA_LOAD_RESULT` needed? Is sellPrice ever a secret value?
-- [ ] `## OptionalDeps: Signpost_Data` loads the pack before us (global `Signpost_Data` non-nil at our `ADDON_LOADED`); the main addon loads cleanly with the pack folder absent.
-- [ ] `C_Timer`, `EventRegistry`, `C_AddOns.GetAddOnMetadata` present (expected yes).
-- [ ] `UnitClassBase`, `UnitRace` raceFile token for Troll (`"Troll"`), `UnitFactionGroup`, `GetClassAtlas("HUNTER")` all return sane values; new Forever race/class combos (e.g. Skyborne, Undead Paladin) report tokens our registries can key on.
-- [ ] Memory/CPU of loading full `Data/*.lua` (target < 10 MB); if high, split per continent with `## LoadOnDemand`.
-
-Added 2026-10-17 (Phase 0 code carries a `VERIFY(beta)` for each):
-- [ ] Value of `WOW_PROJECT_ID` and every `WOW_PROJECT_*` constant, incl. `WOW_PROJECT_CAMELOT` (see Verified above). [build]
-- [ ] Which TOC the client loads when both exist: our TOCs differ only in `## X-Flavor-TOC` (Camelot/generic), which also tests
-  that X- metadata is readable via `C_AddOns.GetAddOnMetadata`. The data pack has **only** a plain `Signpost_Data.toc`, so it
-  answers "does a plain TOC with 16001 load". [build.tocFlavor, addons.dataPackAtLoad]
-- [ ] `seterrorhandler` is usable by addons (Core/Errors.lua chains it); WoW's `xpcall` passes extra arguments. [build.errorSource,
-  build.xpcallPassesArgs]
-- [ ] `C_XMLUtil.GetTemplateInfo` exists (template checks without creating frames). [templates.method]
-- [ ] `GetFileIDFromPath` exists; `Interface\Icons\INV_Misc_Map_01` (our TOC `IconTexture`) exists. [files]
-- [ ] `C_TaxiMap.GetTaxiNodesForMap(uiMapID)` returns flight masters for every zone without visiting them, and
-  `C_EncounterJournal.GetDungeonEntrancesForMap(uiMapID)` returns dungeon entrances (client data for the travel graph). [mapDump]
-- [ ] `C_TooltipInfo.GetTrainerService(i)` yields the spell ID of a trainer service. [eventLog TRAINER_SHOW]
-- [ ] `PLAYER_INTERACTION_MANAGER_FRAME_SHOW/HIDE` fire with an `Enum.PlayerInteractionType` value at NPCs. [eventLog]
-- [ ] No other addon or client command claims `/sign` or `/signpost`. [build.slashCollisions]
+- [ ] **On a boat/zeppelin**: what do `C_Map.GetBestMapForUnit("player")`, `C_Map.GetPlayerMapPosition`, `UnitPosition`,
+  `GetZoneText`/`GetSubZoneText` return at (a) the dock, (b) mid-crossing, (c) arrival? Which `ZONE_CHANGED*` events fire and in what order?
+  (`/signpost debug on` + `/signpost debug pos` on the Orgrimmar→Undercity zeppelin.)
+- [ ] **On a flight**: `UnitOnTaxi` true for the whole flight? Does `ZONE_CHANGED_NEW_AREA` fire for zones flown over? Event on landing?
+- [ ] Inside Orgrimmar, does `C_Map.GetBestMapForUnit` return 1454 (a sibling of Durotar, see Verified)?
+- [ ] `GetQuestReward(i)` and `AcceptQuest()` are not protected (no taint error when called from an addon event handler). (Phase 5.)
+- [ ] When a class trainer also offers a class quest: does the client fire `GOSSIP_SHOW` with a mixed options/quests list, or
+  `QUEST_GREETING`? Does `C_GossipInfo.GetAvailableQuests()` include it alongside the "I need training" option?
+- [ ] At `QUEST_COMPLETE`, does `C_Item.GetItemInfo(GetQuestItemLink("choice", i))` return sellPrice for all choices immediately, or is
+  `ITEM_DATA_LOAD_RESULT` needed? Is sellPrice ever a secret value? (`/signpost debug on` at a multi-reward turn-in.)
+- [ ] `C_TooltipInfo.GetTrainerService(i)` yields the spell ID of a trainer service. (`/signpost debug on` at a trainer.)
+- [ ] `PLAYER_INTERACTION_MANAGER_FRAME_SHOW/HIDE` payloads at each NPC type (`Enum.PlayerInteractionType` name is logged).
+- [ ] The main addon loads cleanly with `Signpost_Data` disabled in the AddOns list.
+- [ ] Memory/CPU of loading the full data pack (target < 10 MB); if high, split per continent with `## LoadOnDemand`.
 
 ## Wowhead Forever data environment (fill in Phase 1)
 - Base path: `TODO` (candidate `https://www.wowhead.com/forever/`).
 - `dataEnv` id for `nether.wowhead.com/tooltip/...`: `TODO`.
 - `?xml` endpoint availability: `TODO`.
-- Zone ID ↔ uiMapID join table: `Data/Maps.lua` (generated), overrides in `tools/map_overrides.json`.
+- Zone ID ↔ uiMapID join table: the data pack's `Maps.lua` (generated from the client dump; Wowhead zone IDs joined in Phase 1),
+  overrides in `tools/map_overrides.json`.

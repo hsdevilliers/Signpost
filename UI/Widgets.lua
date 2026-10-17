@@ -14,8 +14,8 @@ local function hasTemplate(template)
 	return ok and info ~= nil
 end
 
--- Creates a frame from the first template this client has. Template availability on Forever is probed, not assumed
--- (FOREVER-API-NOTES "Open probes"). Returns the frame and the template used (nil for a bare frame).
+-- Creates a frame from the first template this client has. Every template used here exists on beta 1.60.1.70450
+-- (FOREVER-API-NOTES); the fallbacks guard against later client changes. Returns the frame and the template used.
 function UI.CreateFrameFromTemplates(frameType, name, parent, templates)
 	for _, template in ipairs(templates) do
 		if hasTemplate(template) then

@@ -22,6 +22,7 @@ from signpost_tools.savedvars import LuaParseError  # noqa: E402
 from signpost_tools.svfiles import find_files, load_db  # noqa: E402
 
 DEFAULT_PACK = devconfig.REPO_ROOT.parent / "Signpost_Data"
+CONTINENT = 2  # Enum.UIMapType.Continent
 
 
 def _points(entries: object) -> list[dict] | None:
@@ -56,7 +57,10 @@ def maps_table(dump: dict, previous: dict | None = None) -> dict[int, dict]:
         for key in ("group", "flags"):
             if isinstance(entry.get(key), (int, float)):
                 record[key] = entry[key]
-        record["taxi"] = _points(entry.get("taxi"))
+        # The client returns every flight node of the continent for each of its zones (positions projected into the
+        # requested map), so the nodes are kept once, on the continent; world rectangles project them into zones.
+        if entry.get("type") == CONTINENT:
+            record["taxi"] = _points(entry.get("taxi"))
         record["dungeons"] = _points(entry.get("dungeons"))
         old = previous.get(map_id)
         if isinstance(old, dict) and old.get("wowhead") is not None:

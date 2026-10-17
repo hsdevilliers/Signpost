@@ -16,6 +16,25 @@ instead, using paths from `tools/dev.local.json` (copy `tools/dev.local.example.
 Signpost runs standalone: guides carry their own quest IDs and coordinates. An optional data pack (`Signpost_Data`)
 adds names, objective text and validation; it is built locally with the exporters in `tools/` and is not distributed.
 
+## Development
+
+`tools/check.ps1` runs every check CI runs: busted, luacheck, StyLua, `tools/check_repo.py` and the Python tool tests.
+One-time setup on Windows (everything except the compiler stays inside the gitignored `.venv`):
+
+```
+winget install --id BrechtSanders.WinLibs.POSIX.UCRT -e      # GCC (MinGW-w64, UCRT runtime)
+python -m venv .venv
+.venv\Scripts\python -m pip install hererocks
+# with the WinLibs mingw64\bin folder on PATH, in a shell without NoDefaultCurrentDirectoryInExePath set:
+.venv\Scripts\hererocks .venv\lua51 -l 5.1 -r latest --target mingw
+# LuaRocks 3.8's Windows installer guesses wrong; in .venv\lua51\luarocks\config-5.1.lua set
+#   MSVCRT = 'ucrt'   and   MAKE = [[<WinLibs>\mingw64\bin\mingw32-make.exe]]
+.venv\lua51\bin\luarocks install busted
+.venv\lua51\bin\luarocks install luacheck
+```
+
+StyLua 2.6.0 goes in `tools\bin\stylua.exe` (from the StyLua GitHub releases).
+
 ## Commands
 
 `/signpost` (alias `/sign`) lists the commands. The developer commands `probe`, `dumpmaps` and `debug` write to

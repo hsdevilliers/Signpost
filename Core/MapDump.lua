@@ -11,8 +11,9 @@ ns.MapDump = MapDump
 
 -- Maps described per frame, so a large tree never stalls the client.
 local BATCH = 40
--- Enum.UIMapType Continent and Zone: the only map types that carry flight nodes and dungeon entrances.
-local TRAVEL_MAP_TYPES = { [2] = true, [3] = true }
+-- Enum.UIMapType values. Flight nodes are asked for on continents only: for a zone the client returns its whole
+-- continent's nodes again (beta 1.60.1.70450). Dungeon entrances are asked for on both (empty on that build).
+local CONTINENT, ZONE = 2, 3
 
 local function xy(point, scale)
 	if type(point) ~= "table" then
@@ -99,8 +100,10 @@ local function describe(info)
 			}
 		end
 	end
-	if TRAVEL_MAP_TYPES[info.mapType] then
+	if info.mapType == CONTINENT then
 		entry.taxi = taxiNodes(mapID)
+	end
+	if info.mapType == CONTINENT or info.mapType == ZONE then
 		entry.dungeons = dungeonEntrances(mapID)
 	end
 	return entry

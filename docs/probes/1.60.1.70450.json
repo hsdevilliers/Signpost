@@ -1,0 +1,1052 @@
+{
+ "addons": {
+  "dataPack": "Signpost_Data 2026-10-17, source stub, schema 1",
+  "dataPackAtLoad": true,
+  "dataPackGlobal": "table",
+  "info": {
+   "Blizzard_FlightMap": {
+    "info": {
+     "1": "Blizzard_FlightMap",
+     "2": "Blizzard Flight Map UI",
+     "4": true,
+     "5": "",
+     "6": "SECURE",
+     "n": 6
+    },
+    "loaded": {
+     "1": false,
+     "2": false,
+     "n": 2
+    }
+   },
+   "Blizzard_TrainerUI": {
+    "info": {
+     "1": "Blizzard_TrainerUI",
+     "2": "Blizzard_TrainerUI",
+     "4": true,
+     "5": "",
+     "6": "SECURE",
+     "n": 6
+    },
+    "loaded": {
+     "1": false,
+     "2": false,
+     "n": 2
+    }
+   },
+   "Signpost": {
+    "info": {
+     "1": "Signpost",
+     "2": "Signpost",
+     "3": "Step-by-step leveling guide: quests, travel and professions, one step at a time.",
+     "4": true,
+     "5": "",
+     "6": "INSECURE",
+     "n": 6
+    },
+    "loaded": {
+     "1": true,
+     "2": true,
+     "n": 2
+    }
+   },
+   "Signpost_Data": {
+    "info": {
+     "1": "Signpost_Data",
+     "2": "Signpost Data",
+     "3": "Generated data for Signpost (private; not for redistribution).",
+     "4": true,
+     "5": "",
+     "6": "INSECURE",
+     "n": 6
+    },
+    "loaded": {
+     "1": true,
+     "2": true,
+     "n": 2
+    }
+   }
+  },
+  "memoryKB": {
+   "Signpost": 1712.6875,
+   "Signpost_Data": 5.0322265625
+  },
+  "versionCheck": true
+ },
+ "ammo": {
+  "ammoSlot": {
+   "1": true,
+   "2": 0,
+   "3": 136520,
+   "4": false,
+   "n": 4
+  },
+  "invslotAmmo": 0,
+  "items": {
+   "2101": {
+    "1": 2101,
+    "2": "Quiver",
+    "3": "Quiver",
+    "4": "INVTYPE_BAG",
+    "5": 134409,
+    "6": 11,
+    "7": 2,
+    "n": 7
+   },
+   "2512": {
+    "1": 2512,
+    "2": "Projectile",
+    "3": "Arrow",
+    "4": "INVTYPE_AMMO",
+    "5": 132382,
+    "6": 6,
+    "7": 2,
+    "n": 7
+   },
+   "2516": {
+    "1": 2516,
+    "2": "Projectile",
+    "3": "Bullet",
+    "4": "INVTYPE_AMMO",
+    "5": 132384,
+    "6": 6,
+    "7": 3,
+    "n": 7
+   },
+   "6948": {
+    "1": 6948,
+    "2": "Miscellaneous",
+    "3": "Junk",
+    "4": "INVTYPE_NON_EQUIP_IGNORE",
+    "5": 134414,
+    "6": 15,
+    "7": 0,
+    "n": 7
+   }
+  },
+  "rangedSlot": {
+   "1": true,
+   "2": 18,
+   "3": 136520,
+   "4": true,
+   "n": 4
+  }
+ },
+ "apis": {
+  "missing": [
+   "GetAddOnMetadata",
+   "GetNumSkillLines",
+   "GetSkillLineInfo",
+   "GetMerchantItemInfo",
+   "ConfirmBinder"
+  ],
+  "types": {
+   "AcceptQuest": "function",
+   "ButtonFrameTemplate_HideButtonBar": "function",
+   "ButtonFrameTemplate_HidePortrait": "function",
+   "BuyMerchantItem": "function",
+   "BuyTrainerService": "function",
+   "C_AddOns.GetAddOnInfo": "function",
+   "C_AddOns.GetAddOnMetadata": "function",
+   "C_AddOns.IsAddOnLoaded": "function",
+   "C_AddOns.IsAddonVersionCheckEnabled": "function",
+   "C_AddOns.LoadAddOn": "function",
+   "C_Container.GetContainerItemInfo": "function",
+   "C_Container.GetContainerNumSlots": "function",
+   "C_CreatureInfo.GetClassInfo": "function",
+   "C_CreatureInfo.GetRaceInfo": "function",
+   "C_EncounterJournal.GetDungeonEntrancesForMap": "function",
+   "C_EventUtils.IsEventValid": "function",
+   "C_GossipInfo.CloseGossip": "function",
+   "C_GossipInfo.GetActiveQuests": "function",
+   "C_GossipInfo.GetAvailableQuests": "function",
+   "C_GossipInfo.GetOptions": "function",
+   "C_GossipInfo.SelectActiveQuest": "function",
+   "C_GossipInfo.SelectAvailableQuest": "function",
+   "C_GossipInfo.SelectOption": "function",
+   "C_Item.GetItemCount": "function",
+   "C_Item.GetItemInfo": "function",
+   "C_Item.GetItemInfoInstant": "function",
+   "C_Item.IsItemDataCachedByID": "function",
+   "C_Item.RequestLoadItemDataByID": "function",
+   "C_Map.GetBestMapForUnit": "function",
+   "C_Map.GetMapChildrenInfo": "function",
+   "C_Map.GetMapGroupID": "function",
+   "C_Map.GetMapInfo": "function",
+   "C_Map.GetMapRectOnMap": "function",
+   "C_Map.GetMapWorldSize": "function",
+   "C_Map.GetPlayerMapPosition": "function",
+   "C_Map.GetWorldPosFromMapPos": "function",
+   "C_MerchantFrame.GetItemInfo": "function",
+   "C_Minimap.GetViewRadius": "function",
+   "C_QuestLog.GetAllCompletedQuestIDs": "function",
+   "C_QuestLog.GetInfo": "function",
+   "C_QuestLog.GetLogIndexForQuestID": "function",
+   "C_QuestLog.GetNumQuestLogEntries": "function",
+   "C_QuestLog.GetQuestIDForLogIndex": "function",
+   "C_QuestLog.GetQuestObjectives": "function",
+   "C_QuestLog.GetTitleForQuestID": "function",
+   "C_QuestLog.IsComplete": "function",
+   "C_QuestLog.IsOnQuest": "function",
+   "C_QuestLog.IsQuestFlaggedCompleted": "function",
+   "C_Spell.GetSpellInfo": "function",
+   "C_SpellBook.IsSpellKnown": "function",
+   "C_TaxiMap.GetAllTaxiNodes": "function",
+   "C_TaxiMap.GetTaxiNodesForMap": "function",
+   "C_Texture.GetAtlasInfo": "function",
+   "C_Timer.After": "function",
+   "C_Timer.NewTicker": "function",
+   "C_TooltipInfo.GetTrainerService": "function",
+   "C_TradeSkillUI.GetAllProfessionTradeSkillLines": "function",
+   "C_TradeSkillUI.GetProfessionInfoBySkillLineID": "function",
+   "C_XMLUtil.GetTemplateInfo": "function",
+   "CombatLogGetCurrentEventInfo": "nil",
+   "CompleteQuest": "function",
+   "ConfirmBinder": "nil",
+   "CreateDataProvider": "function",
+   "CreateFrame": "function",
+   "CreateScrollBoxListLinearView": "function",
+   "CreateVector2D": "function",
+   "EventRegistry": "table",
+   "GetActiveQuestID": "function",
+   "GetAddOnMemoryUsage": "function",
+   "GetAddOnMetadata": "nil",
+   "GetAvailableQuestInfo": "function",
+   "GetBindLocation": "function",
+   "GetBuildInfo": "function",
+   "GetClassAtlas": "function",
+   "GetFileIDFromPath": "function",
+   "GetInventorySlotInfo": "function",
+   "GetItemCount": "nil",
+   "GetItemInfo": "nil",
+   "GetMerchantItemID": "function",
+   "GetMerchantItemInfo": "nil",
+   "GetMerchantItemLink": "function",
+   "GetMerchantNumItems": "function",
+   "GetMinimapZoneText": "function",
+   "GetNumActiveQuests": "function",
+   "GetNumAvailableQuests": "function",
+   "GetNumClasses": "function",
+   "GetNumQuestChoices": "function",
+   "GetNumSkillLines": "nil",
+   "GetNumTrainerServices": "function",
+   "GetProfessionInfo": "function",
+   "GetProfessions": "function",
+   "GetQuestID": "function",
+   "GetQuestItemInfo": "function",
+   "GetQuestItemLink": "function",
+   "GetQuestReward": "function",
+   "GetRealZoneText": "function",
+   "GetSkillLineInfo": "nil",
+   "GetSpellInfo": "nil",
+   "GetSubZoneText": "function",
+   "GetTrainerServiceCost": "function",
+   "GetTrainerServiceInfo": "function",
+   "GetTrainerServiceItemLink": "function",
+   "GetTrainerServiceLevelReq": "function",
+   "GetTrainerServiceSkillLine": "function",
+   "GetTrainerServiceTypeFilter": "function",
+   "GetZoneText": "function",
+   "HideUIPanel": "function",
+   "InCombatLockdown": "function",
+   "IsInInstance": "function",
+   "IsPlayerSpell": "function",
+   "IsQuestCompletable": "function",
+   "IsSpellKnown": "function",
+   "IsTradeskillTrainer": "function",
+   "MenuUtil.CreateContextMenu": "function",
+   "NumTaxiNodes": "function",
+   "PanelTemplates_SetNumTabs": "function",
+   "PanelTemplates_SetTab": "function",
+   "PanelTemplates_TabResize": "function",
+   "QuestGetAutoAccept": "function",
+   "ScrollUtil.InitScrollBoxListWithScrollBar": "function",
+   "SelectActiveQuest": "function",
+   "SelectAvailableQuest": "function",
+   "SetTrainerServiceTypeFilter": "function",
+   "Settings.OpenToCategory": "function",
+   "Settings.RegisterAddOnCategory": "function",
+   "Settings.RegisterCanvasLayoutCategory": "function",
+   "ShowUIPanel": "function",
+   "TakeTaxiNode": "function",
+   "TaxiNodeGetType": "function",
+   "TaxiNodeName": "function",
+   "TaxiNodePosition": "function",
+   "UIPanelWindows": "table",
+   "UISpecialFrames": "table",
+   "UnitClass": "function",
+   "UnitClassBase": "function",
+   "UnitCreatureFamily": "function",
+   "UnitExists": "function",
+   "UnitFactionGroup": "function",
+   "UnitGUID": "function",
+   "UnitLevel": "function",
+   "UnitName": "function",
+   "UnitOnTaxi": "function",
+   "UnitPosition": "function",
+   "UnitRace": "function",
+   "UnitXP": "function",
+   "UnitXPMax": "function",
+   "UpdateAddOnMemoryUsage": "function",
+   "canaccesssecrets": "function",
+   "canaccessvalue": "function",
+   "debuglocals": "function",
+   "debugstack": "function",
+   "geterrorhandler": "function",
+   "hooksecurefunc": "function",
+   "issecrettable": "function",
+   "issecretvalue": "function",
+   "scrubsecretvalues": "function",
+   "seterrorhandler": "function"
+  },
+  "unexpectedlyPresent": {},
+  "wanted": 153
+ },
+ "atlases": {
+  "Class": true,
+  "FlightMaster": true,
+  "Food": true,
+  "Innkeeper": true,
+  "Mailbox": true,
+  "Profession": true,
+  "QuestDaily": true,
+  "QuestNormal": true,
+  "QuestRepeatableTurnin": true,
+  "QuestTurnin": true,
+  "Repair": true,
+  "TaxiNode_Horde": true,
+  "TaxiNode_Neutral": true,
+  "Vendor": false,
+  "poi-door": true,
+  "poi-workorders": true
+ },
+ "build": {
+  "addonVersion": "dev",
+  "all": {
+   "1": "1.60.1",
+   "2": "70450",
+   "3": "Oct 15 2026",
+   "4": 16001,
+   "5": "",
+   "6": " ",
+   "n": 6
+  },
+  "build": "70450",
+  "date": "Oct 15 2026",
+  "errorSource": "seterrorhandler",
+  "expansion": 0,
+  "interface": 16001,
+  "locale": "enUS",
+  "maxLevel": 60,
+  "projectID": 18,
+  "projects": {
+   "WOW_PROJECT_CAMELOT": 18,
+   "WOW_PROJECT_CLASSIC": 2,
+   "WOW_PROJECT_ID": 18,
+   "WOW_PROJECT_MAINLINE": 1
+  },
+  "slashCollisions": {},
+  "tocFlavor": "Camelot",
+  "version": "1.60.1",
+  "xpcallPassesArgs": true
+ },
+ "events": {
+  "BAG_UPDATE_DELAYED": true,
+  "CHAT_MSG_SKILL": true,
+  "CONFIRM_BINDER": true,
+  "GET_ITEM_INFO_RECEIVED": true,
+  "GOSSIP_CLOSED": true,
+  "GOSSIP_SHOW": true,
+  "ITEM_DATA_LOAD_RESULT": true,
+  "LEARNED_SPELL_IN_SKILL_LINE": true,
+  "LEARNED_SPELL_IN_TAB": false,
+  "LOADING_SCREEN_DISABLED": true,
+  "LOADING_SCREEN_ENABLED": true,
+  "MERCHANT_CLOSED": true,
+  "MERCHANT_SHOW": true,
+  "NEW_RECIPE_LEARNED": true,
+  "PET_STABLE_UPDATE": true,
+  "PLAYER_CONTROL_GAINED": true,
+  "PLAYER_CONTROL_LOST": true,
+  "PLAYER_INTERACTION_MANAGER_FRAME_HIDE": true,
+  "PLAYER_INTERACTION_MANAGER_FRAME_SHOW": true,
+  "PLAYER_LEVEL_UP": true,
+  "PLAYER_REGEN_DISABLED": true,
+  "PLAYER_REGEN_ENABLED": true,
+  "PLAYER_XP_UPDATE": true,
+  "QUEST_ACCEPTED": true,
+  "QUEST_ACCEPT_CONFIRM": true,
+  "QUEST_COMPLETE": true,
+  "QUEST_DETAIL": true,
+  "QUEST_FINISHED": true,
+  "QUEST_GREETING": true,
+  "QUEST_LOG_UPDATE": true,
+  "QUEST_PROGRESS": true,
+  "QUEST_REMOVED": true,
+  "QUEST_TURNED_IN": true,
+  "QUEST_WATCH_UPDATE": true,
+  "SKILL_LINES_CHANGED": true,
+  "SPELLS_CHANGED": true,
+  "TAXIMAP_CLOSED": true,
+  "TAXIMAP_OPENED": true,
+  "TRADE_SKILL_LIST_UPDATE": true,
+  "TRAINER_CLOSED": true,
+  "TRAINER_SHOW": true,
+  "TRAINER_UPDATE": true,
+  "UI_INFO_MESSAGE": true,
+  "UNIT_PET": true,
+  "UNIT_QUEST_LOG_CHANGED": true,
+  "ZONE_CHANGED": true,
+  "ZONE_CHANGED_INDOORS": true,
+  "ZONE_CHANGED_NEW_AREA": true
+ },
+ "files": {
+  "Interface\\DialogFrame\\UI-DialogBox-Border": 131072,
+  "Interface\\GossipFrame\\ActiveQuestIcon": 132048,
+  "Interface\\GossipFrame\\AvailableQuestIcon": 132049,
+  "Interface\\GossipFrame\\BinderGossipIcon": 132052,
+  "Interface\\GossipFrame\\TaxiGossipIcon": 132057,
+  "Interface\\GossipFrame\\TrainerGossipIcon": 132058,
+  "Interface\\GossipFrame\\VendorGossipIcon": 132060,
+  "Interface\\Icons\\INV_Misc_Map_01": 134269,
+  "Interface\\Minimap\\Tracking\\Class": 136455,
+  "Interface\\Minimap\\Tracking\\FlightMaster": 136456,
+  "Interface\\Minimap\\Tracking\\Food": 136457,
+  "Interface\\Minimap\\Tracking\\Innkeeper": 136458,
+  "Interface\\Minimap\\Tracking\\Profession": 136463,
+  "Interface\\Minimap\\Tracking\\Repair": 136465,
+  "Interface\\QuestFrame\\QuestBG": 530420,
+  "Interface\\QuestFrame\\UI-HorizontalBreak": 136783,
+  "Interface\\QuestFrame\\UI-QuestTitleHighlight": 136810
+ },
+ "frames": {
+  "AddonCompartmentFrame": "table",
+  "ClassTrainerFrame": "nil",
+  "FlightMapFrame": "nil",
+  "GossipFrame": "table",
+  "InterfaceOptionsFrame": "nil",
+  "MerchantFrame": "table",
+  "Minimap": "table",
+  "ObjectiveTrackerFrame": "table",
+  "QuestFrame": "table",
+  "QuestMapFrame": "table",
+  "QuestWatchFrame": "nil",
+  "ScriptErrorsFrame": "table",
+  "SettingsPanel": "table",
+  "TaxiFrame": "table",
+  "WorldMapFrame": "table"
+ },
+ "libraries": {
+  "CallbackHandler-1.0": 8,
+  "HereBeDragons-2.0": 35,
+  "HereBeDragons-Pins-2.0": 17,
+  "LibDBIcon-1.0": 57,
+  "LibDataBroker-1.1": 4,
+  "LibStub": 2,
+  "hbd": {
+   "world": {
+    "instance": 1,
+    "x": -4254.4,
+    "y": -613.4
+   },
+   "zone": {
+    "map": 1411,
+    "mapType": 3,
+    "x": 43.35,
+    "y": 68.7
+   },
+   "zoneSize": {
+    "1": 5287.49951171875,
+    "2": 3525,
+    "n": 2
+   }
+  }
+ },
+ "map": {
+  "chain": [
+   {
+    "id": 1411,
+    "name": "Durotar",
+    "type": 3
+   },
+   {
+    "id": 1414,
+    "name": "Kalimdor",
+    "type": 2
+   },
+   {
+    "id": 947,
+    "name": "Azeroth",
+    "type": 1
+   }
+  ],
+  "position": {
+   "chain": [
+    {
+     "id": 1411,
+     "name": "Durotar",
+     "type": 3
+    },
+    {
+     "id": 1414,
+     "name": "Kalimdor",
+     "type": 2
+    },
+    {
+     "id": 947,
+     "name": "Azeroth",
+     "type": 1
+    }
+   ],
+   "indoors": false,
+   "instance": 1,
+   "instanceType": "none",
+   "map": 1411,
+   "minimapZone": "Valley of Trials",
+   "realZone": "Durotar",
+   "subzone": "Valley of Trials",
+   "t": 217617.9,
+   "taxi": false,
+   "wx": -4254.4,
+   "wy": -613.4,
+   "wz": 0,
+   "x": 43.35,
+   "y": 68.7,
+   "zone": "Durotar"
+  },
+  "roots": {
+   "947": {
+    "flags": 2304,
+    "mapID": 947,
+    "mapType": 1,
+    "name": "Azeroth",
+    "parentMapID": 0
+   }
+  }
+ },
+ "minimap": {
+  "rotate": "0",
+  "viewRadius": 233.3333282470703,
+  "zoom": 0,
+  "zoomLevels": 6
+ },
+ "player": {
+  "classAtlas": "classicon-HUNTER",
+  "classAtlasExists": true,
+  "classBase": "HUNTER",
+  "classFile": "HUNTER",
+  "classID": 3,
+  "classes": {
+   "1": {
+    "classFile": "WARRIOR",
+    "classID": 1,
+    "className": "Warrior"
+   },
+   "11": {
+    "classFile": "DRUID",
+    "classID": 11,
+    "className": "Druid"
+   },
+   "2": {
+    "classFile": "PALADIN",
+    "classID": 2,
+    "className": "Paladin"
+   },
+   "3": {
+    "classFile": "HUNTER",
+    "classID": 3,
+    "className": "Hunter"
+   },
+   "4": {
+    "classFile": "ROGUE",
+    "classID": 4,
+    "className": "Rogue"
+   },
+   "5": {
+    "classFile": "PRIEST",
+    "classID": 5,
+    "className": "Priest"
+   },
+   "7": {
+    "classFile": "SHAMAN",
+    "classID": 7,
+    "className": "Shaman"
+   },
+   "8": {
+    "classFile": "MAGE",
+    "classID": 8,
+    "className": "Mage"
+   },
+   "9": {
+    "classFile": "WARLOCK",
+    "classID": 9,
+    "className": "Warlock"
+   }
+  },
+  "faction": "Horde",
+  "level": 1,
+  "raceFile": "Troll",
+  "raceID": 8,
+  "races": {
+   "1": {
+    "clientFileString": "Human",
+    "raceID": 1,
+    "raceName": "Human"
+   },
+   "10": {
+    "clientFileString": "BloodElf",
+    "raceID": 10,
+    "raceName": "Blood Elf"
+   },
+   "11": {
+    "clientFileString": "Draenei",
+    "raceID": 11,
+    "raceName": "Draenei"
+   },
+   "12": {
+    "clientFileString": "FelOrc",
+    "raceID": 12,
+    "raceName": "Fel Orc"
+   },
+   "13": {
+    "clientFileString": "Naga_",
+    "raceID": 13,
+    "raceName": "Naga"
+   },
+   "14": {
+    "clientFileString": "Broken",
+    "raceID": 14,
+    "raceName": "Broken"
+   },
+   "15": {
+    "clientFileString": "Skeleton",
+    "raceID": 15,
+    "raceName": "Skeleton"
+   },
+   "16": {
+    "clientFileString": "Vrykul",
+    "raceID": 16,
+    "raceName": "Vrykul"
+   },
+   "17": {
+    "clientFileString": "Tuskarr",
+    "raceID": 17,
+    "raceName": "Tuskarr"
+   },
+   "18": {
+    "clientFileString": "ForestTroll",
+    "raceID": 18,
+    "raceName": "Forest Troll"
+   },
+   "19": {
+    "clientFileString": "Taunka",
+    "raceID": 19,
+    "raceName": "Taunka"
+   },
+   "2": {
+    "clientFileString": "Orc",
+    "raceID": 2,
+    "raceName": "Orc"
+   },
+   "20": {
+    "clientFileString": "NorthrendSkeleton",
+    "raceID": 20,
+    "raceName": "Northrend Skeleton"
+   },
+   "21": {
+    "clientFileString": "IceTroll",
+    "raceID": 21,
+    "raceName": "Ice Troll"
+   },
+   "22": {
+    "clientFileString": "Worgen",
+    "raceID": 22,
+    "raceName": "Worgen"
+   },
+   "23": {
+    "clientFileString": "Human",
+    "raceID": 23,
+    "raceName": "Gilnean"
+   },
+   "24": {
+    "clientFileString": "Pandaren",
+    "raceID": 24,
+    "raceName": "Pandaren"
+   },
+   "25": {
+    "clientFileString": "Pandaren",
+    "raceID": 25,
+    "raceName": "Pandaren"
+   },
+   "26": {
+    "clientFileString": "Pandaren",
+    "raceID": 26,
+    "raceName": "Pandaren"
+   },
+   "27": {
+    "clientFileString": "Nightborne",
+    "raceID": 27,
+    "raceName": "Nightborne"
+   },
+   "28": {
+    "clientFileString": "HighmountainTauren",
+    "raceID": 28,
+    "raceName": "Highmountain Tauren"
+   },
+   "29": {
+    "clientFileString": "VoidElf",
+    "raceID": 29,
+    "raceName": "Void Elf"
+   },
+   "3": {
+    "clientFileString": "Dwarf",
+    "raceID": 3,
+    "raceName": "Dwarf"
+   },
+   "30": {
+    "clientFileString": "LightforgedDraenei",
+    "raceID": 30,
+    "raceName": "Lightforged Draenei"
+   },
+   "31": {
+    "clientFileString": "ZandalariTroll",
+    "raceID": 31,
+    "raceName": "Zandalari Troll"
+   },
+   "32": {
+    "clientFileString": "KulTiran",
+    "raceID": 32,
+    "raceName": "Kul Tiran"
+   },
+   "33": {
+    "clientFileString": "ThinHuman",
+    "raceID": 33,
+    "raceName": "Human"
+   },
+   "34": {
+    "clientFileString": "DarkIronDwarf",
+    "raceID": 34,
+    "raceName": "Dark Iron Dwarf"
+   },
+   "35": {
+    "clientFileString": "Vulpera",
+    "raceID": 35,
+    "raceName": "Vulpera"
+   },
+   "36": {
+    "clientFileString": "MagharOrc",
+    "raceID": 36,
+    "raceName": "Mag'har Orc"
+   },
+   "37": {
+    "clientFileString": "Mechagnome",
+    "raceID": 37,
+    "raceName": "Mechagnome"
+   },
+   "4": {
+    "clientFileString": "NightElf",
+    "raceID": 4,
+    "raceName": "Night Elf"
+   },
+   "5": {
+    "clientFileString": "Scourge",
+    "raceID": 5,
+    "raceName": "Undead"
+   },
+   "52": {
+    "clientFileString": "Dracthyr",
+    "raceID": 52,
+    "raceName": "Dracthyr"
+   },
+   "6": {
+    "clientFileString": "Tauren",
+    "raceID": 6,
+    "raceName": "Tauren"
+   },
+   "7": {
+    "clientFileString": "Gnome",
+    "raceID": 7,
+    "raceName": "Gnome"
+   },
+   "70": {
+    "clientFileString": "Dracthyr",
+    "raceID": 70,
+    "raceName": "Dracthyr"
+   },
+   "71": {
+    "clientFileString": "CompanionDrake",
+    "raceID": 71,
+    "raceName": "Highland Drake"
+   },
+   "72": {
+    "clientFileString": "CompanionProtoDragon",
+    "raceID": 72,
+    "raceName": "Renewed Proto-Drake"
+   },
+   "73": {
+    "clientFileString": "CompanionSerpent",
+    "raceID": 73,
+    "raceName": "Winding Slitherdrake"
+   },
+   "74": {
+    "clientFileString": "CompanionWyvern",
+    "raceID": 74,
+    "raceName": "Cliffside Wylderdrake"
+   },
+   "75": {
+    "clientFileString": "Dracthyr",
+    "raceID": 75,
+    "raceName": "Visage"
+   },
+   "76": {
+    "clientFileString": "Dracthyr",
+    "raceID": 76,
+    "raceName": "Visage"
+   },
+   "77": {
+    "clientFileString": "CompanionPterrodax",
+    "raceID": 77,
+    "raceName": "Windborne Velocidrake"
+   },
+   "8": {
+    "clientFileString": "Troll",
+    "raceID": 8,
+    "raceName": "Troll"
+   },
+   "80": {
+    "clientFileString": "CompanionNetherwingDrake",
+    "raceID": 80,
+    "raceName": "Grotto Netherwing Drake"
+   },
+   "82": {
+    "clientFileString": "RostrumStormGryphon",
+    "raceID": 82,
+    "raceName": "Algarian Stormrider"
+   },
+   "83": {
+    "clientFileString": "RostrumFaerieDragon",
+    "raceID": 83,
+    "raceName": "Flourishing Whimsydrake"
+   },
+   "84": {
+    "clientFileString": "EarthenDwarf",
+    "raceID": 84,
+    "raceName": "Earthen"
+   },
+   "85": {
+    "clientFileString": "EarthenDwarf",
+    "raceID": 85,
+    "raceName": "Earthen"
+   },
+   "86": {
+    "clientFileString": "Harronir",
+    "raceID": 86,
+    "raceName": "Haranir"
+   },
+   "87": {
+    "clientFileString": "RostrumAirship",
+    "raceID": 87,
+    "raceName": "Delver's Dirigible"
+   },
+   "9": {
+    "clientFileString": "Goblin",
+    "raceID": 9,
+    "raceName": "Goblin"
+   },
+   "90": {
+    "clientFileString": "RostrumAirship",
+    "raceID": 90,
+    "raceName": "Delver's Gob-Trotter"
+   },
+   "91": {
+    "clientFileString": "Harronir",
+    "raceID": 91,
+    "raceName": "Haranir"
+   },
+   "92": {
+    "clientFileString": "RostrumAirship",
+    "raceID": 92,
+    "raceName": "Ethereal Airship"
+   },
+   "95": {
+    "clientFileString": "Skyborne",
+    "raceID": 95,
+    "raceName": "High Order Skyborne"
+   },
+   "96": {
+    "clientFileString": "Skyborne",
+    "raceID": 96,
+    "raceName": "Windshaper Skyborne"
+   }
+  }
+ },
+ "professions": {
+  "bySkillLine": {
+   "129": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": false,
+    "maxSkillLevel": 0,
+    "profession": 0,
+    "professionID": 129,
+    "professionName": "First Aid",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "165": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "profession": 2,
+    "professionID": 165,
+    "professionName": "Leatherworking",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "185": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": false,
+    "maxSkillLevel": 0,
+    "profession": 5,
+    "professionID": 185,
+    "professionName": "Cooking",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "356": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": false,
+    "maxSkillLevel": 0,
+    "profession": 10,
+    "professionID": 356,
+    "professionName": "Fishing",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   },
+   "393": {
+    "expansionName": "Unknown",
+    "isPrimaryProfession": true,
+    "maxSkillLevel": 0,
+    "profession": 11,
+    "professionID": 393,
+    "professionName": "Skinning",
+    "skillLevel": 0,
+    "skillModifier": 0,
+    "sourceCounter": 0
+   }
+  },
+  "info": {},
+  "slots": {
+   "n": 7
+  },
+  "tradeSkillLines": [
+   2937,
+   2947,
+   2938,
+   2941,
+   2945,
+   2944,
+   2948,
+   2934,
+   2940,
+   2946,
+   165,
+   333,
+   186,
+   197,
+   393,
+   202,
+   171,
+   164,
+   2933,
+   182
+  ]
+ },
+ "quests": {
+  "completedNow": 0,
+  "early": {
+   "addonLoaded": {
+    "completed": 0,
+    "t": 217517.067
+   },
+   "enteringWorld": {
+    "completed": 0,
+    "isLogin": true,
+    "isReload": false,
+    "t": 217555.086
+   },
+   "firstQuestLogUpdate": {
+    "completed": 0,
+    "t": 217559.038
+   }
+  },
+  "logEntries": 0
+ },
+ "templates": {
+  "found": {
+   "BackdropTemplate": "Frame",
+   "BasicFrameTemplateWithInset": "Frame",
+   "ButtonFrameTemplate": "Frame",
+   "GameTooltipTemplate": "GameTooltip",
+   "InputBoxTemplate": "EditBox",
+   "InsetFrameTemplate": "Frame",
+   "InsetFrameTemplate3": "Frame",
+   "MinimalScrollBar": "EventFrame",
+   "PanelTabButtonTemplate": "Button",
+   "PortraitFrameTemplate": "Frame",
+   "ScrollFrameTemplate": "ScrollFrame",
+   "SearchBoxTemplate": "EditBox",
+   "SecureActionButtonTemplate": "Button",
+   "TooltipBackdropTemplate": "Frame",
+   "UICheckButtonTemplate": "CheckButton",
+   "UIDropDownMenuTemplate": "Frame",
+   "UIPanelButtonTemplate": "Button",
+   "UIPanelCloseButton": "Button",
+   "UIPanelScrollFrameTemplate": "ScrollFrame",
+   "WowScrollBoxList": "Frame",
+   "WowStyle1DropdownTemplate": "DropdownButton"
+  },
+  "method": "C_XMLUtil.GetTemplateInfo"
+ },
+ "time": 1792234733,
+ "values": {
+  "UnitHealth": {
+   "arithmetic": false,
+   "secret": true,
+   "type": "number"
+  },
+  "UnitHealthMax": {
+   "arithmetic": true,
+   "secret": false,
+   "type": "number",
+   "value": 56
+  },
+  "UnitLevel": {
+   "arithmetic": true,
+   "secret": false,
+   "type": "number",
+   "value": 1
+  },
+  "UnitPower": {
+   "arithmetic": false,
+   "secret": true,
+   "type": "number"
+  },
+  "UnitXP": {
+   "arithmetic": true,
+   "secret": false,
+   "type": "number",
+   "value": 0
+  },
+  "UnitXPMax": {
+   "arithmetic": true,
+   "secret": false,
+   "type": "number",
+   "value": 400
+  }
+ },
+ "version": "dev"
+}

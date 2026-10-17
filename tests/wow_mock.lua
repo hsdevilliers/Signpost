@@ -1,5 +1,5 @@
--- Minimal stand-ins for the WoW client so addon files load and run under stock Lua 5.1 (busted in CI, tests/run.lua
--- locally). Only what the specs exercise is modelled; any other frame method is a no-op returning nil.
+-- Minimal stand-ins for the WoW client so addon files load and run under stock Lua 5.1 with busted. Only what the
+-- specs exercise is modelled; any other frame method is a no-op returning nil.
 local M = {}
 
 local function noop() end

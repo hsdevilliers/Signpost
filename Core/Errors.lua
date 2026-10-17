@@ -54,7 +54,7 @@ local function install()
 		Errors.source = "BugGrabber"
 		return
 	end
-	-- VERIFY(beta): seterrorhandler is callable by addons on Forever (probe: apis.seterrorhandler).
+	-- Works on Forever: verified on beta 1.60.1.70450 (FOREVER-API-NOTES, Verified).
 	local previous = geterrorhandler()
 	seterrorhandler(function(message, ...)
 		pcall(Errors.Record, Errors, message, debugstack(2))

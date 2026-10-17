@@ -32,10 +32,16 @@ Tasks
   `Core/Learn.lua` (until then `/signpost debug on` records the raw NPC positions and zone crossings).
 
 Acceptance
-- [ ] Addon loads on the beta with no "out of date" flag and no Lua errors; `/signpost probe` output read by
-  `tools/read_savedvars.py` and pasted into API notes; `Maps.lua` generated from a real dump.
+- [x] Addon loads on the beta with no "out of date" flag and no Lua errors; `/signpost probe` output read by
+  `tools/read_savedvars.py` and pasted into API notes; `Maps.lua` generated from a real dump. — 2026-10-17, beta 1.60.1.70450:
+  both addons loaded (Camelot TOC chosen; the data pack's plain TOC loaded too), the only recorded error was the deliberate
+  one, every probe section ran; results in `docs/FOREVER-API-NOTES.md` (raw: `docs/probes/1.60.1.70450.json`); `Maps.lua`
+  (57 maps) committed to the private pack.
 - [ ] Dev loop proven: edit a string in `Core/Slash.lua`, user types `/reload`, `tools/read_savedvars.py` shows the new value
-  within seconds; a deliberately thrown error appears in `SignpostDB.errors`.
+  within seconds; a deliberately thrown error appears in `SignpostDB.errors`. — The error half is done (`/signpost debug
+  throw` arrived in `SignpostDB.errors` with its stack). For the edit half `PING_TEXT` is now "pong 2: edited after the first
+  beta run": in game `/reload` (or a fresh login), `/signpost ping`, `/reload`, then `read_savedvars.py ping`. (A value set by
+  newly loaded code reaches the file at the *next* reload, so the check needs ping + reload after the code is loaded.)
 
 ## Phase 1 — Wowhead export (1–30 first)
 
@@ -140,12 +146,14 @@ Acceptance
 
 - [ ] Phase 0 entirely.
 - [ ] `/signpost dumpmaps` (one dump covers the whole client map tree); `C_TaxiMap` dumps at each flight master visited
-  (`/signpost debug on` records `TAXIMAP_OPENED`).
+  (`/signpost debug on` records `TAXIMAP_OPENED`). — Dump done 2026-10-17 (57 maps; every flight node per continent comes with
+  it, no visit needed). Flight-master visits with `debug on` are still wanted for the taxi UI shape and known-node state.
 - [ ] One of each UI event payload (`QUEST_DETAIL`, `GOSSIP_SHOW`, `TRAINER_SHOW`, `MERCHANT_SHOW`, `TAXIMAP_OPENED`) via
   `/signpost debug on`.
 - [ ] One boat or zeppelin ride (Orgrimmar → Undercity) and one flight with `/signpost debug on` + `/signpost debug pos`.
 - [ ] Confirm ammo/quivers, First Aid in `GetProfessions()`, atlases/templates, `UIDropDownMenuTemplate`, `UnitXP` secrecy (all in
-  `/signpost probe`).
+  `/signpost probe`). — All answered on 2026-10-17 except First Aid's `GetProfessions()` slot, which needs a re-probe after
+  training First Aid.
 - [ ] Walk 1–12 on a troll hunter with `/signpost debug on` (NPC positions at quest/gossip events, the Durotar → Barrens crossing).
 
 ## Notes
@@ -158,5 +166,6 @@ Acceptance
   with a plain `git clone`, so the libraries must be in the repo. `.pkgmeta` declares them as embedded libraries.
 - `Core/Init.lua` and `Core/Errors.lua` load before the libraries, so an error in a library on Forever is recorded too.
 - Data pack class files follow PLAN §3.5/§6 (`classes/<CLASS>.lua`); CLAUDE.md's layout still says `Hunter.lua`.
-- Local Lua without a toolchain: `python tools/lua.py test` runs the specs through lupa's Lua 5.1 with luassert (setup in the
-  docstring); CI runs real busted. luacheck/stylua binaries live in the gitignored `tools/bin/`.
+- Local toolchain (2026-10-17, approved by the user): WinLibs GCC (winget `BrechtSanders.WinLibs.POSIX.UCRT`), Lua 5.1.5 +
+  LuaRocks 3.8.0 built with hererocks into the gitignored `.venv/lua51`, then busted 2.3.0 and luacheck 1.2.0 — the same
+  versions as CI. Setup steps in README "Development". The earlier lupa-based stand-in runner is gone.

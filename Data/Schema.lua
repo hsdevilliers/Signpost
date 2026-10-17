@@ -16,8 +16,11 @@ local L = ns.L
 -- npcs[npcID]       = { n = name, l = level, side = side, p = { coordinate, ... }, src = "wowhead" | "learned" }
 -- objects[objectID] = { n = name, p = { coordinate, ... }, src = ... }
 -- items[itemID]     = { n = name, sell = copper, vendors = { npcIDs }, drops = { npcIDs }, quest = startsQuestID }
--- maps[uiMapID]     = { n = name, t = mapType, parent = uiMapID, wowhead = zoneID,
---                       world = { instance, x0, y0, x1, y1 } }
+-- maps[uiMapID]     = { n = name, t = mapType, parent = uiMapID, wowhead = zoneID, flags = n, group = mapGroupID,
+--                       world = { instance, x0, y0, x1, y1 },   -- world yards of the map's top-left and bottom-right
+--                       rect = { minX, maxX, minY, maxY },      -- the map's rectangle on its parent map (0-1)
+--                       taxi = { { id = nodeID, n = name, x = pct, y = pct, faction = 0 | 1 | 2 }, ... },  -- continent
+--                       dungeons = { { id = journalInstanceID, n = name, x = pct, y = pct }, ... } }
 -- professions[skillLineID] = { n = name, trainers = { npcIDs },
 --                       recipes = { [spellID] = { item = itemID, skill = { orange, yellow, green, grey },
 --                                   reagents = { [itemID] = count }, src = "trainer" | "vendor" | "drop" } } }
@@ -28,8 +31,8 @@ local L = ns.L
 --                                        side = side } },
 --                       inns = { [npcID] = { p = coordinate, side = side } },
 --                       crossings = { { from = coordinate, to = coordinate, name = text, src = ... } } }
--- _meta             = { schema = DATA_SCHEMA, source = "stub" | "wowhead", generated = "YYYY-MM-DD", patch = text,
---                       tables = { [name] = { count = n, exported = "YYYY-MM-DD" } } }
+-- _meta             = { schema = DATA_SCHEMA, source = "stub" | "generated", generated = "YYYY-MM-DD", patch = text,
+--                       tables = { [name] = { count = n, exported = "YYYY-MM-DD", from = origin } } }
 
 ns.DATA_SCHEMA = 1
 
@@ -48,7 +51,8 @@ ns.EmptyDB = {
 local Data = {}
 ns.Data = Data
 
--- VERIFY(beta): ## OptionalDeps loads Signpost_Data before this file runs (probe: addons.dataPackAtLoad).
+-- ## OptionalDeps loads Signpost_Data before this file runs (verified on beta 1.60.1.70450); the probe keeps
+-- reporting it.
 ns.dataPackAtLoad = type(Signpost_Data) == "table"
 
 function Data:Init()

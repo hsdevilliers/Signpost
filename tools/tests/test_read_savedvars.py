@@ -28,6 +28,15 @@ class ReadSavedVarsTest(unittest.TestCase):
             self.assertEqual(svfiles.load_db(files[0]), {"ping": {"text": "pong"}})
             self.assertEqual(svfiles.load_db(files[1]), {})
 
+    def test_names_characters_in_the_forever_layout(self):
+        # Forever keeps per-character files in <number>/<Character>-<Realm>/SavedVariables/
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            char_dir = root / "70" / "Name-Realm" / "SavedVariables"
+            char_dir.mkdir(parents=True)
+            (char_dir / "Signpost.lua").write_text("SignpostCharDB = {\n}\n")
+            self.assertEqual([f.owner for f in svfiles.find_files(root)], ["account", "Name-Realm"])
+
 
 if __name__ == "__main__":
     unittest.main()

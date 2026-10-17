@@ -44,8 +44,8 @@ function Util.Resolve(path)
 	return value
 end
 
--- Secret values (some unit data on Forever) error on arithmetic and comparison; check before touching them.
--- VERIFY(beta): issecretvalue exists on Forever (probe: values.issecretvalue).
+-- Secret values (on Forever e.g. UnitHealth and UnitPower) error on arithmetic and comparison; check before touching
+-- them. issecretvalue exists on Forever (verified on beta 1.60.1.70450).
 function Util.IsSecret(value)
 	local check = issecretvalue
 	return check ~= nil and check(value) and true or false
@@ -180,7 +180,7 @@ function Util.PlayerPosition(withChain)
 	return pos
 end
 
--- Classic skill-line IDs: First Aid, Leatherworking, Cooking, Fishing, Skinning. VERIFY(beta): unchanged on Forever.
+-- Skill-line IDs of First Aid, Leatherworking, Cooking, Fishing, Skinning (Classic values, unchanged on Forever).
 Util.PROFESSION_SKILL_LINES = { 129, 165, 185, 356, 393 }
 
 -- The profession APIs as this client shapes them (GetProfessions slots, the Classic skill-line list if present,

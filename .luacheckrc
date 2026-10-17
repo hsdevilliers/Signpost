@@ -148,6 +148,3 @@ files["tests/"] = {
 	allow_defined_top = true,
 	ignore = { "111", "112", "113", "121", "122", "143", "211/ADDON_NAME" },
 }
-
--- The local busted stand-in defines busted's globals for the spec files it loads.
-files["tests/run.lua"] = { ignore = { "111", "131" } }
