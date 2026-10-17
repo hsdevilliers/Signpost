@@ -35,6 +35,17 @@ SavedVars.charMigrations = {
 	end,
 }
 
+-- Modules add their own defaults at file load: RegisterDefaults("account", "stepFrame", { scale = 1 }), or with
+-- "char" for SignpostCharDB. Registered after SavedVariables loaded (unusual), the defaults are applied at once.
+function SavedVars:RegisterDefaults(scope, key, value)
+	local defaults = scope == "char" and self.charDefaults or self.defaults
+	defaults[key] = value
+	local db = scope == "char" and ns.char or ns.db
+	if db then
+		SavedVars.ApplyDefaults(db, { [key] = value })
+	end
+end
+
 function SavedVars.ApplyDefaults(target, defaults)
 	for key, value in pairs(defaults) do
 		if target[key] == nil then

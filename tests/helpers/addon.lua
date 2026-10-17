@@ -19,6 +19,8 @@ function M.files()
 end
 
 -- opts.before(mock): runs after the mock is installed and before any addon file loads (e.g. to set a data pack).
+-- opts.extra: files not in the TOC yet, loaded after the TOC files in the given order; a file the TOC already lists
+-- is not loaded twice, so specs keep working once the module joins the TOC.
 -- opts.login == false: stop after loading the files, before ADDON_LOADED and PLAYER_LOGIN.
 function M.load(opts)
 	opts = opts or {}
@@ -27,7 +29,17 @@ function M.load(opts)
 		opts.before(mock)
 	end
 	local ns = {}
-	for _, path in ipairs(M.files()) do
+	local files, listed = M.files(), {}
+	for _, path in ipairs(files) do
+		listed[path] = true
+	end
+	for _, path in ipairs(opts.extra or {}) do
+		if not listed[path] then
+			files[#files + 1] = path
+			listed[path] = true
+		end
+	end
+	for _, path in ipairs(files) do
 		local chunk = assert(loadfile(path))
 		chunk("Signpost", ns)
 	end

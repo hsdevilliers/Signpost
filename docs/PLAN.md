@@ -387,6 +387,9 @@ SavedVariables:
 
 ## 5. Guide DSL (RestedXP-inspired, ours) — Phase 2 moves this section to `docs/GUIDE-FORMAT.md`
 
+**The canonical specification is now `docs/GUIDE-FORMAT.md` (2026-10-17)**, with the module contracts in `docs/ENGINE.md`;
+this section is the original sketch and yields to them where they differ.
+
 Guides are plain text inside a Lua long string. One directive per line, `--` comments, blank lines ignored.
 
 ```
@@ -494,6 +497,13 @@ Rules the parser enforces:
   `#skipquest` line with a reason; otherwise the lint fails. Profession quests from `Professions.lua` (e.g. Expert/Artisan unlock quests, if Forever has them) are checked the same way, per profession track.
 
 ## 6. Data pipeline — "thorough scan of Wowhead" (`tools/`)
+
+**Decided 2026-10-17 (supersedes the single-source plan below where they differ):** the private pack is our own database in our
+schema, merged from layers by `tools/signpost_tools/datapack.py` — the client's dumps, **QuestieDB's Forever data** (with its
+maintainers' permission; facts only), the **Wowhead exporter run by the user** (Wowhead's robots.txt disallows Anthropic's agents,
+so Claude Code never fetches it; the exporter fills gaps the other layers leave), and **positions learned in game**. Scope: only
+what the route needs — names, positions and entity links; quest progress comes from the in-game quest log; items only where the
+route touches them (CLAUDE.md "Data sources").
 
 Addons cannot access the network, so Wowhead is scanned **offline** and compiled into Lua tables. Python 3.11+, `requests`,
 `beautifulsoup4`, `lxml`. Everything cached on disk, re-fetched only when older than `--max-age` (default 7 days) or `--force`.

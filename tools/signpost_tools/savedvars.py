@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-__all__ = ["LuaParseError", "parse_savedvars", "load_savedvars"]
+__all__ = ["LuaParseError", "parse_savedvars", "load_savedvars", "parse_value"]
 
 
 class LuaParseError(ValueError):
@@ -190,6 +190,19 @@ class _Parser:
             self.pos = name.end()  # type: ignore[union-attr]
             self.expect("=")
             result[name.group()] = self.value()  # type: ignore[union-attr]
+
+
+def parse_value(text: str) -> object:
+    """Parse one Lua literal, optionally preceded by `return` (the body of a `[[return {...}]]` data string)."""
+    parser = _Parser(text.lstrip("﻿"))
+    parser.skip()
+    if re.match(r"return\b", parser.text[parser.pos :]):
+        parser.pos += len("return")
+    value = parser.value()
+    parser.skip()
+    if parser.pos < len(parser.text):
+        parser.fail("unexpected text after the value")
+    return value
 
 
 def parse_savedvars(text: str) -> dict[str, object]:

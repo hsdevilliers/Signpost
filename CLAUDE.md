@@ -12,7 +12,9 @@ primary and secondary professions, each profession being a module plus a route t
 Full plan: `docs/PLAN.md`. Client/API discoveries: `docs/FOREVER-API-NOTES.md`. Progress log: `docs/PROGRESS.md`.
 
 Read `docs/PLAN.md` before doing anything. Work phase by phase; do not start a later phase until the current
-phase's acceptance criteria are checked off in `docs/PROGRESS.md`.
+phase's acceptance criteria are checked off in `docs/PROGRESS.md`. Exception (user, 2026-10-17): Phases 1–3 are built in
+parallel tracks against the contracts in `docs/ENGINE.md` and `docs/GUIDE-FORMAT.md`; acceptance boxes are still ticked
+in order and only with evidence.
 
 ## Hard facts about the target client (do not "correct" these from memory)
 - WoW: Forever runs the **modern Mainline (retail-style) addon API**, not the Classic Era API. Interface `16001`.
@@ -54,8 +56,21 @@ Signpost_Data/            PRIVATE repo — never pushed anywhere public
   cache/                       raw Wowhead responses
   data-gaps.md
 ```
-The public addon **must run without the data pack** (guides carry their own IDs and coordinates); the pack only adds names, objective
-text, validation and learned positions.
+The public addon **must run without the data pack** (guides carry their own IDs and coordinates); the pack only adds names,
+positions, entity links (who starts/ends a quest, chains, where things are), validation and learned positions. It holds only what the
+route needs: quest progress and objectives come from the in-game quest log, and items appear only when the route touches them (quest
+starters, objective items with their drop sources, things a step buys or collects, profession materials) — names and sources, never
+stats or prices.
+
+**Data sources (user, 2026-10-17):** the private pack is our own database, built in layers (`Signpost_Data/layers/`, merged by
+`tools/signpost_tools/datapack.py`): the client's own dumps, QuestieDB's Forever data, the Wowhead exporter, and positions learned in
+game.
+- **QuestieDB**: used with its maintainers' permission (Questie Discord, 2026-10-17) as an input to the private pack only. Read its files
+  as data (never execute them), keep only the facts above in our schema, never copy its code, formats, corrections or text, never put
+  any of it in the public repo.
+- **Wowhead is off-limits to Claude Code**: Wowhead's robots.txt disallows Anthropic's agents. Never fetch wowhead.com or
+  nether.wowhead.com, never run `tools/wowhead_*.py` against the network, never read cached Wowhead pages. The user runs those tools;
+  work from their structure-only diagnostics.
 
 ## Coding rules
 - Lua 5.1 as shipped by WoW: no `goto`, no `//`, no integer division, bit ops via `bit.*`. Use `string.format` not `%q` tricks.

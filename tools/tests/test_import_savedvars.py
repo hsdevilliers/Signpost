@@ -42,24 +42,45 @@ class MapsTableTest(unittest.TestCase):
         self.assertNotIn("taxi", maps[1411])
         self.assertEqual(maps[1414]["taxi"], [{"id": 23, "n": "Orgrimmar", "x": 58.1, "y": 45.3, "faction": 1}])
 
-    def test_keeps_wowhead_zone_ids(self):
-        maps = import_savedvars.maps_table(DUMP, {1411: {"n": "Durotar", "wowhead": 14}})
-        self.assertEqual(maps[1411]["wowhead"], 14)
-
-
 class DataPackTest(unittest.TestCase):
-    def test_update_table_writes_the_file_and_meta(self):
+    def test_build_merges_layers_field_by_field(self):
         with tempfile.TemporaryDirectory() as tmp:
             pack = Path(tmp)
             datapack.init_stub(pack)
-            maps = import_savedvars.maps_table(DUMP)
-            datapack.update_table(pack, "Maps.lua", maps, "test", "client dumpmaps, build 70450")
-            self.assertEqual(datapack.read_table(pack, "Maps.lua"), maps)
+            datapack.write_layer(pack, "client", {"maps": import_savedvars.maps_table(DUMP)}, "client dumpmaps")
+            datapack.write_layer(
+                pack,
+                "questie",
+                {"quests": {1: {"n": "One", "s": {"npc": [7]}}}, "npcs": {7: {"n": "Seven", "p": [[1411, 1, 2]]}}},
+                "QuestieDB",
+            )
+            datapack.write_layer(
+                pack,
+                "wowhead",
+                {"maps": {1411: {"wowhead": 14}}, "npcs": {7: {"p": [[1411, 3, 4]]}}},
+                "Wowhead",
+                ["quest page without Quick Facts: 9"],
+            )
+            counts = datapack.build(pack, "test")
+            self.assertEqual(counts["maps"], 3)
+            maps = datapack.read_table(pack, "maps")
+            self.assertEqual((maps[1411]["n"], maps[1411]["wowhead"], maps[1411]["src"]), ("Durotar", 14, "client,wowhead"))
+            npc = datapack.read_table(pack, "npcs")[7]
+            self.assertEqual((npc["n"], npc["p"], npc["src"]), ("Seven", [[1411, 3, 4]], "questie,wowhead"))
+            self.assertEqual(sorted(datapack.read_table(pack, "travel")), ["crossings", "flightMasters", "inns", "transports"])
             meta = datapack.read_meta(pack)
             self.assertEqual(meta["source"], "generated")
-            self.assertEqual(meta["tables"]["maps"]["count"], 3)
+            self.assertEqual(meta["tables"]["quests"]["count"], 1)
+            self.assertEqual(sorted(meta["layers"]), ["client", "questie", "wowhead"])
+            gaps = (pack / "data-gaps.md").read_text(encoding="utf-8")
+            self.assertIn("Quests without an end (1)", gaps)
+            self.assertIn("quest page without Quick Facts: 9", gaps)
             with self.assertRaises(RuntimeError):
                 datapack.init_stub(pack)  # refuses to wipe generated data
+
+    def test_unknown_layer_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ValueError):
+            datapack.write_layer(Path(tmp), "elsewhere", {}, "nowhere")
 
 
 if __name__ == "__main__":

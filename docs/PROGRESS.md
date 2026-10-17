@@ -180,6 +180,12 @@ Acceptance
 - Data pack class files follow PLAN §3.5/§6 (`classes/<CLASS>.lua`); CLAUDE.md's layout updated to match (user, 2026-10-17).
 - 2026-10-17, user decision: dev builds (git checkouts) record events by themselves (`/signpost debug off` opts out for good,
   `/signpost debug on` opts back in); release builds record only after `/signpost debug on`.
+- 2026-10-17, user decisions on data: our own database fed by layers (client dumps, QuestieDB's Forever data with its maintainers'
+  permission, the user-run Wowhead exporter, learned positions); Claude Code never accesses Wowhead (its robots.txt disallows
+  Anthropic's agents); only route-relevant facts are kept (CLAUDE.md "Data sources").
+- 2026-10-17, user decision: Phases 1–3 are built in parallel (Wave 1: eleven tracks in git worktrees against
+  `docs/ENGINE.md` and `docs/GUIDE-FORMAT.md`); journal, automation and the Durotar content follow in Wave 2. Acceptance boxes
+  are still ticked in order, with evidence.
 - Local toolchain (2026-10-17, approved by the user): WinLibs GCC (winget `BrechtSanders.WinLibs.POSIX.UCRT`), Lua 5.1.5 +
   LuaRocks 3.8.0 built with hererocks into the gitignored `.venv/lua51`, then busted 2.3.0 and luacheck 1.2.0 — the same
   versions as CI. Setup steps in README "Development". The earlier lupa-based stand-in runner is gone.

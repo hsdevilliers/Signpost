@@ -12,6 +12,7 @@ __pycache__/
 *.pyc
 .luacheckcache
 .claude/settings.local.json
+.claude/worktrees/
 
 # Build output
 dist/

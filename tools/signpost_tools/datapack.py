@@ -1,13 +1,16 @@
-"""Writing the private data pack (../Signpost_Data): the table files, _meta.lua and the TOC.
+"""The private data pack (../Signpost_Data): source layers, the merged tables, _meta.lua, the TOC and the gap report.
 
-Every exporter writes through here, so the pack keeps one layout: `_meta.lua` creates the global `Signpost_Data`,
-each table file assigns one field, and the TOC lists them in load order. The contract is documented in
-Data/Schema.lua; SCHEMA must match ns.DATA_SCHEMA there.
+Our own database in our own schema (Data/Schema.lua; SCHEMA must match ns.DATA_SCHEMA). Each source writes a layer,
+`layers/<source>.json` (local, gitignored): `client` (the game's own dumps), `questie` (facts read from QuestieDB's
+Forever files, used with its maintainers' permission), `wowhead` (the user-run exporter) and `learned` (positions
+recorded in game). `build` merges the layers in that order, field by field — a later source overrides an earlier one
+only where it has the field — and writes the tables with `src` on every record naming the layers it came from.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import json
 from pathlib import Path
 
 from .luawriter import write_lua
@@ -16,19 +19,22 @@ from .savedvars import LuaParseError, load_savedvars
 SCHEMA = 1
 GLOBAL = "Signpost_Data"
 INTERFACE = 16001
+LAYERS = ("client", "questie", "wowhead", "learned")
 
-# file name -> field of Signpost_Data, in TOC order after _meta.lua
+# table -> file, in TOC order after _meta.lua
 TABLE_FILES = {
-    "Quests.lua": "quests",
-    "Npcs.lua": "npcs",
-    "Objects.lua": "objects",
-    "Items.lua": "items",
-    "Maps.lua": "maps",
-    "Professions.lua": "professions",
-    "Travel.lua": "travel",
+    "quests": "Quests.lua",
+    "npcs": "Npcs.lua",
+    "objects": "Objects.lua",
+    "items": "Items.lua",
+    "maps": "Maps.lua",
+    "professions": "Professions.lua",
+    "travel": "Travel.lua",
 }
-
-EMPTY_TRAVEL = {"flightMasters": {}, "transports": {}, "inns": {}, "crossings": {}}
+# Travel is not keyed by ID: keyed parts merge per key, list parts append.
+TRAVEL_KEYED = ("flightMasters", "inns")
+TRAVEL_LISTS = ("transports", "crossings")
+GAP_LIST_LIMIT = 150
 
 
 def header(tool: str) -> list[str]:
@@ -49,7 +55,7 @@ def write_toc(out_dir: Path, version: str, class_files: list[str]) -> None:
         "## X-Generated-By: Signpost/tools/datapack.py",
         "",
         "_meta.lua",
-        *TABLE_FILES,
+        *TABLE_FILES.values(),
         *(f"classes\\{name}" for name in class_files),
     ]
     (out_dir / "Signpost_Data.toc").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
@@ -68,43 +74,175 @@ def read_meta(out_dir: Path) -> dict | None:
 
 
 def write_meta(out_dir: Path, meta: dict, tool: str) -> None:
-    write_lua(out_dir / "_meta.lua", header(tool), [(GLOBAL, {"_meta": meta, "classes": {}})], expand_depth=2)
+    write_lua(out_dir / "_meta.lua", header(tool), [(GLOBAL, {"_meta": meta, "classes": {}})], expand_depth=3)
 
 
-def write_table(out_dir: Path, file_name: str, value: object, tool: str) -> None:
-    write_lua(out_dir / file_name, header(tool), [(f"{GLOBAL}.{TABLE_FILES[file_name]}", value)])
+def write_table(out_dir: Path, table: str, value: object, tool: str) -> None:
+    write_lua(out_dir / TABLE_FILES[table], header(tool), [(f"{GLOBAL}.{table}", value)])
 
 
-def read_table(out_dir: Path, file_name: str) -> object:
-    """The current contents of one table file, or None if the file is missing."""
-    path = out_dir / file_name
+def read_table(out_dir: Path, table: str) -> object:
+    """The current contents of one generated table, or None if its file is missing."""
+    path = out_dir / TABLE_FILES[table]
     if not path.exists():
         return None
-    return load_savedvars(path).get(f"{GLOBAL}.{TABLE_FILES[file_name]}")
+    return load_savedvars(path).get(f"{GLOBAL}.{table}")
 
 
-def update_table(out_dir: Path, file_name: str, value: dict, tool: str, origin: str) -> None:
-    """Write one table and record it in _meta (count, date, origin); the pack's source becomes "generated"."""
-    write_table(out_dir, file_name, value, tool)
+def empty_travel() -> dict:
+    return {part: {} for part in TRAVEL_KEYED} | {part: [] for part in TRAVEL_LISTS}
+
+
+# Layers ----------------------------------------------------------------------------------------------------------------
+
+
+def layer_path(out_dir: Path, name: str) -> Path:
+    return out_dir / "layers" / f"{name}.json"
+
+
+def write_layer(out_dir: Path, name: str, tables: dict[str, object], origin: str, problems: list[str] = ()) -> None:
+    """Store one source's records ({table: {id: record}}; travel as its parts) with where they came from."""
+    if name not in LAYERS:
+        raise ValueError(f"unknown layer {name!r}")
+    path = layer_path(out_dir, name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    layer = {
+        "origin": origin,
+        "written": dt.date.today().isoformat(),
+        "tables": tables,
+        "problems": sorted(set(problems)),
+    }
+    path.write_text(json.dumps(layer, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+
+
+def _numeric_keys(records: dict) -> dict:
+    return {int(key) if isinstance(key, str) and key.lstrip("-").isdigit() else key: value for key, value in records.items()}
+
+
+def read_layer(out_dir: Path, name: str) -> dict | None:
+    path = layer_path(out_dir, name)
+    if not path.exists():
+        return None
+    layer = json.loads(path.read_text(encoding="utf-8"))
+    tables = layer.get("tables") or {}
+    for table, records in tables.items():
+        if table == "travel":
+            for part in TRAVEL_KEYED:
+                if isinstance(records.get(part), dict):
+                    records[part] = _numeric_keys(records[part])
+        elif isinstance(records, dict):
+            tables[table] = _numeric_keys(records)
+    return layer
+
+
+def merge_layers(layers: list[tuple[str, dict]]) -> dict[str, object]:
+    """Merge layers in order: records by ID, field by field; `src` lists the contributing layers."""
+    merged: dict[str, object] = {table: {} for table in TABLE_FILES}
+    merged["travel"] = empty_travel()
+    for name, layer in layers:
+        for table, records in (layer.get("tables") or {}).items():
+            if table == "travel":
+                travel = merged["travel"]
+                for part in TRAVEL_KEYED:
+                    for ident, record in (records.get(part) or {}).items():
+                        travel[part].setdefault(ident, {}).update(record)
+                for part in TRAVEL_LISTS:
+                    travel[part].extend(item for item in records.get(part) or [] if item not in travel[part])
+                continue
+            target_table = merged.setdefault(table, {})
+            for ident, record in records.items():
+                target = target_table.setdefault(ident, {})
+                sources = target.get("src")
+                target.update(record)
+                target["src"] = name if not sources or sources == name else f"{sources},{name}"
+    return merged
+
+
+# Gap report ------------------------------------------------------------------------------------------------------------
+
+
+def _id_list(ids: list) -> str:
+    shown = ", ".join(str(i) for i in sorted(ids)[:GAP_LIST_LIMIT])
+    more = len(ids) - GAP_LIST_LIMIT
+    return shown + (f" (and {more} more)" if more > 0 else "")
+
+
+def gap_report(merged: dict, layers: list[tuple[str, dict]], tool: str) -> str:
+    quests, npcs, objects = merged["quests"], merged["npcs"], merged["objects"]
+    no_start = [qid for qid, q in quests.items() if not q.get("s")]
+    no_end = [qid for qid, q in quests.items() if not q.get("e")]
+    unplaced = set()
+    for q in quests.values():
+        for part in ("s", "e"):
+            for npc in (q.get(part) or {}).get("npc") or []:
+                if not (npcs.get(npc) or {}).get("p"):
+                    unplaced.add(f"npc {npc}")
+            for obj in (q.get(part) or {}).get("obj") or []:
+                if not (objects.get(obj) or {}).get("p"):
+                    unplaced.add(f"object {obj}")
+    lines = [
+        "# Data gaps",
+        "",
+        f"Generated by `tools/{tool}` on {dt.date.today().isoformat()}. IDs and problem kinds only.",
+        "",
+        "Layers: " + ", ".join(f"{name} ({layer.get('origin')}, {layer.get('written')})" for name, layer in layers),
+        "",
+        f"Totals: {len(quests)} quests, {len(npcs)} NPCs, {len(objects)} objects, {len(merged['items'])} items, "
+        f"{len(merged['maps'])} maps.",
+        "",
+        f"## Quests without a start ({len(no_start)})",
+        "",
+        _id_list(no_start) or "none",
+        "",
+        f"## Quests without an end ({len(no_end)})",
+        "",
+        _id_list(no_end) or "none",
+        "",
+        f"## Quest givers and enders without a position ({len(unplaced)})",
+        "",
+        _id_list(list(unplaced)) or "none",
+    ]
+    for name, layer in layers:
+        problems = layer.get("problems") or []
+        if problems:
+            lines += ["", f"## Problems reported by the {name} source ({len(problems)})", ""]
+            lines += [f"- {problem}" for problem in problems[:GAP_LIST_LIMIT]]
+    return "\n".join(lines) + "\n"
+
+
+# Build -----------------------------------------------------------------------------------------------------------------
+
+
+def build(out_dir: Path, tool: str) -> dict[str, int]:
+    """Merge every layer into the tables, _meta.lua, the TOC and data-gaps.md. Returns the record count per table."""
+    layers = [(name, layer) for name in LAYERS if (layer := read_layer(out_dir, name))]
+    merged = merge_layers(layers)
+    for table, value in merged.items():
+        write_table(out_dir, table, value, tool)
+    counts = {table: len(value) for table, value in merged.items() if table != "travel"}
+    counts["travel"] = sum(len(merged["travel"][part]) for part in (*TRAVEL_KEYED, *TRAVEL_LISTS))
     today = dt.date.today().isoformat()
-    meta = read_meta(out_dir) or {"schema": SCHEMA, "tables": {}}
-    meta["source"] = "generated"
-    meta["generated"] = today
-    tables = meta.get("tables") if isinstance(meta.get("tables"), dict) else {}
-    tables[TABLE_FILES[file_name]] = {"count": len(value), "exported": today, "from": origin}
-    meta["tables"] = tables
+    meta = {
+        "schema": SCHEMA,
+        "source": "generated" if any(counts.values()) else "stub",
+        "generated": today,
+        "tables": {table: {"count": count} for table, count in counts.items()},
+        "layers": {name: {"origin": layer.get("origin"), "written": layer.get("written")} for name, layer in layers},
+    }
     write_meta(out_dir, meta, tool)
+    write_toc(out_dir, today, [])
+    (out_dir / "data-gaps.md").write_text(gap_report(merged, layers, tool), encoding="utf-8", newline="\n")
+    return counts
 
 
 def init_stub(out_dir: Path, force: bool = False) -> list[Path]:
-    """Write an empty pack that loads in the client and matches the schema. Refuses to replace real export data."""
+    """Write an empty pack that loads in the client and matches the schema. Refuses to replace generated data."""
     meta = read_meta(out_dir)
     if meta and meta.get("source") != "stub" and not force:
-        raise RuntimeError(f"{out_dir} holds exported data (source {meta.get('source')!r}); use --force to replace it")
+        raise RuntimeError(f"{out_dir} holds generated data (source {meta.get('source')!r}); use --force to replace it")
     out_dir.mkdir(parents=True, exist_ok=True)
-    today = dt.date.today().isoformat()
-    write_meta(out_dir, {"schema": SCHEMA, "source": "stub", "generated": today, "tables": {}}, "datapack.py")
-    for file_name, field in TABLE_FILES.items():
-        write_table(out_dir, file_name, dict(EMPTY_TRAVEL) if field == "travel" else {}, "datapack.py")
+    write_meta(out_dir, {"schema": SCHEMA, "source": "stub", "generated": dt.date.today().isoformat(), "tables": {}}, "datapack.py")
+    for table in TABLE_FILES:
+        write_table(out_dir, table, empty_travel() if table == "travel" else {}, "datapack.py")
     write_toc(out_dir, "stub", [])
-    return [out_dir / "Signpost_Data.toc", out_dir / "_meta.lua", *(out_dir / name for name in TABLE_FILES)]
+    return [out_dir / "Signpost_Data.toc", out_dir / "_meta.lua", *(out_dir / name for name in TABLE_FILES.values())]

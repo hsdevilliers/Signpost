@@ -161,6 +161,20 @@ describe("SavedVariables", function()
 		assert.are.same({ someGuide = 3 }, ns.char.progress)
 	end)
 
+	it("takes module defaults registered before and after load", function()
+		local ns = addon.load({
+			login = false,
+			before = function()
+				G.SignpostDB = { dbVersion = 1, stepFrame = { scale = 2 } }
+			end,
+		})
+		ns.SavedVars:RegisterDefaults("account", "stepFrame", { scale = 1, locked = false })
+		WowMock.fire("ADDON_LOADED", "Signpost")
+		assert.are.same({ scale = 2, locked = false }, ns.db.stepFrame)
+		ns.SavedVars:RegisterDefaults("char", "late", { on = true })
+		assert.are.same({ on = true }, ns.char.late)
+	end)
+
 	it("does not migrate a brand-new table", function()
 		local ns = addon.load()
 		local db = {}

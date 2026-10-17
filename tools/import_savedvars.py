@@ -1,10 +1,10 @@
-"""Turn Signpost's SavedVariables into files: JSON for inspection, and Maps.lua for the private data pack.
+"""Turn Signpost's SavedVariables into files: JSON for inspection, and the data pack's client layer.
 
     python tools/import_savedvars.py --json --out savedvars.json   SignpostDB and every SignpostCharDB as JSON
-    python tools/import_savedvars.py --maps                         Maps.lua from SignpostDB.mapDump (/signpost dumpmaps)
+    python tools/import_savedvars.py --maps                         client layer (maps) from SignpostDB.mapDump, then rebuild
 
 --from DIR reads a copied SavedVariables folder (the play machine's); --pack DIR is the data pack (default
-../Signpost_Data). Wowhead zone IDs already in Maps.lua are kept when the map list is regenerated.
+../Signpost_Data). The maps go into layers/client.json and the pack is rebuilt from every layer (datapack.build).
 --merge-learned (learned NPC positions and zone crossings into the pack) arrives with Core/Learn.lua.
 """
 
@@ -39,9 +39,8 @@ def _points(entries: object) -> list[dict] | None:
     return points or None
 
 
-def maps_table(dump: dict, previous: dict | None = None) -> dict[int, dict]:
-    """Maps.lua from a /signpost dumpmaps result. `previous` (the current Maps.lua) supplies Wowhead zone IDs."""
-    previous = previous if isinstance(previous, dict) else {}
+def maps_table(dump: dict) -> dict[int, dict]:
+    """The client layer's maps from a /signpost dumpmaps result (Wowhead zone IDs come from the wowhead layer)."""
     maps: dict[int, dict] = {}
     for entry in dump.get("maps") or []:
         if not isinstance(entry, dict) or not isinstance(entry.get("id"), int) or "error" in entry:
@@ -62,9 +61,6 @@ def maps_table(dump: dict, previous: dict | None = None) -> dict[int, dict]:
         if entry.get("type") == CONTINENT:
             record["taxi"] = _points(entry.get("taxi"))
         record["dungeons"] = _points(entry.get("dungeons"))
-        old = previous.get(map_id)
-        if isinstance(old, dict) and old.get("wowhead") is not None:
-            record["wowhead"] = old["wowhead"]
         maps[map_id] = {k: v for k, v in record.items() if v is not None}
     return maps
 
@@ -104,10 +100,11 @@ def main() -> None:
         dump = databases["account"].get("mapDump")
         if not isinstance(dump, dict) or not dump.get("maps"):
             sys.exit("SignpostDB has no mapDump: type /signpost dumpmaps in game, wait for 'saved', then /reload")
-        maps = maps_table(dump, datapack.read_table(options.pack, "Maps.lua"))
+        maps = maps_table(dump)
         origin = f"client dumpmaps, build {dump.get('build')}"
-        datapack.update_table(options.pack, "Maps.lua", maps, "import_savedvars.py", origin)
-        print(f"wrote {options.pack / 'Maps.lua'}: {len(maps)} maps ({origin})")
+        datapack.write_layer(options.pack, "client", {"maps": maps}, origin)
+        counts = datapack.build(options.pack, "import_savedvars.py")
+        print(f"client layer: {len(maps)} maps ({origin}); data pack rebuilt: {counts}")
 
 
 if __name__ == "__main__":
