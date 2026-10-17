@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import wowhead_export
-from signpost_tools import datapack, wowhead
+from signpost_tools import datapack, geo, wowhead
 from signpost_tools.savedvars import load_savedvars
 
 CLIENT_MAPS = {
@@ -246,7 +246,8 @@ class ExportTest(unittest.TestCase):
 
         # entities: pages only for what no layer has placed; names from the quest page's Gatherer data
         npcs, objects = datapack.read_table(self.pack, "npcs"), datapack.read_table(self.pack, "objects")
-        self.assertEqual(npcs[7], {"n": "Seven", "p": [[9411, 42.1, 68.05], [9411, 80, 10]], "src": "wowhead"})
+        # spawns grouped by signpost_tools.geo.cluster: a group is the real spawn nearest its centre
+        self.assertEqual(npcs[7], {"n": "Seven", "p": [[9411, 42, 68], [9411, 80, 10]], "src": "wowhead"})
         self.assertEqual(objects[8]["p"], [[9411, 10, 20]])
         self.assertNotIn(70, layer["npcs"])
         self.assertIn("npc without coordinates: 71", problems)
@@ -265,6 +266,10 @@ class ExportTest(unittest.TestCase):
         )
         self.assertIn("classes\\HUNTER.lua", (self.pack / "Signpost_Data.toc").read_text(encoding="utf-8"))
         self.assertEqual(counts["classes"], 1)
+        # the series' previous quest is the questie layer's preSingle, not a field of its own
+        self.assertEqual(quests[202]["preSingle"], [201])
+        self.assertEqual(quests[201]["next"], 202)
+        self.assertNotIn("prev", quests[202])
 
         # professions: numeric keys survive the JSON layer; a secondary skill falls back to its recipe list
         professions = datapack.read_table(self.pack, "professions")
@@ -312,12 +317,12 @@ class ExportTest(unittest.TestCase):
         self.export("--stages", "professions", "--professions", "129")
         layer = datapack.read_layer(self.pack, "wowhead")
         self.assertEqual(sorted(layer["tables"]["professions"]), [129, 165])
-        self.assertIn("HUNTER", layer["classes"])
-        self.assertNotIn("new", layer["classes"]["HUNTER"]["quests"][0])
+        self.assertIn("HUNTER", layer["tables"]["classes"])
+        self.assertNotIn("new", layer["tables"]["classes"]["HUNTER"]["quests"][0])
         self.export("--fresh", "--stages", "professions", "--professions", "165")
         layer = datapack.read_layer(self.pack, "wowhead")
         self.assertNotIn(101, layer["tables"]["quests"])
-        self.assertEqual(layer["classes"], {})
+        self.assertEqual(layer["tables"]["classes"], {})
 
     def test_a_profession_or_class_that_gives_nothing_keeps_the_earlier_export(self):
         self.export("--stages", "professions,class", "--professions", "165", "--class", "HUNTER")
@@ -328,8 +333,8 @@ class ExportTest(unittest.TestCase):
         self.assertIn("profession pages gave nothing; the earlier export is kept: 165", export.problems)
         self.assertIn("class pages could not be read; the earlier export is kept: HUNTER", export.problems)
         layer = datapack.read_layer(self.pack, "wowhead")
-        self.assertEqual(sorted(layer["tables"]["professions"][165]["recipes"]), ["601", "602"])
-        self.assertEqual(layer["classes"]["HUNTER"]["trainers"], [3001])
+        self.assertEqual(sorted(layer["tables"]["professions"][165]["recipes"]), [601, 602])
+        self.assertEqual(layer["tables"]["classes"]["HUNTER"]["trainers"], [3001])
 
     def test_missing_maps_stop_the_export(self):
         (self.pack / "Maps.lua").unlink()
@@ -374,14 +379,13 @@ class HelperTest(unittest.TestCase):
         self.assertTrue(facts["professions"] and all(isinstance(skill, int) and skill > 0 for skill in facts["professions"]))
         self.assertTrue(facts["classes"] and all(isinstance(info["id"], int) for info in facts["classes"].values()))
 
-    def test_int_keys_and_sides(self):
-        self.assertEqual(wowhead_export.int_keys({"1": {"-2": [{"3": "x"}]}, "a": 1}), {1: {-2: [{3: "x"}]}, "a": 1})
+    def test_sides(self):
         self.assertEqual(wowhead_export.combined_side(["Horde", "both"]), "Horde")
         self.assertEqual(wowhead_export.combined_side(["Horde", "Alliance"]), "both")
         self.assertEqual(wowhead_export.combined_side([None, "hostile"]), None)
 
-    def test_cluster(self):
-        self.assertEqual(wowhead_export.cluster([(1.0, 1.0), (1.5, 1.5), (50.0, 50.0)]), [[1.25, 1.25], [50.0, 50.0]])
+    def test_cluster_is_the_shared_helper(self):
+        self.assertIs(wowhead_export.cluster, geo.cluster)
 
     def test_map_overrides(self):
         with tempfile.TemporaryDirectory() as tmp:

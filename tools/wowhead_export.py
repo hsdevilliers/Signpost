@@ -13,7 +13,7 @@ Stages (--stages, default zones,quests; --class adds class):
   zones        Wowhead zone IDs and level ranges, joined by name to the client's maps (tools/map_overrides.json,
                {"uiMapID": wowheadZoneID}, settles names that do not join)
   quests       each selected zone's quest list (faction and level filtered), then the quest pages still needed:
-               start and end NPCs, objects and items, previous and next quest
+               start and end NPCs, objects and items, the series' previous quest (preSingle) and next quest
   class        trainer spells by level, class trainers, class quest chains; `new` marks chains with a quest missing from
                Wowhead's Classic database (--no-classic-check skips that lookup)
   professions  every profession the client knows (docs/probes): recipes (item, skill colors, reagents, source), trainers
@@ -26,7 +26,7 @@ with a start and an end, an NPC or object page only when nothing has a position 
 quest lists are always read, so quests the other sources lack (Forever's new ones) are found.
 
 Output: layers/wowhead.json in --out (records of earlier runs are kept; --fresh starts over), then the pack is rebuilt
-from every layer (datapack.build: the tables, _meta.lua, the TOC, data-gaps.md) and classes/<CLASS>.lua is written.
+from every layer (datapack.build: the tables, classes/<CLASS>.lua, _meta.lua, the TOC, data-gaps.md).
 Only IDs, names, numbers and coordinates are kept; there are no item records (items appear only as IDs inside quest and
 recipe records). One request every 2 s, cached for --max-age days under <out>/cache/wowhead, robots.txt honoured.
 Problems are reported by ID and kind only, so the output can be shared.
@@ -45,7 +45,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from signpost_tools import datapack, devconfig, wowhead  # noqa: E402
-from signpost_tools.luawriter import write_lua  # noqa: E402
+from signpost_tools.geo import cluster  # noqa: E402
 
 DEFAULT_OUT = devconfig.REPO_ROOT.parent / "Signpost_Data"
 PROBES = devconfig.REPO_ROOT / "docs" / "probes"
@@ -87,41 +87,12 @@ CLUSTER_RADIUS = 3.0  # percent of the map
 QUEST_PARTS = (("start", "s"), ("end", "e"))
 LINK_KINDS = {"npc": "npc", "object": "obj", "item": "item"}  # Quick Facts link type -> quest s/e group
 ENTITY_TABLES = (("npc", "npcs"), ("object", "objects"))
-LAYER_TABLES = ("maps", "quests", "npcs", "objects", "professions")  # plus travel; never items (CLAUDE.md scope)
+# plus travel and classes; never items (CLAUDE.md scope)
+LAYER_TABLES = ("maps", "quests", "npcs", "objects", "professions")
 
 
 def normalize(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.lower())
-
-
-def cluster(points: list[tuple[float, float]], radius: float = CLUSTER_RADIUS, limit: int = MAX_CLUSTERS) -> list[list[float]]:
-    """Greedy clustering of spawn points (percent coordinates): up to `limit` centres, biggest clusters first."""
-    clusters: list[list[float]] = []  # [sum_x, sum_y, count]
-    for x, y in points:
-        for entry in clusters:
-            cx, cy = entry[0] / entry[2], entry[1] / entry[2]
-            if (cx - x) ** 2 + (cy - y) ** 2 <= radius**2:
-                entry[0] += x
-                entry[1] += y
-                entry[2] += 1
-                break
-        else:
-            clusters.append([x, y, 1])
-    clusters.sort(key=lambda entry: -entry[2])
-    return [[round(e[0] / e[2], 2), round(e[1] / e[2], 2)] for e in clusters[:limit]]
-
-
-def int_keys(value: object) -> object:
-    """A copy with every digit-string dict key turned back into a number, at any depth (JSON layers store keys as
-    strings; the tables are keyed by IDs and levels)."""
-    if isinstance(value, dict):
-        return {
-            (int(key) if isinstance(key, str) and re.fullmatch(r"-?\d+", key) else key): int_keys(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [int_keys(item) for item in value]
-    return value
 
 
 def client_facts(probes: Path = PROBES) -> dict:
@@ -190,8 +161,9 @@ class Export:
         self.tables["travel"] = {part: dict(travel.get(part) or {}) for part in datapack.TRAVEL_KEYED} | {
             part: list(travel.get(part) or []) for part in datapack.TRAVEL_LISTS
         }
-        # Not a datapack table yet: kept beside the layer's tables and written as classes/<CLASS>.lua (after_build).
-        self.classes: dict = dict(previous.get("classes") or {})
+        # classes[classFile]: datapack.build writes them as classes/<CLASS>.lua. (A layer written before the classes
+        # table existed kept them beside its tables.)
+        self.classes: dict = dict(earlier.get("classes") or previous.get("classes") or {})
         self.known = self.known_sets(earlier)
         self.wanted: dict[str, set[int]] = {"npc": set(), "object": set()}
         self.names: dict[str, dict[int, str]] = {"npc": {}, "object": {}}
@@ -406,7 +378,9 @@ class Export:
             side = {"horde": "Horde", "alliance": "Alliance", "both": "both"}.get(str(facts.get("side", "")).lower())
             if side:
                 record["side"] = side
-        record["prev"], record["next"] = wowhead.neighbours(wowhead.series(page.text))
+        # The series' previous quest is a prerequisite: the questie layer's field for "one of these first" (preSingle).
+        previous, record["next"] = wowhead.neighbours(wowhead.series(page.text))
+        record["preSingle"] = [previous] if previous else None
         for kind, entries in wowhead.gatherer(page.text).items():
             label = {wowhead.TYPE_NPC: "npc", wowhead.TYPE_OBJECT: "object"}.get(kind)
             for ident, fields in entries.items():
@@ -489,16 +463,19 @@ class Export:
         return not exists
 
     def chains(self, quest_ids: set[int], new: dict[int, bool | None]) -> list[dict]:
-        """Group quests into chains along their prev/next links (within the set), each in chain order."""
+        """Group quests into chains along their prerequisite (preSingle, preGroup) and next links (within the set),
+        each in chain order."""
         neighbours: dict[int, set[int]] = {quest_id: set() for quest_id in quest_ids}
         following: dict[int, int] = {}
         for quest_id in quest_ids:
             record = self.view("quests", quest_id)
-            before, after = record.get("prev"), record.get("next")
-            if before in quest_ids and before != quest_id:
-                neighbours[quest_id].add(before)
-                neighbours[before].add(quest_id)
-                following.setdefault(before, quest_id)
+            befores = [*(record.get("preSingle") or []), *(record.get("preGroup") or [])]
+            after = record.get("next")
+            for before in befores:
+                if before in quest_ids and before != quest_id:
+                    neighbours[quest_id].add(before)
+                    neighbours[before].add(quest_id)
+                    following.setdefault(before, quest_id)
             if after in quest_ids and after != quest_id:
                 neighbours[quest_id].add(after)
                 neighbours[after].add(quest_id)
@@ -740,7 +717,9 @@ class Export:
                 self.problem(f"{kind} spawn in unknown Wowhead zone {point['zone']}", ident)
                 continue
             by_map.setdefault(map_id, []).append((point["x"], point["y"]))
-        positions = [[map_id, x, y] for map_id, pts in sorted(by_map.items()) for x, y in cluster(pts)]
+        positions = [
+            [map_id, x, y] for map_id, pts in sorted(by_map.items()) for x, y in cluster(pts, CLUSTER_RADIUS, MAX_CLUSTERS)
+        ]
         if positions:
             entry["p"] = positions
         else:
@@ -762,40 +741,9 @@ class Export:
 
     def write(self) -> dict[str, int]:
         out = self.options.out
-        datapack.write_layer(out, "wowhead", self.tables, self.origin(), self.problems)
-        store_classes(out, self.classes)
-        counts = datapack.build(out, TOOL)
-        after_build(out, self.classes)
-        counts["classes"] = len(self.classes)
-        return counts
-
-
-# Until datapack.build knows the classes table and keeps nested numeric keys (see the track report), the exporter keeps
-# its class records beside the layer's tables and fixes up the built files itself.
-
-
-def store_classes(out: Path, classes: dict) -> None:
-    """Keep the class records in layers/wowhead.json next to its tables (datapack.build skips unknown keys there)."""
-    path = datapack.layer_path(out, "wowhead")
-    layer = json.loads(path.read_text(encoding="utf-8"))
-    layer["classes"] = classes
-    path.write_text(json.dumps(layer, ensure_ascii=False, sort_keys=True), encoding="utf-8")
-
-
-def after_build(out: Path, classes: dict) -> None:
-    """Restore the numeric keys inside Professions.lua (recipes, reagents), write classes/<CLASS>.lua and list those
-    files in the TOC."""
-    professions = datapack.read_table(out, "professions")
-    if isinstance(professions, dict) and professions:
-        datapack.write_table(out, "professions", int_keys(professions), TOOL)
-    if not classes:
-        return
-    folder = out / "classes"
-    folder.mkdir(parents=True, exist_ok=True)
-    for class_file, record in sorted(classes.items()):
-        target = f"{datapack.GLOBAL}.classes.{class_file}"
-        write_lua(folder / f"{class_file}.lua", datapack.header(TOOL), [(target, int_keys(record))])
-    datapack.write_toc(out, dt.date.today().isoformat(), [f"{class_file}.lua" for class_file in sorted(classes)])
+        tables = {**self.tables, datapack.CLASSES: self.classes}
+        datapack.write_layer(out, "wowhead", tables, self.origin(), self.problems)
+        return datapack.build(out, TOOL)
 
 
 def parse_transport(spec: str) -> tuple[str, int, int]:

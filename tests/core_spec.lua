@@ -377,6 +377,31 @@ describe("debug log", function()
 		assert.are.same({ n = 2, 1, "Boar slain: 2/10" }, log[3].a)
 	end)
 
+	it("never stores a player's name or GUID from the npc unit (a quest a party member shares)", function()
+		local guid = "Player-1465-0A1B2C3D"
+		local ns, mock = addon.load({
+			before = function()
+				G.UnitGUID = function(unit)
+					return unit == "npc" and guid or nil
+				end
+				G.UnitName = function(unit)
+					return unit == "npc" and "Someone" or nil
+				end
+			end,
+		})
+		SlashCmdList.SIGNPOST("debug on")
+		mock.fire("QUEST_DETAIL")
+		guid = "Creature-0-1465-1-47-3100-00004F2B3C"
+		mock.fire("GOSSIP_SHOW")
+		G.UnitGUID, G.UnitName = nil, nil
+		local log = ns.db.eventLog
+		assert.are.equal("QUEST_DETAIL", log[#log - 1].e)
+		assert.is_nil(log[#log - 1].s.npc.name)
+		assert.is_nil(log[#log - 1].s.npc.guid)
+		assert.is_table(log[#log - 1].s.npc.pos)
+		assert.are.same({ 3100, "Someone" }, { log[#log].s.npc.id, log[#log].s.npc.name })
+	end)
+
 	it("only counts the frequent events", function()
 		local ns, mock = addon.load()
 		SlashCmdList.SIGNPOST("debug on")

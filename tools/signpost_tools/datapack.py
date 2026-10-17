@@ -4,13 +4,15 @@ Our own database in our own schema (Data/Schema.lua; SCHEMA must match ns.DATA_S
 `layers/<source>.json` (local, gitignored): `client` (the game's own dumps), `questie` (facts read from QuestieDB's
 Forever files, used with its maintainers' permission), `wowhead` (the user-run exporter) and `learned` (positions
 recorded in game). `build` merges the layers in that order, field by field — a later source overrides an earlier one
-only where it has the field — and writes the tables with `src` on every record naming the layers it came from.
+only where it has the field — and writes the tables with `src` on every record naming the layers it came from. The
+`classes` table goes into one file per class, classes/<CLASS>.lua (`Signpost_Data.classes.<CLASS>`), listed in the TOC.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from pathlib import Path
 
 from .luawriter import write_lua
@@ -34,6 +36,9 @@ TABLE_FILES = {
 # Travel is not keyed by ID: keyed parts merge per key, list parts append.
 TRAVEL_KEYED = ("flightMasters", "inns")
 TRAVEL_LISTS = ("transports", "crossings")
+# classes[classFile]: merged like the keyed tables, written as classes/<CLASS>.lua (PLAN §3.5/§6).
+CLASSES = "classes"
+CLASS_DIR = "classes"
 GAP_LIST_LIMIT = 150
 
 
@@ -115,8 +120,24 @@ def write_layer(out_dir: Path, name: str, tables: dict[str, object], origin: str
     path.write_text(json.dumps(layer, ensure_ascii=False, sort_keys=True), encoding="utf-8")
 
 
-def _numeric_keys(records: dict) -> dict:
-    return {int(key) if isinstance(key, str) and key.lstrip("-").isdigit() else key: value for key, value in records.items()}
+_DIGITS = re.compile(r"-?\d+")
+
+
+def _numeric_key(key: object) -> object:
+    if isinstance(key, str) and _DIGITS.fullmatch(key):
+        return int(key)
+    return key
+
+
+def numeric_keys(value: object) -> object:
+    """A copy with every digit-string dict key turned back into a number, at any depth. JSON stores keys as strings,
+    and the tables are keyed by numbers inside records too (recipes by spell ID, reagents by item ID, class spells by
+    level); no field name is all digits."""
+    if isinstance(value, dict):
+        return {_numeric_key(key): numeric_keys(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [numeric_keys(item) for item in value]
+    return value
 
 
 def read_layer(out_dir: Path, name: str) -> dict | None:
@@ -124,21 +145,16 @@ def read_layer(out_dir: Path, name: str) -> dict | None:
     if not path.exists():
         return None
     layer = json.loads(path.read_text(encoding="utf-8"))
-    tables = layer.get("tables") or {}
-    for table, records in tables.items():
-        if table == "travel":
-            for part in TRAVEL_KEYED:
-                if isinstance(records.get(part), dict):
-                    records[part] = _numeric_keys(records[part])
-        elif isinstance(records, dict):
-            tables[table] = _numeric_keys(records)
+    layer["tables"] = numeric_keys(layer.get("tables") or {})
     return layer
 
 
 def merge_layers(layers: list[tuple[str, dict]]) -> dict[str, object]:
-    """Merge layers in order: records by ID, field by field; `src` lists the contributing layers."""
+    """Merge layers in order: records by ID (classes by class token), field by field; `src` lists the contributing
+    layers."""
     merged: dict[str, object] = {table: {} for table in TABLE_FILES}
     merged["travel"] = empty_travel()
+    merged[CLASSES] = {}
     for name, layer in layers:
         for table, records in (layer.get("tables") or {}).items():
             if table == "travel":
@@ -213,14 +229,35 @@ def gap_report(merged: dict, layers: list[tuple[str, dict]], tool: str) -> str:
 # Build -----------------------------------------------------------------------------------------------------------------
 
 
+_CLASS_TOKEN = re.compile(r"[A-Z][A-Z0-9_]*")
+
+
+def write_classes(out_dir: Path, classes: dict, tool: str) -> list[str]:
+    """classes/<CLASS>.lua (`Signpost_Data.classes.<CLASS> = {...}`) per class record; returns the file names, for the
+    TOC. A key that is not a class token (uppercase letters, digits, _) is skipped."""
+    names = []
+    for class_file, record in sorted(classes.items(), key=lambda item: str(item[0])):
+        if not (isinstance(class_file, str) and _CLASS_TOKEN.fullmatch(class_file)):
+            continue
+        folder = out_dir / CLASS_DIR
+        folder.mkdir(parents=True, exist_ok=True)
+        write_lua(folder / f"{class_file}.lua", header(tool), [(f"{GLOBAL}.{CLASSES}.{class_file}", record)])
+        names.append(f"{class_file}.lua")
+    return names
+
+
 def build(out_dir: Path, tool: str) -> dict[str, int]:
-    """Merge every layer into the tables, _meta.lua, the TOC and data-gaps.md. Returns the record count per table."""
+    """Merge every layer into the tables, the class files, _meta.lua, the TOC and data-gaps.md. Returns the record
+    count per table."""
     layers = [(name, layer) for name in LAYERS if (layer := read_layer(out_dir, name))]
     merged = merge_layers(layers)
+    classes = merged.pop(CLASSES)
     for table, value in merged.items():
         write_table(out_dir, table, value, tool)
+    class_files = write_classes(out_dir, classes, tool)
     counts = {table: len(value) for table, value in merged.items() if table != "travel"}
     counts["travel"] = sum(len(merged["travel"][part]) for part in (*TRAVEL_KEYED, *TRAVEL_LISTS))
+    counts[CLASSES] = len(class_files)
     today = dt.date.today().isoformat()
     meta = {
         "schema": SCHEMA,
@@ -230,7 +267,7 @@ def build(out_dir: Path, tool: str) -> dict[str, int]:
         "layers": {name: {"origin": layer.get("origin"), "written": layer.get("written")} for name, layer in layers},
     }
     write_meta(out_dir, meta, tool)
-    write_toc(out_dir, today, [])
+    write_toc(out_dir, today, class_files)
     (out_dir / "data-gaps.md").write_text(gap_report(merged, layers, tool), encoding="utf-8", newline="\n")
     return counts
 
