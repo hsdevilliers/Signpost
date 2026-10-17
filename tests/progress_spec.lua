@@ -136,12 +136,21 @@ describe("auto-advance", function()
 		assert.is_true(record(ns).done["valley:1"])
 		assert.are.equal("valley:2", record(ns).current)
 
-		-- within the same second the evaluation waits for a timer, and only one is scheduled
+		-- within the same second the evaluation waits for a timer, and only one is scheduled (other modules in the TOC
+		-- schedule timers of their own, so only Engine/Progress.lua's are counted)
 		world.flags.b = true
+		local after, scheduled = G.C_Timer.After, 0
+		G.C_Timer.After = function(seconds, fn)
+			if debug.getinfo(2, "S").source:find("Engine/Progress.lua", 1, true) then
+				scheduled = scheduled + 1
+			end
+			return after(seconds, fn)
+		end
 		ns.Events:Fire("CONTEXT_CHANGED", "quests")
 		ns.Events:Fire("CONTEXT_CHANGED", "bags")
+		G.C_Timer.After = after
 		assert.are.equal("valley:2", current(ns))
-		assert.are.equal(1, #mock.timers)
+		assert.are.equal(1, scheduled)
 		mock.runTimers()
 		assert.are.equal("valley:3", current(ns))
 	end)

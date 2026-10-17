@@ -24,6 +24,21 @@ local RESET = {
 	"C_TradeSkillUI",
 	"Enum",
 	"issecretvalue",
+	-- client functions the Wave 1 module mocks install (tests/mocks/*.lua remove them too)
+	"C_SpellBook",
+	"GetBindLocation",
+	"GetProfessionInfo",
+	"GetProfessions",
+	"GetTaxiMapID",
+	"IsPlayerSpell",
+	"IsSpellKnown",
+	"NumTaxiNodes",
+	"TaxiNodeGetType",
+	"TaxiNodeName",
+	"UnitHealth",
+	"UnitOnTaxi",
+	"UnitPosition",
+	"UnitPower",
 }
 
 function M.install()
@@ -78,6 +93,19 @@ function M.install()
 	end
 	function methods.IsShown(frame)
 		return frame.shown == true
+	end
+	-- A frame's font strings, textures and lines get the same generic methods, so UI code can build its widgets.
+	local function newRegion(kind)
+		return setmetatable({ frameType = kind, events = {}, scripts = {} }, frameMeta)
+	end
+	function methods.CreateFontString()
+		return newRegion("FontString")
+	end
+	function methods.CreateTexture()
+		return newRegion("Texture")
+	end
+	function methods.CreateLine()
+		return newRegion("Line")
 	end
 
 	function CreateFrame(frameType, name, _, template)

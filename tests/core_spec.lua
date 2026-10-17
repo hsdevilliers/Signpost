@@ -111,7 +111,10 @@ describe("SavedVariables", function()
 		assert.are.equal(SignpostDB, ns.db)
 		assert.are.equal(SignpostCharDB, ns.char)
 		assert.are.equal(1, ns.db.dbVersion)
-		assert.are.same({ npcs = {}, objects = {}, taxi = {}, crossings = {} }, ns.db.learned)
+		assert.are.same(
+			{ npcs = {}, objects = {}, quests = {}, taxi = {}, crossings = {}, trainers = {}, vendors = {} },
+			ns.db.learned
+		)
 		assert.are.same({}, ns.char.progress)
 		assert.are.same(
 			{ time = 1790000000, version = "dev", toc = "test", client = "1.60.1", build = "70450", interface = 16001 },
@@ -128,7 +131,10 @@ describe("SavedVariables", function()
 		assert.are.equal(2, ns.db.settings.scale)
 		assert.is_true(ns.db.debug.chat)
 		assert.are.same({}, ns.db.debug.counts)
-		assert.are.same({ npcs = {}, objects = {}, taxi = {}, crossings = {} }, ns.db.learned)
+		assert.are.same(
+			{ npcs = {}, objects = {}, quests = {}, taxi = {}, crossings = {}, trainers = {}, vendors = {} },
+			ns.db.learned
+		)
 	end)
 
 	it("runs the migrations newer than the stored version, in order", function()

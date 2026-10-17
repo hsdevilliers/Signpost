@@ -1,6 +1,7 @@
 -- Scriptable learned professions for specs: GetProfessions (any number of values) and GetProfessionInfo in the retail
--- return order, and optionally C_TradeSkillUI's primary flag per skill line. tests/wow_mock.lua does not reset
--- GetProfessions/GetProfessionInfo, so specs call uninstall after each test.
+-- return order, and optionally C_TradeSkillUI's primary flag per skill line. tests/wow_mock.lua resets
+-- GetProfessions/GetProfessionInfo at every load (so install them in addon.load's `before`); specs also call uninstall
+-- after each test.
 local M = {}
 
 -- A profession index is not the slot number on the real client; keep them apart so the code cannot mix them up.

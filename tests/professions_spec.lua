@@ -154,8 +154,12 @@ describe("ns.Player professions", function()
 	end)
 
 	it("reads the professions at login", function()
-		client.install(G, clientSlots({ [1] = "skinning" }))
-		local ns = addon.load({ extra = { "Engine/Professions.lua" } })
+		local ns = addon.load({
+			extra = { "Engine/Professions.lua" },
+			before = function()
+				client.install(G, clientSlots({ [1] = "skinning" }))
+			end,
+		})
 		assert.are.equal(393, ns.Player.professions[393].skillLine)
 		assert.are.equal(1, ns.Player.professions[393].slot)
 	end)

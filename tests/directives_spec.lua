@@ -29,6 +29,9 @@ local CORE = {
 	"use",
 }
 
+-- Engine/Travel.lua (in the TOC since Wave 1 integration) registers the travel directives into the same registry.
+local TRAVEL = { "boat", "fly", "fp", "home", "hs", "path", "zeppelin", "zone" }
+
 -- A small data pack in Data/Schema.lua's shape (test values, not real data).
 local function fakePack()
 	return {
@@ -89,7 +92,14 @@ describe("the directive registry", function()
 		local ns, mock = mocks.load()
 		assert.are.same({}, mock.errors)
 		assert.are.same({}, ns.db.errors)
-		assert.are.same(CORE, ns.Directives:Names())
+		local expected = {}
+		for _, list in ipairs({ CORE, TRAVEL }) do
+			for _, name in ipairs(list) do
+				expected[#expected + 1] = name
+			end
+		end
+		table.sort(expected)
+		assert.are.same(expected, ns.Directives:Names())
 		assert.is_table(ns.Conditions)
 	end)
 
