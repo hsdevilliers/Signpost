@@ -3,7 +3,8 @@ std = "lua51"
 max_line_length = 120
 codes = true
 
-exclude_files = { "Libs/", "tools/bin/", ".venv/", "dist/", ".release/" }
+-- .lua/, .luarocks/ and .install/ are where CI's Lua setup actions install the toolchain inside the checkout.
+exclude_files = { "Libs/", "tools/bin/", ".venv/", "dist/", ".release/", ".lua/", ".luarocks/", ".install/" }
 
 ignore = {
 	"211/ADDON_NAME", -- every file opens with `local ADDON_NAME, ns = ...`
