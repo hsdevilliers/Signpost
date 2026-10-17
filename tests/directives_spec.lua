@@ -660,6 +660,39 @@ describe("targets", function()
 		assert.are.same({}, targets(ns, "complete", "789,3", context)) -- explore: no position
 	end)
 
+	it(".complete pairs the quest log's objectives with the pack's, whatever order the pack keeps", function()
+		local pack = fakePack()
+		-- the source's kind order (kills, items, kill credit, explore) differs from this quest log's
+		pack.quests[792] = {
+			n = "Out of Order",
+			o = {
+				{ k = "kill", id = 201 },
+				{ k = "item", id = 401 },
+				{ k = "kill", id = 950, credit = { 204 } },
+				{ k = "explore", p = { { 1411, 70, 70 } } },
+			},
+		}
+		pack.npcs[204] = { n = "Scared Peon", p = { { 1411, 65, 65 } } }
+		local ns = mocks.load({ pack = pack })
+		local context = mocks.context({ position = { map = 1411 }, log = { [792] = true } })
+		context.objectives[792] = {
+			{ text = "Pack Item: 1/5", type = "item", finished = false },
+			{ text = "Boar slain: 4/4", type = "monster", finished = true },
+			{ text = "Peons scared: 0/3", type = "monster", finished = false },
+		}
+		local item =
+			{ map = 1411, x = 60, y = 60, kind = "objective", npc = 202, label = "Pack Item: 1/5", objective = 1 }
+		local credit =
+			{ map = 1411, x = 65, y = 65, kind = "objective", npc = 204, label = "Peons scared: 0/3", objective = 3 }
+		-- by name (the item, the boar), by kind (the kill credit); the explore objective the log does not name stays
+		assert.are.same(
+			{ item, credit, { map = 1411, x = 70, y = 70, kind = "objective" } },
+			targets(ns, "complete", "792", context)
+		)
+		assert.are.same({ credit }, targets(ns, "complete", "792,3", context))
+		assert.are.same({}, targets(ns, "complete", "792,2", context))
+	end)
+
 	it("takes at most MAX_PINS pins from the pack per directive", function()
 		local pack = fakePack()
 		pack.quests[791] = { n = "Wide", o = { { k = "kill", id = 203, c = 1 } } }

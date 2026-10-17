@@ -871,6 +871,17 @@ describe("Parser steps", function()
 		assert.are.equal("a", step.hub)
 	end)
 
+	it("rejects a .sticky whose directive can never be satisfied (completable = false), as the lint does", function()
+		local Parser, env = setup()
+		env.defs.note.completable = false
+		env.defs.skill.completable = true
+		local guide =
+			parse(Parser, lines("step", "  .accept 1", "  .sticky .note keep going", "  .sticky .skill skinning 50"))
+		assertError(guide.errors, "test-guide", 3, ".sticky needs a directive that can be satisfied, not .note")
+		assert.are.equal(1, #guide.errors)
+		assert.are.same({ "skill" }, names(guide.steps[1].sticky))
+	end)
+
 	it("reports a step without directives and drops it", function()
 		local Parser = setup()
 		local guide = parse(

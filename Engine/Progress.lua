@@ -446,7 +446,7 @@ end
 function Progress:Describe(step)
 	local conditions = ns.Conditions
 	if conditions and conditions.Describe then
-		local ok, lines = ns.SafeCall(conditions.Describe, conditions, step, ns.Context)
+		local ok, lines = ns.SafeCall(conditions.Describe, conditions, step, ns.Context, self:State(step.id))
 		if ok and type(lines) == "table" then
 			local parts = {}
 			for _, line in ipairs(lines) do
@@ -961,6 +961,11 @@ end)
 
 ns.Events:RegisterMessage("PROFESSION_PLAN_CHANGED", function(_, plan)
 	Progress:OnPlanChanged(plan)
+end)
+
+-- ns.Guides:Select changed the character's guide: start it as at login.
+ns.Events:RegisterMessage("GUIDE_SELECTED", function()
+	Progress:Start()
 end)
 
 -- Slash commands --------------------------------------------------------------------------------------------------

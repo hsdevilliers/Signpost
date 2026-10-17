@@ -359,7 +359,16 @@ local function closeStep(state)
 				end
 			else
 				local directive = buildDirective(state, pending.source, record)
-				if directive and kind == STICKY then
+				if directive and kind == STICKY and directive.def.completable == false then
+					-- it could never be satisfied, so it would stay beside every later step (the lint rejects it too)
+					addError(
+						state.errors,
+						pending.source,
+						record.line,
+						L[".sticky needs a directive that can be satisfied, not .%s"],
+						record.name
+					)
+				elseif directive and kind == STICKY then
 					directive.sticky = true
 					sticky[#sticky + 1] = directive
 				elseif directive then

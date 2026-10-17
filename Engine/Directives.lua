@@ -280,20 +280,31 @@ function Pack.QuestEnders(questID)
 	return questEntities(questID, "e", "finish")
 end
 
--- The pack's objective `index` of a quest: kind ("kill" | "item" | "object" | "explore") and entity ID.
--- VERIFY(beta): the pack's objective order matches C_QuestLog.GetQuestObjectives (the .complete <questID>,<n> index).
-function Pack.QuestObjective(questID, index)
+-- The pack's objective records of a quest ({ k = "kill" | "object" | "item" | "spell" | "explore", id, credit, item,
+-- p }): references only, in the source's own order, not the quest log's (Data/Schema.lua). Engine code pairs them
+-- with the quest log's objectives through pairObjectives below.
+function Pack.QuestObjectives(questID)
 	local quest = record("quests", questID)
 	local objectives = quest and quest.o
-	local objective = type(objectives) == "table" and objectives[index]
-	if type(objective) == "table" then
+	local list = {}
+	for _, objective in ipairs(type(objectives) == "table" and objectives or {}) do
+		if type(objective) == "table" then
+			list[#list + 1] = objective
+		end
+	end
+	return list
+end
+
+-- The pack's objective `index` of a quest (in the pack's order): kind and entity ID.
+function Pack.QuestObjective(questID, index)
+	local objective = Pack.QuestObjectives(questID)[index]
+	if objective then
 		return objective.k, objective.id
 	end
 end
 
 function Pack.QuestObjectiveCount(questID)
-	local quest = record("quests", questID)
-	return quest and type(quest.o) == "table" and #quest.o or 0
+	return #Pack.QuestObjectives(questID)
 end
 
 function Pack.ItemName(itemID)
@@ -309,6 +320,12 @@ end
 function Pack.ItemDrops(itemID)
 	local item = record("items", itemID)
 	return idList(item and item.drops)
+end
+
+-- The objects (chests, plants, crates) an item comes from.
+function Pack.ItemObjectDrops(itemID)
+	local item = record("items", itemID)
+	return idList(item and item.objDrops)
 end
 
 function Pack.MapName(mapID)
@@ -607,20 +624,112 @@ local function objectiveList(context, questID)
 	return type(objectives) == "table" and objectives or {}
 end
 
--- An objective's area from the pack: kill -> the NPC, object -> the object, item -> the NPCs that drop it.
-local function objectivePins(questID, index, context, label)
-	local kind, id = Pack.QuestObjective(questID, index)
-	local who = { npcs = {}, objects = {} }
-	if type(id) == "number" then
-		if kind == "kill" then
-			who.npcs = { id }
-		elseif kind == "object" then
-			who.objects = { id }
-		elseif kind == "item" then
-			who.npcs = Pack.ItemDrops(id)
+-- An item's name from the client or the pack, or nil (no placeholder: it is looked for in quest log text).
+local function itemName(itemID)
+	local item = C_Item or {}
+	return nonEmpty(Util.Call(item.GetItemNameByID, itemID))
+		or nonEmpty(Util.Call(item.GetItemInfo, itemID))
+		or Pack.ItemName(itemID)
+end
+
+-- The lower-case names a quest log objective's text may mention for a pack objective: its NPC (and the creatures
+-- that give its kill credit), its object or its item.
+local function objectiveNames(objective)
+	local names, id = {}, objective.id
+	local function add(name)
+		if name then
+			names[#names + 1] = name:lower()
 		end
 	end
-	local pins = entityPins(who, "objective", context)
+	if type(id) == "number" then
+		if objective.k == "kill" then
+			add(Pack.Name("npc", id))
+		elseif objective.k == "object" then
+			add(Pack.Name("object", id))
+		elseif objective.k == "item" then
+			add(itemName(id))
+		end
+	end
+	if objective.k == "kill" then
+		for _, npcID in ipairs(idList(objective.credit)) do
+			add(Pack.Name("npc", npcID))
+		end
+	end
+	return names
+end
+
+-- The quest log's objective types (C_QuestLog.GetQuestObjectives) and the pack's objective kinds they correspond to.
+local LOG_KINDS = { monster = "kill", item = "item", object = "object" }
+
+-- Pairs the quest log's objectives with the pack's, which come in the source's order (QuestieDB lists kills, objects,
+-- items, kill credit, spells, then explore; the quest log need not): a log objective whose text names a pack
+-- objective's NPC, object or item is that one; the others take the first unpaired pack objective of their kind.
+-- Returns { [log index] = pack index }.
+local function pairObjectives(objectives, list)
+	local paired, taken, names = {}, {}, {}
+	for j, objective in ipairs(list) do
+		names[j] = objectiveNames(objective)
+	end
+	for i, objective in ipairs(objectives) do
+		local text = type(objective) == "table" and nonEmpty(objective.text)
+		text = text and text:lower()
+		for j = 1, text and #list or 0 do
+			if not taken[j] then
+				for _, name in ipairs(names[j]) do
+					if name ~= "" and text:find(name, 1, true) then
+						paired[i], taken[j] = j, true
+						break
+					end
+				end
+			end
+			if paired[i] then
+				break
+			end
+		end
+	end
+	for i, objective in ipairs(objectives) do
+		local kind = not paired[i] and type(objective) == "table" and LOG_KINDS[objective.type]
+		for j = 1, kind and #list or 0 do
+			if not taken[j] and list[j].k == kind then
+				paired[i], taken[j] = j, true
+				break
+			end
+		end
+	end
+	return paired
+end
+
+-- A pack objective's area: kill -> its NPC and the creatures that give its kill credit, object -> the object, item ->
+-- the NPCs and objects it drops from, explore -> the area's points. `index` is the quest log's objective number when
+-- known.
+local function objectivePins(objective, context, label, index)
+	local pins
+	if objective.k == "explore" then
+		pins = {}
+		for _, point in ipairs(type(objective.p) == "table" and objective.p or {}) do
+			local map, x, y = coordinate(point)
+			if map and #pins < Directives.MAX_PINS then
+				pins[#pins + 1] = { map = map, x = x, y = y, kind = "objective" }
+			end
+		end
+	else
+		local who, id = { npcs = {}, objects = {} }, objective.id
+		if type(id) == "number" then
+			if objective.k == "kill" then
+				who.npcs = { id }
+				for _, npcID in ipairs(idList(objective.credit)) do
+					if npcID ~= id then
+						who.npcs[#who.npcs + 1] = npcID
+					end
+				end
+			elseif objective.k == "object" then
+				who.objects = { id }
+			elseif objective.k == "item" then
+				who.npcs, who.objects = Pack.ItemDrops(id), Pack.ItemObjectDrops(id)
+			end
+		end
+		pins = entityPins(who, "objective", context)
+	end
 	for _, pin in ipairs(pins) do
 		pin.label, pin.objective = label, index
 	end
@@ -669,20 +778,34 @@ Directives:Register("complete", {
 		end
 		return true
 	end,
-	-- the areas of the objectives still open
+	-- the areas of the objectives still open: the quest log's open objectives, each paired with the pack's objective
+	-- it is about, plus pack objectives the log does not show; before the quest is in the log, the pack's own list
 	targets = function(args, context)
 		local questID = args.questID
-		local objectives = objectiveList(context, questID)
-		local first, last = 1, math.max(Pack.QuestObjectiveCount(questID), #objectives)
-		if args.objective then
-			first, last = args.objective, args.objective
-		end
+		local objectives, list = objectiveList(context, questID), Pack.QuestObjectives(questID)
 		local pins = {}
-		for index = first, last do
-			local objective = objectives[index]
-			if not (type(objective) == "table" and objective.finished) then
-				local label = type(objective) == "table" and objectiveText(objective) or nil
-				appendPins(pins, objectivePins(questID, index, context, label))
+		if #objectives == 0 then
+			for j = args.objective or 1, args.objective or #list do
+				if list[j] then
+					appendPins(pins, objectivePins(list[j], context, nil, j))
+				end
+			end
+			return pins
+		end
+		local paired, claimed = pairObjectives(objectives, list), {}
+		for i, objective in ipairs(objectives) do
+			local j = paired[i]
+			if j then
+				claimed[j] = true
+				local open = not (type(objective) == "table" and objective.finished)
+				if open and (args.objective == nil or args.objective == i) then
+					appendPins(pins, objectivePins(list[j], context, objectiveText(objective), i))
+				end
+			end
+		end
+		for j = 1, args.objective == nil and #list or 0 do
+			if not claimed[j] then
+				appendPins(pins, objectivePins(list[j], context, nil, nil))
 			end
 		end
 		return pins
@@ -1089,10 +1212,11 @@ Directives:Register("collect", {
 	usage = ".collect <itemID>,<count>",
 	parse = itemCountParser(".collect <itemID>,<count>"),
 	isSatisfied = haveEnough,
-	-- nearby vendors, then the NPCs that drop it
+	-- nearby vendors, then the NPCs and objects it drops from
 	targets = function(args, context)
 		local pins = nearbyNpcPins(Pack.ItemVendors(args.itemID), "vendor", context)
-		return appendPins(pins, entityPins({ npcs = Pack.ItemDrops(args.itemID) }, "gather", context))
+		local sources = { npcs = Pack.ItemDrops(args.itemID), objects = Pack.ItemObjectDrops(args.itemID) }
+		return appendPins(pins, entityPins(sources, "gather", context))
 	end,
 	describe = function(args, context)
 		return itemCountLine(L["Collect %s (%d/%d)"], args, context)

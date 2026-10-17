@@ -82,17 +82,30 @@ local function lineText(line)
 	end
 end
 
+-- The step's directive states from ns.Progress (a .craft count, a .path's next waypoint), or nil.
+local function statesFor(step)
+	local progress = ns.Progress
+	if progress and progress.State and step.id ~= nil then
+		local ok, states = ns.SafeCall(progress.State, progress, step.id)
+		if ok and type(states) == "table" then
+			return states
+		end
+	end
+end
+
 -- The step's display lines from ns.Conditions:Describe, as plain strings (a line may also be a table with `text`).
+-- Lines Describe marks as sticky (its second result) are left to the "Ongoing:" lines (StepFrame:StickyLines).
 function StepFrame.DescribeLines(step)
 	local lines, conditions = {}, ns.Conditions
 	if type(step) ~= "table" or not (conditions and conditions.Describe) then
 		return lines
 	end
-	local ok, described = ns.SafeCall(conditions.Describe, conditions, step, ns.Context)
+	local ok, described, info = ns.SafeCall(conditions.Describe, conditions, step, ns.Context, statesFor(step))
 	if ok and type(described) == "table" then
-		for _, line in ipairs(described) do
+		for i, line in ipairs(described) do
+			local meta = type(info) == "table" and info[i]
 			local text = lineText(line)
-			if text and text ~= "" then
+			if text and text ~= "" and not (type(meta) == "table" and meta.sticky) then
 				lines[#lines + 1] = text
 			end
 		end
@@ -100,8 +113,9 @@ function StepFrame.DescribeLines(step)
 	return lines
 end
 
--- One sticky directive's text: its ">> text" override, else its directive's description.
-local function describeDirective(directive)
+-- One sticky directive's text: its ">> text" override, else its directive's description (with its state, when known:
+-- a .craft count, a boarded transport).
+local function describeDirective(directive, state)
 	if type(directive) ~= "table" then
 		return nil
 	end
@@ -110,7 +124,7 @@ local function describeDirective(directive)
 	end
 	local def = directive.def
 	if type(def) == "table" and def.describe then
-		local ok, text = ns.SafeCall(def.describe, directive.args, ns.Context)
+		local ok, text = ns.SafeCall(def.describe, directive.args, ns.Context, state)
 		if ok and type(text) == "string" and text ~= "" then
 			return text
 		end
@@ -134,8 +148,30 @@ function StepFrame.DescribeSticky(step)
 	return texts
 end
 
--- The sticky lines beside the current step: its own .sticky directives and those of the active sticky steps
--- (ns.Progress:Sticky()), each text once and none that the body already shows.
+-- The texts of a step's sticky directives that are still active (ns.Progress:ActiveSticky: one satisfied since stays
+-- away), each described with its state; all of its .sticky directives when Progress cannot tell.
+function StepFrame.DescribeActiveSticky(step)
+	local progress = ns.Progress
+	if not (type(step) == "table" and step.id ~= nil and progress and progress.ActiveSticky) then
+		return StepFrame.DescribeSticky(step)
+	end
+	local ok, active = ns.SafeCall(progress.ActiveSticky, progress, step.id)
+	if not (ok and type(active) == "table") then
+		return StepFrame.DescribeSticky(step)
+	end
+	local texts = {}
+	for _, entry in ipairs(active) do
+		local text = type(entry) == "table" and describeDirective(entry.directive, entry.state)
+		if text then
+			texts[#texts + 1] = text
+		end
+	end
+	return texts
+end
+
+-- The sticky lines beside the current step: the still active .sticky directives of the current step and of the
+-- sticky steps (ns.Progress:Sticky(), ns.Progress:ActiveSticky()), each text once and none that the body already
+-- shows.
 function StepFrame:StickyLines(current, bodyLines)
 	local steps = {}
 	if type(current) == "table" and type(current.sticky) == "table" and #current.sticky > 0 then
@@ -154,7 +190,7 @@ function StepFrame:StickyLines(current, bodyLines)
 		local id = type(step) == "table" and (step.id or step) or nil
 		if id and not seenSteps[id] then
 			seenSteps[id] = true
-			for _, text in ipairs(StepFrame.DescribeSticky(step)) do
+			for _, text in ipairs(StepFrame.DescribeActiveSticky(step)) do
 				if not seenTexts[text] then
 					seenTexts[text] = true
 					lines[#lines + 1] = text
@@ -833,6 +869,10 @@ ns.Events:RegisterMessage("GUIDE_LOADED", function()
 	StepFrame:Render()
 end)
 ns.Events:RegisterMessage("STEP_CHANGED", function()
+	StepFrame:Render()
+end)
+-- A sticky directive started or was satisfied (Engine/Progress.lua): the "Ongoing:" lines change.
+ns.Events:RegisterMessage("STICKY_CHANGED", function()
 	StepFrame:Render()
 end)
 ns.Events:RegisterMessage("CONTEXT_CHANGED", function()

@@ -678,7 +678,7 @@ local function tooltipLines(entry)
 		return {}
 	end
 	if entry.sticky then
-		return stepFrame.DescribeSticky(entry.step)
+		return (stepFrame.DescribeActiveSticky or stepFrame.DescribeSticky)(entry.step)
 	end
 	return stepFrame.DescribeLines(entry.step)
 end
@@ -744,6 +744,10 @@ ns.Events:RegisterMessage("GUIDE_LOADED", function()
 	Pins:Refresh(true)
 end)
 ns.Events:RegisterMessage("STEP_CHANGED", function()
+	Pins:Refresh()
+end)
+-- The sticky set changed (Engine/Progress.lua): their targets come or go.
+ns.Events:RegisterMessage("STICKY_CHANGED", function()
 	Pins:Refresh()
 end)
 ns.Events:RegisterMessage("CONTEXT_CHANGED", function(_, what)
