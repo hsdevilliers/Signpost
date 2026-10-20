@@ -834,7 +834,12 @@ Answered 2026-10-20:
 3. **Licensing:** the user considers QuestieDB's permission to cover quest IDs and coordinates in the public guides. The original wording
    (Questie Discord, 2026-10-17, as relayed) was "an input to the private pack only"; this is the user's reading of it. Only IDs and
    coordinates may ship: never its code, file formats, text, corrections or tables (CLAUDE.md "Data sources").
-4. **CurseForge:** under the user's account; the user creates the project and the API token. Claude Code prepares the TOCs, `.pkgmeta` and
+   **Horde races in Forever** (web guides agree: Icy Veins, Warcraft Tavern, gamer-guides, lfcarry; the client's character-creation list is
+   the authority): Orc, Undead, Tauren, Troll and the Windshaper Skyborne. Druid is open to Tauren and Windshaper Skyborne only (Troll
+   Hunter is in; Troll Warlock, Orc Mage and Undead Paladin are among Forever's new combinations).
+4. **Data hand-over (user, 2026-10-20):** the friend shares his SavedVariables through a **shared folder**. So the helper script that
+   copies a clean `Signpost.lua` into the shared folder is the main path (no size limit); the in-game export block is the fallback.
+5. **CurseForge:** under the user's account; the user creates the project and the API token. Claude Code prepares the TOCs, `.pkgmeta` and
    CI, and checks whether CurseForge lists a WoW: Forever game version before the first upload (else GitHub first).
 
 Open: none. New questions go below. Repos live under `C:\Users\StephandeVilliers\Repos`; remotes go under `github.com/hsdevilliers` (Claude Code creates them with
