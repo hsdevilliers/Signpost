@@ -38,6 +38,7 @@ local L = ns.L
 --                                                                    -- hostile to both factions
 --                       p = { coordinate, ... },                     -- up to 3 per map, the map with most spawns
 --                                                                    -- first; absent: only inside instances
+--                       rank = 1|2|3,                                -- elite, rare elite, boss (absent: not elite)
 --                       flags = bits, sub = title }                  -- service NPCs of the pack's faction: vendor 4,
 --                                                                    -- flight master 8, trainer 16, innkeeper 128,
 --                                                                    -- stable master 8192, repair 16384

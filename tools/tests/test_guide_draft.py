@@ -14,6 +14,7 @@ NPCS = {
     1002: {"n": "Far Giver", "p": [[20, 60, 60]], "side": "Horde"},
     1003: {"n": "Second Giver", "p": [[10, 70, 70]], "side": "Horde"},
     3001: {"n": "Boar", "p": [[10, 60, 20]], "side": "none"},
+    3002: {"n": "Elite Boar", "p": [[10, 80, 20]], "side": "none", "rank": 1},
 }
 START = {"npc": [1001]}
 HOME = {"s": START, "e": START, "side": "Horde", "races": 178}
@@ -36,6 +37,10 @@ QUESTS = {
     215: {"n": "After A Dropped One", "r": 1, "l": 1, "preSingle": [211], **HOME},
     216: {"n": "Item Hunt", "r": 1, "l": 2, "o": [{"id": 9999, "k": "item"}], **HOME},
     217: {"n": "Hunter Chain", "r": 1, "l": 1, "classes": 4, **HOME},
+    220: {"n": "Elite Hunt", "r": 1, "l": 2, "o": [{"id": 3002, "k": "kill"}], **HOME},
+    221: {"n": "Elite Loot", "r": 1, "l": 2, "o": [{"id": 9998, "k": "item"}], **HOME},
+    222: {"n": "Well Stone", "r": 1, "l": 2, "o": [{"id": 9997, "k": "item"}], **HOME},
+    223: {"n": "Red Quest", "r": 1, "l": 9, **HOME},
 }
 
 
@@ -43,7 +48,7 @@ class DraftCase(TempProject):
     def draft(self, *extra, quests=None, expect=0):
         write_pack(
             self.pack_dir,
-            {"maps": MAPS, "quests": quests or QUESTS, "npcs": NPCS, "travel": TRAVEL, "items": {9999: {"n": "Thing"}}},
+            {"maps": MAPS, "quests": quests or QUESTS, "npcs": NPCS, "travel": TRAVEL, "items": {9999: {"n": "Thing"}, 9998: {"n": "Elite Drop", "drops": [3002]}, 9997: {"n": "Stone", "drops": [3002], "objDrops": [1]}}},
         )
         args = ["--race", "Orc", "--class", "HUNTER", "--zone", "10", "--levels", "1-6", "--id", "test-chapter"]
         args += ["--name", "Test", "--pack", str(self.pack_dir), *extra]
@@ -62,7 +67,7 @@ class PoolTest(DraftCase):
     def test_the_pool_keeps_only_what_this_character_can_take_here(self):
         text, report = self.draft()
         accepted = set(self.quests_in(text, "accept"))
-        self.assertTrue({201, 202, 203, 212, 216, 217} >= accepted, accepted)
+        self.assertTrue({201, 202, 203, 212, 216, 217, 220, 221, 222, 223} >= accepted, accepted)
         for dropped, reason in (
             (204, "other class"),
             (205, "repeatable"),
@@ -103,6 +108,18 @@ class PoolTest(DraftCase):
         text, _ = self.draft("--no-gate-class")
         self.assertNotIn(".class HUNTER", text)
 
+    def test_class_only_keeps_just_the_class_limited_quests(self):
+        text, report = self.draft("--class-only")
+        self.assertEqual(set(self.quests_in(text, "accept")), {217})
+        self.assertIn("not a class quest", report)
+
+    def test_done_quests_are_not_drafted_again_but_unlock_their_chain(self):
+        text, _ = self.draft("--done", "201")
+        accepted = self.quests_in(text, "accept")
+        self.assertNotIn(201, accepted)
+        self.assertIn(202, accepted)  # 202 follows 201
+        self.assertNotIn("#skipquest 201", text)
+
     def test_excluded_quests_become_skipquest_lines(self):
         text, report = self.draft("--exclude", "203", "--exclude-reason", "hardcore: elite")
         self.assertNotIn(203, self.quests_in(text, "accept"))
@@ -127,6 +144,24 @@ class PoolTest(DraftCase):
         self.assertRegex(text, r"\.accept 201 -- First\n  \.note Heal up first\.")
         self.assertIn("excluded by the author", report)
 
+    def test_hardcore_drops_quests_that_need_an_elite_kill_or_an_elite_only_item(self):
+        normal, _ = self.draft()
+        self.assertTrue({220, 221} <= set(self.quests_in(normal, "accept")))
+        text, report = self.draft("--hardcore", self.rules_file([]))
+        self.assertFalse({220, 221} & set(self.quests_in(text, "accept")))
+        self.assertIn("hardcore: needs an elite or boss kill", report)
+        self.assertIn(203, self.quests_in(text, "accept"))  # a normal boar is fine
+        self.assertIn(222, self.quests_in(text, "accept"))  # an elite drops it, but an object gives it too
+
+    def test_hardcore_drops_quests_far_above_the_chapter_level(self):
+        normal, _ = self.draft()
+        self.assertIn(223, self.quests_in(normal, "accept"))  # level 9 in a 1-6 chapter
+        text, report = self.draft("--hardcore", self.rules_file([]))
+        self.assertNotIn(223, self.quests_in(text, "accept"))
+        self.assertIn("hardcore: quest level too far above the chapter", report)
+        text, _ = self.draft("--hardcore", self.rules_file([]), "--hardcore-over", "3")
+        self.assertIn(223, self.quests_in(text, "accept"))  # 6 + 3 allows level 9
+
     def test_a_missing_rules_file_is_an_error(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             self.draft("--hardcore", str(self.root / "nowhere.json"))
@@ -140,7 +175,7 @@ class PoolTest(DraftCase):
             self.assertTrue(rule.get("reason") if rule["action"] == "skip" else rule.get("text"), rule)
 
     def test_the_level_estimate_does_not_stall_on_a_gate(self):
-        quests = {**QUESTS, 218: {"n": "Level Three", "r": 3, "l": 3, **HOME}}
+        quests = {**QUESTS, 218: {"n": "Level Six", "r": 6, "l": 6, **HOME}}
         text, report = self.draft(quests=quests)
         self.assertIn(218, self.quests_in(text, "accept"))
         self.assertIn("assumed", report)

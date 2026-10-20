@@ -67,7 +67,7 @@ FIELDS = {
         "breadcrumbForQuestId",
         "requiredMaxLevel",
     ),
-    "npc": ("name", "spawns", "friendlyToFaction", "subName", "npcFlags"),
+    "npc": ("name", "spawns", "friendlyToFaction", "subName", "npcFlags", "rank"),
     "object": ("name", "spawns"),
     "item": ("name", "npcDrops", "objectDrops", "startQuest", "vendors"),
 }
@@ -671,6 +671,10 @@ class Importer:
                 npc["n"] = name
             if positions:
                 npc["p"] = positions
+            # 1 elite, 2 rare elite, 3 boss (QuestieDB: 4 is a rare without the elite flag and 0 a normal creature: not kept)
+            rank = scalar_id(self.q.get("npc", record, "rank"))
+            if rank in (1, 2, 3):
+                npc["rank"] = rank
             if ident in service:
                 npc["flags"] = service_flags(record)
                 title = self.q.get("npc", record, "subName")

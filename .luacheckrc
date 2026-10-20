@@ -6,6 +6,9 @@ codes = true
 -- .lua/, .luarocks/ and .install/ are where CI's Lua setup actions install the toolchain inside the checkout.
 exclude_files = { "Libs/", "tools/bin/", ".venv/", "dist/", ".release/", ".lua/", ".luarocks/", ".install/" }
 
+-- Guide text is one DSL statement per line (a .note cannot be wrapped): line length is not checked there.
+files["Guides/**/*.lua"] = { max_line_length = false }
+
 ignore = {
 	"211/ADDON_NAME", -- every file opens with `local ADDON_NAME, ns = ...`
 	"212/self",

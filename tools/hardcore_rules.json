@@ -34,6 +34,22 @@
       "confidence": "medium"
     },
     {
+      "id": 8368,
+      "name": "Battle of Warsong Gulch",
+      "action": "skip",
+      "reason": "battleground (PvP) quest, not leveling content",
+      "source": "own knowledge of the game: the quest is for the Warsong Gulch battleground",
+      "confidence": "high"
+    },
+    {
+      "id": 8426,
+      "name": "Battle of Warsong Gulch",
+      "action": "skip",
+      "reason": "battleground (PvP) quest, not leveling content",
+      "source": "own knowledge of the game: the quest is for the Warsong Gulch battleground",
+      "confidence": "high"
+    },
+    {
       "id": 6002,
       "name": "Body and Heart",
       "action": "note",

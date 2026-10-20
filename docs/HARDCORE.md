@@ -31,6 +31,9 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
 
 ## The policy
 
+0. **Data-driven criteria** (`guide_draft.py --hardcore`, no list needed): a quest that needs an **elite, rare elite or boss kill** (QuestieDB's
+   NPC `rank`, now in the pack), or an item only elites drop (and no object gives), is dropped; a quest whose **level is more than 2 above
+   the chapter's top level** is dropped (`--hardcore-over`). The pack has no escort, group or cave flags, so those still need the list below.
 1. **Skip list** (`tools/hardcore_rules.json`): each rule has a quest ID (from the data pack), an action (`skip` becomes
    `#skipquest <id> >> <reason>`, `note` becomes a `.note` after the `.accept`), a source and a confidence. `tools/guide_draft.py
    --hardcore` applies it. Corrected from play: the contributors' deaths and notes are the best source we will get.
@@ -46,7 +49,13 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
 - **How does the addon know a character is hardcore?** `.hc` is "always false for now" (GUIDE-FORMAT). The Forever API for the
   ruleset is unknown: an open probe (FOREVER-API-NOTES). Until it is answered the Release 1 guides are simply hardcore by
   construction (no `.hc` branching needed).
-- **Group-quest and elite tags** are not in the data pack (QuestieDB's quest flags are not imported); the skip list is by quest ID.
+- **Escort, group and cave tags** are not in the data pack; those quests are caught only by the skip list (by quest ID) until a source
+  for them exists. The Barrens draft shows the gap: unflagged named targets (Verog, Hezrul, Kuz and Nak) pass the elite rule.
+- **Moonglade and Bear Form timing (design call).** Every Tauren druid class chain (Bear Form at 10, Lessons Anew at 14, Aquatic Form at
+  16) runs through Moonglade (Dendrite Starblaze, Tajarri), and the travel graph has no route there. The guide has the Bear Form chain
+  right after Mulgore and the other two after the Barrens, each with `.todo` travel to and from Moonglade. Open: how a Mulgore druid
+  reaches Moonglade safely (an ability that teleports there? a flight path?), whether to batch the three chains into one trip, and
+  how long to go without Bear Form. Needs the friend's play or a trusted source.
 - **Forever changes**: new or reworked quests and zones are not in any source yet; each is judged when recorded in game.
 - **Death data**: a contributor's deaths (where, at what level) would improve the list far more than any article. Not built; a
   possible later addition to `Core/Learn.lua`, opt-in like the rest (docs/SHARING-DATA.md).

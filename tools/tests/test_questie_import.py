@@ -26,7 +26,7 @@ QUEST_PARTS = {
         "spellObjective",
     ],
 }
-NPC_LAYOUT = ["spawns", "name", "minLevel", "friendlyToFaction", "subName", "npcFlags"]
+NPC_LAYOUT = ["spawns", "name", "minLevel", "friendlyToFaction", "subName", "npcFlags", "rank"]
 OBJECT_LAYOUT = ["name", "questStarts", "questEnds", "spawns", "zoneID"]
 ITEM_LAYOUT = ["name", "itemLevel", "npcDrops", "objectDrops", "startQuest", "vendors", "class"]
 
@@ -106,7 +106,7 @@ NPCS = {
         "subName": '"Trade Supplies"', "npcFlags": "6",
     },
     106: {"name": "'Instance Boss'", "spawns": "{[506]={{-1,-1}}}", "npcFlags": "0"},
-    107: {"name": "'Cave Bear'", "spawns": "{[1]={{20,20}}}", "npcFlags": "0"},
+    107: {"name": "'Cave Bear'", "spawns": "{[1]={{20,20}}}", "npcFlags": "0", "rank": "1"},
     108: {
         "name": "'Hidden Vendor'", "spawns": "{[506]={{-1,-1}}}", "friendlyToFaction": '"H"',
         "subName": '"Food & Drink"', "npcFlags": "4",
@@ -295,7 +295,7 @@ class ImportTest(unittest.TestCase):
             fields - {"n", "side", "p", "s", "e", "o", "zone", "sort", "l", "r", "races", "classes"},
             {
                 "next", "preSingle", "preGroup", "exclusive", "parent", "breadcrumbFor", "skill", "maxLevel",
-                "repeatable", "gives", "needs", "flags", "sub", "quest", "drops", "objDrops", "vendors", "many",
+                "repeatable", "gives", "needs", "flags", "sub", "quest", "drops", "objDrops", "vendors", "many", "rank",
             },
         )
 
@@ -312,6 +312,8 @@ class ImportTest(unittest.TestCase):
         self.assertEqual((npcs[105]["flags"], npcs[105]["side"]), (qi.VENDOR, "both"))
         self.assertEqual(npcs[106], {"n": "Instance Boss", "side": "none"})  # only inside an instance
         self.assertEqual(npcs[107]["p"], [[1418, 20, 20]])  # AreaID 1 (the table parsed as a list)
+        self.assertEqual(npcs[107]["rank"], 1)  # an elite keeps its rank; a normal creature has none
+        self.assertNotIn("rank", npcs[101])
 
     def test_items(self):
         items = self.tables["items"]

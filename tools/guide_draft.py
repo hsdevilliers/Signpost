@@ -50,6 +50,8 @@ BLOCKING = {
     "belongs to another zone",
     "turn-in outside the zones (route by hand)",
     "excluded by the author",
+    "hardcore: needs an elite or boss kill",
+    "hardcore: quest level too far above the chapter",
 }
 ZONE_STICKINESS = 3000.0  # yards of extra cost for leaving the zone the walker is in, so a zone is finished first
 SAME_PLACE = 6.0  # map percent: positions this close are one place
@@ -127,6 +129,25 @@ def _objective_spots(pack: guide_travel.Pack, world: guide_travel.World, zones: 
     return []
 
 
+def _elite_npc(pack: guide_travel.Pack, npc: int) -> bool:
+    record = pack.table("npcs").get(npc)
+    return isinstance(record, dict) and record.get("rank") in (1, 2, 3)  # elite, rare elite, boss
+
+
+def _elite_objective(pack: guide_travel.Pack, kind: str, ident: int) -> bool:
+    """A kill of an elite, or an item only elites drop: no object gives it either (an NPC the pack does not know counts
+    as ordinary)."""
+    if kind == "kill":
+        return _elite_npc(pack, ident)
+    if kind == "item":
+        record = pack.table("items").get(ident)
+        sources = _ids(record.get("drops")) if isinstance(record, dict) else []
+        if not isinstance(record, dict) or record.get("objDrops"):
+            return False
+        return bool(sources) and all(_elite_npc(pack, source) for source in sources)
+    return False
+
+
 def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Namespace) -> tuple[dict[int, Quest], dict]:
     """The pool, and why the others were dropped (reason -> quest IDs)."""
     zones = set(spec.zone)
@@ -146,6 +167,8 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
             drop("other race")
         elif isinstance(classes, int) and not classes & spec.class_bit:
             drop("other class")
+        elif spec.class_only and not isinstance(classes, int):
+            drop("not a class quest (--class-only)")
         elif record.get("repeatable"):
             drop("repeatable")
         elif record.get("sort") in EVENT_SORTS:
@@ -175,6 +198,12 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
                     kind = str(objective.get("k"))
                     spots = _objective_spots(pack, world, zones, kind, objective["id"])
                     objectives.append(Objective(number, kind, objective["id"], spots))
+            if spec.hardcore and (record.get("l") or 0) > spec.max_level + spec.hardcore_over:
+                drop("hardcore: quest level too far above the chapter")
+                continue
+            if spec.hardcore and any(_elite_objective(pack, o.kind, o.ident) for o in objectives):
+                drop("hardcore: needs an elite or boss kill")
+                continue
             pool[qid] = Quest(
                 qid,
                 str(record.get("n") or f"quest {qid}"),
@@ -216,7 +245,9 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
     result.kept = len(pool)
     blocking = {qid for reason in BLOCKING for qid in result.dropped.get(reason, [])}
 
-    done: set[int] = set()
+    done: set[int] = set(spec.done)  # routed by an earlier chapter: not drafted again, and they satisfy prerequisites
+    for qid in sorted(done & set(pool)):
+        pool.pop(qid)
     active: dict[int, set[int]] = {}  # quest -> objective indexes still open
     gone: set[int] = set()  # quests made unavailable by an exclusive one
     pos = spec.start
@@ -393,8 +424,20 @@ def main(argv: list[str] | None = None) -> int:
         metavar="RULES",
         help="apply the hardcore rules (default tools/hardcore_rules.json): skips become #skipquest, notes become .note",
     )
+    parser.add_argument(
+        "--hardcore-over",
+        type=int,
+        default=2,
+        help="with --hardcore: drop quests whose level is more than this above the chapter's top level (default 2)",
+    )
     parser.add_argument("--quests-per-level", type=int, default=5, help="placeholder level estimate (default 5)")
     parser.add_argument("--grey", type=int, default=8, help="drop quests this many levels below the range (default 8)")
+    parser.add_argument(
+        "--class-only", action="store_true", help="draft only the quests limited to the class (class quest chapters)"
+    )
+    parser.add_argument(
+        "--done", type=int, action="append", default=[], metavar="QUEST", help="a quest an earlier chapter already routes"
+    )
     parser.add_argument("--no-gate-class", dest="gate_class", action="store_false", help="no .class gate on class quests")
     parser.add_argument("--pack", type=Path, help="the data pack folder (default ../Signpost_Data)")
     parser.add_argument("--out", type=Path, help="write the chapter file here (default: print)")
