@@ -50,11 +50,18 @@ BLOCKING = {
     "belongs to another zone",
     "turn-in outside the zones (route by hand)",
     "excluded by the author",
+    "needs a profession skill",
+    "objective lies outside the zones (route by hand)",
     "hardcore: needs an elite or boss kill",
     "hardcore: quest level too far above the chapter",
 }
 ZONE_STICKINESS = 3000.0  # yards of extra cost for leaving the zone the walker is in, so a zone is finished first
-SAME_PLACE = 6.0  # map percent: positions this close are one place
+# Forever is not Classic (CLAUDE.md): every drafted chapter says what its source is and is not.
+BASELINE_NOTE = (
+    "-- Built on the data pack's Classic baseline (QuestieDB): Forever's own additions (new class quests, "
+    "quests, zones) are NOT in it: docs/CLASS-QUESTS.md."
+)
+SAME_PLACE = 2.0  # map percent: positions this close are one place (a few dozen yards in a zone)
 NEAR_BAND = 40.0  # map percent beyond which two places on one map are a trip of their own
 MAX_OBJECTIVE_SPOTS = 3  # spawn areas considered per objective
 MAX_DROP_SOURCES = 4  # an item with more drop sources than this is pinned at the nearest few only
@@ -101,17 +108,21 @@ def _ids(value: object) -> list[int]:
     return [item for item in value or [] if isinstance(item, int) and not isinstance(item, bool)]
 
 
-def _first_in_zones(coords: list[Coord], world: guide_travel.World, zones: set[int]) -> list[Coord]:
-    """Coordinates inside the zones asked for; those only when there are any."""
+def _first_in_zones(coords: list[Coord], world: guide_travel.World, zones: set[int] | None) -> list[Coord]:
+    """Coordinates inside the zones asked for (all of them when zones is None)."""
+    if zones is None:
+        return list(coords)
     inside = [c for c in coords if any(world.within(c.map, zone) for zone in zones)]
     return inside or []
 
 
-def _spots(coords: list[Coord], world: guide_travel.World, zones: set[int]) -> list[Coord]:
+def _spots(coords: list[Coord], world: guide_travel.World, zones: set[int] | None) -> list[Coord]:
     return _first_in_zones(coords, world, zones)[:MAX_OBJECTIVE_SPOTS]
 
 
-def _objective_spots(pack: guide_travel.Pack, world: guide_travel.World, zones: set[int], kind: str, ident: int) -> list[Coord]:
+def _objective_spots(
+    pack: guide_travel.Pack, world: guide_travel.World, zones: set[int] | None, kind: str, ident: int
+) -> list[Coord]:
     table = {"kill": "npcs", "object": "objects"}.get(kind)
     if table:
         record = pack.table(table).get(ident)
@@ -193,11 +204,17 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
                 drop("turn-in outside the zones (route by hand)")
                 continue
             objectives = []
+            outside = False
             for number, objective in enumerate(record.get("o") or [], 1):
                 if isinstance(objective, dict) and isinstance(objective.get("id"), int):
                     kind = str(objective.get("k"))
                     spots = _objective_spots(pack, world, zones, kind, objective["id"])
+                    if not spots and _objective_spots(pack, world, None, kind, objective["id"]):
+                        outside = True  # it exists, but only in another zone
                     objectives.append(Objective(number, kind, objective["id"], spots))
+            if outside:
+                drop("objective lies outside the zones (route by hand)")
+                continue
             if spec.hardcore and (record.get("l") or 0) > spec.max_level + spec.hardcore_over:
                 drop("hardcore: quest level too far above the chapter")
                 continue
@@ -229,6 +246,18 @@ def _near(world: guide_travel.World, a: Coord, b: Coord) -> float:
     if a.map == b.map:
         return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5 * 10
     return 1e6
+
+
+def class_gate(mask: int | None, class_token: str, gate_class: bool = True) -> str:
+    """The `.class` gate for a quest with this class mask, or "" for none: the one class, the few, or all but the few."""
+    if mask is None or not gate_class:
+        return ""
+    names = [name for name, bit in CLASS_BITS.items() if mask & bit]
+    if not names or len(names) == len(CLASS_BITS):
+        return ""
+    if len(names) > len(CLASS_BITS) // 2:
+        return " .class " + ",".join("!" + name for name in CLASS_BITS if name not in names)
+    return " .class " + ",".join(names)
 
 
 def _clean(text: str) -> str:
@@ -277,9 +306,16 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
 
     def line(directive: str, q: Quest, gate: bool = True) -> str:
         text = f"  {directive}"
-        if gate and spec.gate_class and q.class_mask is not None:
-            text += f" .class {spec.class_token}"
+        if gate:
+            text += class_gate(q.class_mask, spec.class_token, spec.gate_class)
         return f"{text} -- {_clean(q.name)}"
+
+    # an objective whose quest is well above the level the walk has reached waits: the first steps of a chapter are not
+    # sent to kill level 6 gnolls at level 1 just because they stand near the hub (the margin is off without --hardcore)
+    margin = spec.hardcore_over if spec.hardcore else 99
+
+    def soon(q: Quest) -> bool:
+        return q.level <= level() + margin
 
     guard = 0
     last_zone = zone_of(pos.map) if pos else None
@@ -287,6 +323,7 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
         guard += 1
         # what can be done where: (kind rank, place, quest, objective)
         targets: list[tuple[int, Coord, Quest, Objective | None]] = []
+        deferred = False
         for q in pool.values():
             if q.id in active:
                 if not active[q.id]:
@@ -297,6 +334,9 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
                         result.unplaced.append(f"quest {q.id} ({q.name}): no turn-in position in the pack")
                         active.pop(q.id)
                         done.add(q.id)
+                    continue
+                if active[q.id] and not soon(q):
+                    deferred = True
                     continue
                 for objective in q.objectives:
                     if objective.index in active[q.id]:
@@ -313,7 +353,7 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
                 targets.append((1, place_of(q, q.starts, pos), q, None))
         if not targets:
             gated = [q for q in pool.values() if q.id not in done and q.id not in active and q.id not in gone and q.required > level()]
-            if gated and level() < spec.max_level:
+            if (gated or deferred) and level() < spec.max_level:
                 assumed[0] += 1
                 result.notes.append(f"level {level()} assumed here (kills and travel between quests): quests need it")
                 result.steps.append([f"  .level {level()} -- assumed: grind or kill on the way until then"])
@@ -350,10 +390,11 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
                     for other in q.exclusive:
                         if other in pool and other not in done and other not in active:
                             gone.add(other)
+                            result.skipped.setdefault(other, f"alternative to quest {q.id}, which is routed")
                             result.notes.append(f"quest {other} is exclusive with {q.id}; {q.id} was routed")
                     changed = True
             for q in list(pool.values()):
-                if q.id in active:
+                if q.id in active and soon(q):
                     for objective in q.objectives:
                         if objective.index in active[q.id] and any(at(place, s) for s in objective.spots):
                             step.append(line(f".complete {q.id},{objective.index}", q))
@@ -382,7 +423,9 @@ def render(result: Draft, spec: argparse.Namespace, pool_names: dict[int, str]) 
 
 def lua_file(chapter_id: str, text: str, header: list[str]) -> str:
     comments = "\n".join(f"-- {line}" for line in header)
-    return f'-- DRAFT: generated by tools/guide_draft.py; review, reorder and tag before it ships.\n{comments}\nlocal ADDON_NAME, ns = ...\n\nns.Chapters:Register("{chapter_id}", [[\n{text}]])\n'
+    draft = "-- DRAFT: generated by tools/guide_draft.py; review, reorder and tag before it ships.\n"
+    draft += f"{BASELINE_NOTE}\n"
+    return f'{draft}{comments}\nlocal ADDON_NAME, ns = ...\n\nns.Chapters:Register("{chapter_id}", [[\n{text}]])\n'
 
 
 def summary(result: Draft, spec: argparse.Namespace) -> list[str]:
@@ -427,8 +470,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--hardcore-over",
         type=int,
-        default=2,
-        help="with --hardcore: drop quests whose level is more than this above the chapter's top level (default 2)",
+        default=1,
+        help="with --hardcore: drop quests whose level is more than this above the chapter's top level (default 1)",
     )
     parser.add_argument("--quests-per-level", type=int, default=5, help="placeholder level estimate (default 5)")
     parser.add_argument("--grey", type=int, default=8, help="drop quests this many levels below the range (default 8)")
@@ -484,7 +527,11 @@ def main(argv: list[str] | None = None) -> int:
     pool, _ = candidates(pack, world, spec)
     if not spec.start:
         first = min(pool.values(), key=lambda q: (q.required, q.id), default=None)
-        spec.start = first.starts[0] if first else None
+        if first:
+            home = [c for c in first.starts if world.within(c.map, spec.zone[0])]
+            spec.start = (home or first.starts)[0]
+        else:
+            spec.start = None
     if spec.start is None:
         print("guide_draft: no quest in the pool to start from", file=sys.stderr)
         return 1

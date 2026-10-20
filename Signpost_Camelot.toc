@@ -43,13 +43,17 @@ Engine\Travel.lua
 Engine\Progress.lua
 
 Classes\DRUID.lua
+Classes\HUNTER.lua
 
 Guides\Travel\Borders.lua
 Guides\Chapters\mulgore-1-12.lua
 Guides\Chapters\druid-bear-form-10.lua
 Guides\Chapters\barrens-10-20.lua
 Guides\Chapters\druid-forms-14-20.lua
+Guides\Chapters\durotar-1-12.lua
+Guides\Chapters\barrens-10-20-hunter.lua
 Guides\HordeTaurenDruid.lua
+Guides\HordeTrollHunter.lua
 
 UI\Widgets.lua
 UI\Contribute.lua

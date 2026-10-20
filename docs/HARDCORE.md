@@ -6,7 +6,10 @@ The Release 1 guides are hardcore routes (PLAN §2). This is how, what we know a
 
 Feasible as a **safety-leaning route**, not as a guarantee. A hardcore character can die to anything; a route can only avoid the
 known killers, delay the risky content and warn at the dangerous steps. It is not a different route for every zone: the same
-quests are mostly right, minus a short skip list, plus notes, plus a default of skipping dungeon chapters. RestedXP does the same: a
+quests are mostly kept, minus what the data can flag (elite kills, quests far above the level) and a hand-kept skip list, plus notes, plus
+a default of skipping dungeon chapters. The data cannot yet flag escorts, group quests or named elite-level targets, so the first
+adversarial review of the Tauren Druid guide found several still routed (escorts, Northwatch Hold, named Kolkar leaders): they are now
+on the list, and expect more until someone plays the route. RestedXP does the same: a
 separate survival route and a mode switch on guide steps (our `.hc` gate).
 
 ## What the research found (web, 2026-10-20)
@@ -53,9 +56,15 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
   for them exists. The Barrens draft shows the gap: unflagged named targets (Verog, Hezrul, Kuz and Nak) pass the elite rule.
 - **Moonglade and Bear Form timing (design call).** Every Tauren druid class chain (Bear Form at 10, Lessons Anew at 14, Aquatic Form at
   16) runs through Moonglade (Dendrite Starblaze, Tajarri), and the travel graph has no route there. The guide has the Bear Form chain
-  right after Mulgore and the other two after the Barrens, each with `.todo` travel to and from Moonglade. Open: how a Mulgore druid
-  reaches Moonglade safely (an ability that teleports there? a flight path?), whether to batch the three chains into one trip, and
-  how long to go without Bear Form. Needs the friend's play or a trusted source.
+  right after Mulgore and the other two after the Barrens, each with a `.todo` to cast **Teleport: Moonglade**. What the sources say:
+  Classic druids have that spell from level 10 (10 s cast, no reagents); Forever guides list it as a reward of the Bear Form chain; where
+  Forever druids learn it is unverified (VERIFY(beta)), and so is the way back (hearthstone, a flight path, or the spell). Open: confirm
+  both in game, and batch the Lessons Anew and Aquatic Form legs into fewer round trips (the chain links alternate between Thunder Bluff
+  and Moonglade, so a trip per link is what the data gives).
+- **`.todo` never completes a step** (found by the review): a step with `.todo` and another directive (the travel steps, an objective
+  step) stays current after the other directive is satisfied, until the player skips it. That is what GUIDE-FORMAT says (`.todo` is never
+  satisfied), but it makes the planner's `.todo` + `.zone` steps and the drafted `.todo` + `.complete` steps need a manual skip.
+  Open for the user: let a step complete on its other directives and keep `.todo` as a display marker, or keep it.
 - **Forever changes**: new or reworked quests and zones are not in any source yet; each is judged when recorded in game.
 - **Death data**: a contributor's deaths (where, at what level) would improve the list far more than any article. Not built; a
   possible later addition to `Core/Learn.lua`, opt-in like the rest (docs/SHARING-DATA.md).

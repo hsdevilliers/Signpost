@@ -94,6 +94,7 @@ class Chain:
     quests: list[int]
     origin: str
     races: tuple[str, ...] | None = None  # raceFile tokens the chain is for; None = every race
+    pending: bool = False  # a chain known to exist (Forever's own additions) whose quest IDs are not known yet
 
 
 def _chains(value: object, origin: str) -> list[Chain]:
@@ -116,7 +117,8 @@ def _chains(value: object, origin: str) -> list[Chain]:
         races = entry.get("races")
         races = list(races.values()) if isinstance(races, dict) else races
         races = tuple(r for r in races or [] if isinstance(r, str)) or None
-        chains.append(Chain(str(name), level if isinstance(level, int) else None, quests, origin, races))
+        pending = entry.get("pending") is True
+        chains.append(Chain(str(name), level if isinstance(level, int) else None, quests, origin, races, pending))
     return chains
 
 
@@ -477,9 +479,22 @@ def coverage(route: Route, pack: guide_travel.Pack, chains: list[Chain], what: s
             elif d.name == "turnin":
                 turned.add(d.args["quest"])
     problems, above, top = [], 0, route.max_level()
+    todos = " ".join(
+        str(d.args.get("reason", "")).lower() for rs in route.steps for d in rs.all_directives() if d.name == "todo"
+    )
     for chain in chains:
         if chain.level is not None and chain.level > top:
             above += 1
+            continue
+        if chain.pending:
+            # Forever's own chains have no IDs yet: the guide must say where each belongs (a .todo naming it), or the quest is lost
+            marked = chain.name.lower() in todos
+            message = f"{what} chain {chain.name} (level {chain.level}, {chain.origin}) has no quest IDs yet"
+            if marked:
+                problems.append(Problem("warning", f"{code}-pending", message + " (a .todo marks it)", route.guide.path, route.guide.line))
+            else:
+                message += f": add a .todo step naming it to guide {route.guide.id}"
+                problems.append(Problem("error", f"{code}-unmarked", message, route.guide.path, route.guide.line))
             continue
         for quest in chain.quests:
             missing = [label for label, done in (("accepted", accepted), ("turned in", turned)) if quest not in done]

@@ -15,6 +15,8 @@ NPCS = {
     1003: {"n": "Second Giver", "p": [[10, 70, 70]], "side": "Horde"},
     3001: {"n": "Boar", "p": [[10, 60, 20]], "side": "none"},
     3002: {"n": "Elite Boar", "p": [[10, 80, 20]], "side": "none", "rank": 1},
+    3003: {"n": "Hub Rat", "p": [[10, 40, 40]], "side": "none"},
+    3004: {"n": "Far Rat", "p": [[20, 50, 50]], "side": "none"},
 }
 START = {"npc": [1001]}
 HOME = {"s": START, "e": START, "side": "Horde", "races": 178}
@@ -41,6 +43,10 @@ QUESTS = {
     221: {"n": "Elite Loot", "r": 1, "l": 2, "o": [{"id": 9998, "k": "item"}], **HOME},
     222: {"n": "Well Stone", "r": 1, "l": 2, "o": [{"id": 9997, "k": "item"}], **HOME},
     223: {"n": "Red Quest", "r": 1, "l": 9, **HOME},
+    226: {"n": "Skinning Only", "r": 1, "l": 1, "skill": [393, 1], **HOME},
+    227: {"n": "After Skinning", "r": 1, "l": 1, "preSingle": [226], **HOME},
+    228: {"n": "Far Rats", "r": 1, "l": 2, "o": [{"id": 3004, "k": "kill"}], **HOME},
+    229: {"n": "Hub Rats", "r": 1, "l": 6, "o": [{"id": 3003, "k": "kill"}], **HOME},
 }
 
 
@@ -67,7 +73,7 @@ class PoolTest(DraftCase):
     def test_the_pool_keeps_only_what_this_character_can_take_here(self):
         text, report = self.draft()
         accepted = set(self.quests_in(text, "accept"))
-        self.assertTrue({201, 202, 203, 212, 216, 217, 220, 221, 222, 223} >= accepted, accepted)
+        self.assertTrue({201, 202, 203, 212, 216, 217, 220, 221, 222, 223, 229} >= accepted, accepted)
         for dropped, reason in (
             (204, "other class"),
             (205, "repeatable"),
@@ -87,6 +93,8 @@ class PoolTest(DraftCase):
         self.assertLess(text.index(".turnin 201"), text.index(".accept 202"))
         routed = {212, 213} & set(self.quests_in(text, "accept"))
         self.assertEqual(len(routed), 1)
+        other = ({212, 213} - routed).pop()
+        self.assertIn(f"#skipquest {other} >> alternative to quest {routed.pop()}, which is routed", text)
         self.assertIn("is exclusive with", report)
 
     def test_a_quest_behind_a_dropped_prerequisite_is_never_routed(self):
@@ -102,11 +110,46 @@ class PoolTest(DraftCase):
         self.assertIn('.todo "Item Hunt: objective 1 (item 9999) has no position in the pack"', text)
         self.assertIn("quest 216 (Item Hunt) objective 1", report)
 
+    def test_class_gates_name_the_classes_of_the_mask(self):
+        gate = guide_draft.class_gate
+        self.assertEqual(gate(4, "HUNTER"), " .class HUNTER")
+        self.assertEqual(gate(4 | 8, "HUNTER"), " .class HUNTER,ROGUE")
+        self.assertEqual(gate(1247, "HUNTER"), " .class !WARLOCK")  # everyone but the warlock
+        self.assertEqual(gate(None, "HUNTER"), "")
+        self.assertEqual(gate(sum(guide_draft.CLASS_BITS.values()), "HUNTER"), "")
+        self.assertEqual(gate(4, "HUNTER", gate_class=False), "")
+
+    def test_the_walk_starts_in_the_first_zone_asked_for(self):
+        quests = {**QUESTS, 224: {"n": "Two Places", "r": 1, "l": 1, "s": {"npc": [1002, 1001]}, "e": START, "side": "Horde"}}
+        text, _ = self.draft("--zone", "20", quests=quests)  # zones 10 and 20; the first quest has givers in both
+        first_goto = re.search(r"\.goto (\d+),", text).group(1)
+        self.assertEqual(first_goto, "10")
+
     def test_class_quests_carry_a_class_gate_unless_asked_not_to(self):
         text, _ = self.draft()
         self.assertRegex(text, r"\.accept 217 \.class HUNTER")
         text, _ = self.draft("--no-gate-class")
         self.assertNotIn(".class HUNTER", text)
+
+    def test_a_quest_behind_a_profession_prerequisite_is_not_routed(self):
+        text, report = self.draft()
+        self.assertNotIn(227, self.quests_in(text, "accept"))  # its prerequisite needs a skill the chapter cannot assume
+        self.assertIn("needs a profession skill", report)
+
+    def test_a_quest_whose_objective_is_only_in_another_zone_is_dropped(self):
+        text, report = self.draft()
+        self.assertNotIn(228, self.quests_in(text, "accept"))
+        self.assertIn("objective lies outside the zones", report)
+
+    def test_in_hardcore_objectives_wait_for_the_level(self):
+        normal, _ = self.draft()
+        step = normal.split("step\n")[1]
+        self.assertIn(".complete 229,1", step)  # without --hardcore it is done at once, beside the hub
+        text, _ = self.draft("--hardcore", self.rules_file([]))
+        first = text.split("step\n")[1]
+        self.assertNotIn(".complete 229,1", first)
+        self.assertIn(".complete 229,1", text)  # but it is routed, later
+        self.assertLess(text.index(".level"), text.index(".complete 229,1"))
 
     def test_class_only_keeps_just_the_class_limited_quests(self):
         text, report = self.draft("--class-only")

@@ -183,6 +183,30 @@ def _id_list(ids: list) -> str:
     return shown + (f" (and {more} more)" if more > 0 else "")
 
 
+# uiMapIDs Forever added to Classic's world (QuestieDB conversion.json "added_maps", confirmed by the client map dump).
+FOREVER_ADDED_MAPS = {2482: "Mount Hyjal", 2521: "Zephras Isle", 2524: "Darkspear Islands", 2548: "Riverglades", 2652: "Shen'dralas"}
+
+
+def forever_gap_lines(merged: dict) -> list[str]:
+    """What Forever has that the baseline layers cannot have: the zones it added, counted in the pack."""
+    quests, npcs = merged["quests"], merged["npcs"]
+    lines = [
+        "## Not in this pack: Forever's own content",
+        "",
+        "The questie layer is QuestieDB's Classic Era data with the coordinates converted to Forever's maps; QuestieDB lists \"Forever "
+        "race/class restrictions and new content\" as not converted. The pack is a Classic **baseline**, not Forever's database. "
+        "Missing by construction: the Skyborne race (no race mask), Forever's new class quests (docs/CLASS-QUESTS.md in the Signpost "
+        "repository), the new dungeons (Hall of Thanes, Ruins of Lordaeron), reworked quests and XP. What the pack holds for the "
+        "zones Forever added:",
+        "",
+    ]
+    for map_id, name in FOREVER_ADDED_MAPS.items():
+        in_quests = sum(1 for q in quests.values() if q.get("zone") == map_id)
+        in_npcs = sum(1 for n in npcs.values() if any(isinstance(p, list) and p and p[0] == map_id for p in n.get("p") or []))
+        lines.append(f"- {name} ({map_id}): {in_quests} quests, {in_npcs} NPCs" + ("" if in_quests or in_npcs else " (nothing)"))
+    return lines + [""]
+
+
 def gap_report(merged: dict, layers: list[tuple[str, dict]], tool: str) -> str:
     quests, npcs, objects = merged["quests"], merged["npcs"], merged["objects"]
     no_start = [qid for qid, q in quests.items() if not q.get("s")]
@@ -206,6 +230,7 @@ def gap_report(merged: dict, layers: list[tuple[str, dict]], tool: str) -> str:
         f"Totals: {len(quests)} quests, {len(npcs)} NPCs, {len(objects)} objects, {len(merged['items'])} items, "
         f"{len(merged['maps'])} maps.",
         "",
+        *forever_gap_lines(merged),
         f"## Quests without a start ({len(no_start)})",
         "",
         _id_list(no_start) or "none",

@@ -488,6 +488,26 @@ class LintTest(LintCase):
             files = {"Classes/DRUID.lua": druid, "Guides/Test.lua": guide_lua(routed, races=(race,), classes=("DRUID",))}
             self.assertEqual(self.codes(self.lint(files)), expected, race)
 
+    def test_a_pending_chain_must_be_marked_by_a_todo(self):
+        druid = (
+            "local ADDON_NAME, ns = ...\n"
+            'ns.Classes:Register("DRUID", { classQuests = {\n'
+            '  { id = "cat", name = "Cat Form", level = 20, quests = {}, pending = true },\n'
+            "} })\n"
+        )
+        plain = "#chapter 1-20 West\nstep\n  .goto 10,1,1\n"
+        files = {"Classes/DRUID.lua": druid, "Guides/Test.lua": guide_lua(plain, classes=("DRUID",), levels=(1, 20))}
+        report = self.lint(files)
+        self.assertEqual(self.codes(report), ["class-quest-unmarked"])  # a Forever chain with no IDs and no marker is lost
+        marked = plain + 'step\n  .todo "Cat Form (level 20): new in Forever; IDs pending"\n'
+        files["Guides/Test.lua"] = guide_lua(marked, classes=("DRUID",), levels=(1, 20))
+        report = self.lint(files)
+        self.assertEqual(self.codes(report), [])
+        self.assertEqual(self.codes(report, "warning"), ["class-quest-pending"])
+        # above the guide's highest chapter level it is not required yet
+        files["Guides/Test.lua"] = guide_lua("#chapter 1-12 West\nstep\n  .goto 10,1,1\n", classes=("DRUID",), levels=(1, 12))
+        self.assertEqual(self.codes(self.lint(files)), [])
+
     def test_profession_quests_per_track(self):
         tables = {"maps": MAPS, "quests": QUESTS, "npcs": NPCS, "travel": TRAVEL, "professions": {393: {"n": "Skinning", "quests": [7001]}}}
         guide = guide_lua("#professions skinning\nstep\n  .goto 10,50,50\n  .hub westhold\n")
