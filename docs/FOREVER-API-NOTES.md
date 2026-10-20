@@ -171,6 +171,12 @@ Maps and travel
 
 ## Open probes (answer in game, record the evidence and build number, then move to Verified)
 - [ ] Launch client folder name (after Nov 4): `_classic_`? `_forever_`? other?
+- [ ] The "Help improve Signpost" window (`UI/Contribute.lua`, `/signpost contribute`) in the real client: built from
+  `ButtonFrameTemplate`, `UICheckButtonTemplate` and `UIPanelButtonTemplate` on specs only. Does it lay out (text not clipped, checkbox
+  clickable on its label, Escape closes it, opens once by itself on a release build, not in combat)?
+- [ ] The "Help improve Signpost" window (`UI/Contribute.lua`, `/signpost contribute`) in the real client: built from
+  `ButtonFrameTemplate`, `UICheckButtonTemplate` and `UIPanelButtonTemplate` on specs only. Does it lay out (text not clipped, checkbox
+  clickable on its label, Escape closes it, opens once by itself on a release build, not in combat)?
 - [ ] `C_QuestLog.GetAllCompletedQuestIDs()` populated at `PLAYER_ENTERING_WORLD` or only after a `QUEST_LOG_UPDATE`? (A new character
   has none: re-run `/signpost probe` after turning in a few quests, relog, probe again.)
 - [ ] What each of the **7** `GetProfessions()` values holds once professions are learned, and which one is **First Aid** — the

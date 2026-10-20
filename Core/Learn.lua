@@ -576,9 +576,10 @@ end
 
 -- Events ------------------------------------------------------------------------------------------------------------
 
+-- Nothing is recorded without the player's yes on a release build (Core/Contribute.lua; dev builds always record).
 local function on(event, fn)
 	ns.Events:Register(event, function(...)
-		if ns.db then
+		if ns.db and ns.Contribute and ns.Contribute:Enabled() then
 			fn(...)
 		end
 	end)

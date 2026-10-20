@@ -30,14 +30,16 @@ end
 
 local DIALOG_NAME = "SignpostTextDialog"
 
-function UI:CreateTextDialog()
+-- A stock Blizzard dialog: movable, in the dialog strata, closed by Escape. Returns the frame; UI:DialogHost(frame) is
+-- where its content goes.
+function UI:CreateDialogFrame(name, width, height)
 	local frame, template = UI.CreateFrameFromTemplates(
 		"Frame",
-		DIALOG_NAME,
+		name,
 		UIParent,
 		{ "ButtonFrameTemplate", "BasicFrameTemplateWithInset", "BackdropTemplate" }
 	)
-	frame:SetSize(560, 420)
+	frame:SetSize(width, height)
 	frame:SetPoint("CENTER")
 	frame:SetFrameStrata("DIALOG")
 	frame:SetToplevel(true)
@@ -57,9 +59,26 @@ function UI:CreateTextDialog()
 		frame:SetBackdrop(BACKDROP_DIALOG_32_32)
 	end
 	-- Escape closes it, like Blizzard's own dialogs.
-	tinsert(UISpecialFrames, DIALOG_NAME)
+	tinsert(UISpecialFrames, name)
+	return frame
+end
 
-	local host = frame.Inset or frame
+function UI:DialogHost(frame)
+	return type(frame.Inset) == "table" and frame.Inset or frame
+end
+
+function UI:SetDialogTitle(frame, title)
+	if frame.SetTitle then
+		frame:SetTitle(title)
+	elseif frame.TitleText then
+		frame.TitleText:SetText(title)
+	end
+end
+
+function UI:CreateTextDialog()
+	local frame = UI:CreateDialogFrame(DIALOG_NAME, 560, 420)
+
+	local host = UI:DialogHost(frame)
 	local scroll =
 		UI.CreateFrameFromTemplates("ScrollFrame", nil, host, { "ScrollFrameTemplate", "UIPanelScrollFrameTemplate" })
 	scroll:SetPoint("TOPLEFT", host, "TOPLEFT", 8, -8)
@@ -86,11 +105,7 @@ end
 function UI:ShowTextDialog(title, text)
 	self.textDialog = self.textDialog or self:CreateTextDialog()
 	local frame = self.textDialog
-	if frame.SetTitle then
-		frame:SetTitle(title)
-	elseif frame.TitleText then
-		frame.TitleText:SetText(title)
-	end
+	UI:SetDialogTitle(frame, title)
 	frame.EditBox:SetText(text)
 	frame:Show()
 	frame.EditBox:SetFocus()
