@@ -34,6 +34,11 @@ class SeamTest(unittest.TestCase):
         text = '-- Skinning first\nlocal key = "leatherworking"\nlocal plan = ns.char.professions\nlocal x = "firstaid"\n'
         self.assertEqual([p.split(":")[1] for p in check_repo.seam_violations("Engine/X.lua", text)], ["1", "2", "4"])
 
+    def test_a_toc_may_list_class_and_guide_files_by_name(self):
+        toc = "Core\\Init.lua\nClasses\\DRUID.lua\nGuides\\HordeTaurenDruid.lua\n## Notes: DRUID\n"
+        self.assertEqual([p.split(":")[1] for p in check_repo.seam_violations("Signpost.toc", toc)], ["4"])
+        self.assertEqual([p.split(":")[1] for p in check_repo.seam_violations("Signpost.toc", "Core\\DRUID.lua\n")], ["1"])
+
     def test_ignores_longer_words(self):
         self.assertEqual(
             check_repo.seam_violations("Core/X.lua", "HUNTERS Trolls human-readable Hordes determining Professions\n"), []

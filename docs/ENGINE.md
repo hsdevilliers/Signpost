@@ -130,7 +130,8 @@ else the client's `isPrimaryProfession`, else the slot.
   fires `GUIDE_SELECTED` when the selected guide changes. Only explicit choices are stored.
 - `ns.Chapters:Register(id, text)` (ids `^[a-z0-9-]+$`); `:Get(id)` → text.
 - `ns.Classes:Register(classFile, module)`; `:Get(classFile)`. A module may hold `trainerSpells = { [level] = { spellIDs } }`,
-  `classQuests = { { name, level, quests = { questIDs }, offeredBy = "trainer" | npcID | nil }, ... }`,
+  `classQuests = { { name, level, quests = { questIDs }, offeredBy = "trainer" | npcID | nil, races = { raceFile, ... } | nil }, ... }`
+  (`races`: the chain is for those races only, as Classic's druid chains differ per race; the lint skips it for other races),
   `directives = { [name] = directiveDef }` (registered into `ns.Directives` for every class, one by one, so one bad def
   does not stop the rest), `classTab`, `automation`, `onLevelUp(level)` (called by Registry at `PLAYER_LEVEL_UP` for the
   player's class, after `ns.Player.level` is updated; nothing else calls it).
