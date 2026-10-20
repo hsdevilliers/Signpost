@@ -74,6 +74,9 @@ def check_forbidden(files: list[str]) -> list[str]:
 def seam_violations(path: str, text: str) -> list[str]:
     problems = []
     for number, line in enumerate(text.splitlines(), 1):
+        # a TOC lists the class, profession and guide files by name; those paths are inside the folders the seam allows
+        if path.endswith(".toc") and line.replace("\\", "/").startswith(("Classes/", "Professions/", "Guides/")):
+            continue
         for pattern in SEAM_PATTERNS:
             match = pattern.search(line)
             if match:

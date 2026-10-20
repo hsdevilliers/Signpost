@@ -93,6 +93,7 @@ class Chain:
     level: int | None
     quests: list[int]
     origin: str
+    races: tuple[str, ...] | None = None  # raceFile tokens the chain is for; None = every race
 
 
 def _chains(value: object, origin: str) -> list[Chain]:
@@ -112,7 +113,10 @@ def _chains(value: object, origin: str) -> list[Chain]:
         quests = [quest for quest in quests or [] if isinstance(quest, int)]
         level = entry.get("level", entry.get("l"))
         name = entry.get("name") or entry.get("n") or entry.get("id") or "?"
-        chains.append(Chain(str(name), level if isinstance(level, int) else None, quests, origin))
+        races = entry.get("races")
+        races = list(races.values()) if isinstance(races, dict) else races
+        races = tuple(r for r in races or [] if isinstance(r, str)) or None
+        chains.append(Chain(str(name), level if isinstance(level, int) else None, quests, origin, races))
     return chains
 
 
@@ -433,7 +437,8 @@ def route_checks(route: Route, pack: guide_travel.Pack, world: guide_travel.Worl
     return found if "node" in skip else found + flight_node_names(route, world)
 
 
-def class_chains(project: guidefile.Project, pack: guide_travel.Pack, cls: str) -> list[Chain]:
+def class_chains(project: guidefile.Project, pack: guide_travel.Pack, cls: str, race: str | None = None) -> list[Chain]:
+    """The class's quest chains; a chain that names races applies to a character of one of them only."""
     chains = []
     # guides may spell the class in any case (the in-game parser lowercases tokens); modules and the pack use the token
     module = next((m for token, m in project.classes.items() if token.lower() == cls.lower()), None)
@@ -442,6 +447,8 @@ def class_chains(project: guidefile.Project, pack: guide_travel.Pack, cls: str) 
     record = next((r for token, r in pack.table("classes").items() if str(token).lower() == cls.lower()), None)
     if isinstance(record, dict):
         chains += _chains(record.get("quests"), "data pack")
+    if race and race != guidefile.OTHER:
+        chains = [c for c in chains if c.races is None or race.lower() in {r.lower() for r in c.races}]
     return chains
 
 
@@ -511,7 +518,7 @@ def lint_guide(
             report.add(problem, guide.id, label)
         for problem, _ in route_checks(route, pack, world, skip):
             report.add(problem, guide.id, label)
-        chains = class_chains(project, pack, variant.cls)
+        chains = class_chains(project, pack, variant.cls, variant.race)
         problems, chains_above = coverage(route, pack, chains, "class", "class-quest")
         above = max(above, chains_above)
         for problem in problems:

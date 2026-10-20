@@ -80,6 +80,10 @@ Tasks
   (incl. track anchors). — Wave 1: engine-registry b2798e3, engine-directives 999505b, engine-parser f760ae7, tools-lint
   2f5081d; integrated on `integration/wave1` with `tests/integration_spec.lua`. The parser and the lint give the same merged step
   ids for the same guide, and their shared rules are in GUIDE-FORMAT "Parsing rules".
+- [x] `Classes/DRUID.lua` (Release 1, user 2026-10-20): the 21 druid-only quests of the pack as five chains (Verdant Note, Moonglade/Bear
+  Form, Lessons Anew, Aquatic Form at 16, Torwa Pathfinder at 52), each with the races it is for; `trainerSpells` is empty until Learn
+  records the trainers (no spell IDs without a source). `classQuests` gained an optional `races` field (ENGINE.md; the lint skips a
+  race-limited chain for other races). Cat/Travel Form and the level-60 set chains are not in the pack: open.
 - [ ] `Classes/HUNTER.lua` with `trainerSpells`, `classQuests`, `.tame`/`.ammo` directives, the `.train class` expansion and the
   "class quest available here" soft check. No other file references a class/race/faction (CI: `tools/check_repo.py`). — The
   engine side is in (Engine/Directives.lua: `.train class` and the soft check read the module's `trainerSpells`/`classQuests`;

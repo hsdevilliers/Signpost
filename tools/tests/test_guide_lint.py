@@ -475,6 +475,19 @@ class LintTest(LintCase):
         self.assertEqual(self.codes(self.lint(files, guides=["typo"])), ["unknown-guide"])
         self.assertEqual(self.codes(self.lint(files, guides=["test-guide"])), [])
 
+    def test_a_chain_for_other_races_does_not_apply(self):
+        druid = (
+            "local ADDON_NAME, ns = ...\n"
+            'ns.Classes:Register("DRUID", { classQuests = {\n'
+            '  { id = "a", name = "Tauren Chain", level = 10, quests = { 6061 }, races = { "Tauren" } },\n'
+            '  { id = "b", name = "Any Chain", level = 10, quests = { 6062 } },\n'
+            "} })\n"
+        )
+        routed = "#chapter 1-12 West\nstep\n  .goto 10,1,1\n  .accept 6062\nstep\n  .goto 10,1,1\n  .turnin 6062\n"
+        for race, expected in (("Tauren", ["class-quest"]), ("Skyborne", [])):
+            files = {"Classes/DRUID.lua": druid, "Guides/Test.lua": guide_lua(routed, races=(race,), classes=("DRUID",))}
+            self.assertEqual(self.codes(self.lint(files)), expected, race)
+
     def test_profession_quests_per_track(self):
         tables = {"maps": MAPS, "quests": QUESTS, "npcs": NPCS, "travel": TRAVEL, "professions": {393: {"n": "Skinning", "quests": [7001]}}}
         guide = guide_lua("#professions skinning\nstep\n  .goto 10,50,50\n  .hub westhold\n")

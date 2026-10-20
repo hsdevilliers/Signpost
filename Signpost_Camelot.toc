@@ -42,6 +42,8 @@ Engine\Conditions.lua
 Engine\Travel.lua
 Engine\Progress.lua
 
+Classes\DRUID.lua
+
 Guides\Travel\Borders.lua
 
 UI\Widgets.lua
