@@ -261,6 +261,13 @@ Acceptance
   button) and `Media/curseforge-logo.png` (512x512, for the CurseForge project, not shipped); `.pkgmeta` keeps the source art and the logo out of the zip.
   Tests in `tools/tests/test_make_icons.py`. How it looks in the minimap ring in the real client is unverified.
 
+## First in-game look (user, 2026-10-20)
+
+- [x] The first look at a Troll Hunter found the guide sending a level-1 character in the Valley of Trials to Orgrimmar. Cause: the drafts began at
+  the lowest quest ID, not at the race's start. Fixed (`start_place` in `tools/guide_draft.py`: the race's own level-1 quest, else the lowest-level
+  quest in the first zone; the Troll chapter excludes the Orgrimmar-only "The New Horde"); both guides rebuilt. Forever's own starter quests (Wayward
+  Weapons) are missing from the pack: FOREVER-API-NOTES "Observed in the game".
+
 ## Notes
 
 - 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,
