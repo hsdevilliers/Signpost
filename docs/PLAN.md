@@ -749,7 +749,7 @@ hearthstone cooldown) and `guide_draft.py`'s placeholder level estimate (one lev
    time per chapter, travel share, backtracking, over- and under-levelled quests.
    **Respawns** (user, 2026-10-20): an objective that needs more kills than there are spawns in reach has to wait for respawns, and groups of
    mobs respawn at very different speeds, so the model carries a respawn time per creature kind (normal, elite, rare; per-creature overrides
-   where known) and a "crowding" factor for other players killing the same mobs. Wait time = (kills needed - spawns in reach) against the
+   where known); the user ruled out a "crowding" factor for other players (2026-10-20). Wait time = (kills needed - spawns in reach) against the
    respawn time, shared between objectives that overlap in one area. The raw spawn count per NPC is a plain number the importer would keep
    (QuestieDB lists every spawn point; the pack keeps three clusters). QuestieDB has no respawn field: the times are parameters, unverified
    for Forever, and the sensitivity report shows whether a route's ranking depends on them.
