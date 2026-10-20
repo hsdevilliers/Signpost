@@ -339,6 +339,45 @@ class CommandLineTest(unittest.TestCase):
     def test_also_needs_merge_learned(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             self.run_main("--json", "--also", "somewhere")
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            self.run_main("--json", "--contributions", "somewhere")
+
+    def test_contributions_fold_each_contributors_files_without_double_counting(self):
+        def npc(name, x, count):
+            return {"n": name, "map": 1411, "x": x, "y": 50.0, "t": 5, "c": count}
+
+        def save(path, db):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            luawriter.write_lua(path, [], [("SignpostDB", db)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack, guides, dev, shared = root / "pack", root / "Guides", root / "dev", root / "shared"
+            for folder in (guides, dev):
+                folder.mkdir()
+            datapack.init_stub(pack)
+            save(dev / "Signpost.lua", {})
+            mine = shared / "ab12cd34"
+            save(mine / "Signpost-classic_beta-20261020-100000.lua", {"learned": {"npcs": {3143: npc("Gornek", 42.0, 1)}}})
+            save(
+                mine / "Signpost-classic_beta-20261021-100000.lua",
+                {"learned": {"npcs": {3143: npc("Gornek", 45.0, 3), 3144: npc("Other", 20.0, 1)}}},
+            )
+            other = shared / "ff00ee11"
+            log = [seen("GOSSIP_SHOW", POSTER, "Wanted Poster", pos(1411, 44.0, 70.0))]
+            save(other / "Signpost-classic_beta-20261020-120000.lua", {"eventLog": log})
+            args = ("--merge-learned", "--from", str(dev), "--contributions", str(shared), "--pack", str(pack))
+            args += ("--guides", str(guides))
+            printed = self.run_main(*args)
+            path = datapack.layer_path(pack, "learned")
+            first = json.loads(path.read_text(encoding="utf-8"))["tables"]
+            archive = json.loads((pack / "layers" / learned.ARCHIVE_NAME).read_text(encoding="utf-8"))
+            self.run_main(*args)
+            second = json.loads(path.read_text(encoding="utf-8"))["tables"]
+        self.assertIn("learned layer: 2 npcs, 1 objects", printed)
+        self.assertEqual(first["npcs"]["3143"]["p"], [[1411, 45.0, 50.0]])  # the later, fuller copy wins
+        self.assertEqual(sorted(archive), ["contrib-ab12cd34-classic_beta", "contrib-ff00ee11-classic_beta", "local"])
+        self.assertEqual(first, second)
 
 
 if __name__ == "__main__":
