@@ -1,15 +1,24 @@
 local ADDON_NAME, ns = ...
 
--- The class quest chains are the druid-only quests of the data pack's QuestieDB layer (Classic's chains: the quest IDs
--- and levels are facts from there; each chain's races are the races whose chain it is). Forever's own additions are not
--- in that source yet, and neither are the trainer spells; both come from in-game learning (Core/Learn.lua).
--- VERIFY(beta): Forever may have reworked the early forms (Bear Form at 10, Aquatic Form at 16, Cat and Travel Form),
--- so every chain here is unconfirmed until a druid has done it; the level-60 set and reputation chains are not listed.
+-- The class quest chains are the druid quests of the data pack: QuestieDB's Classic baseline (the Tauren chains) and,
+-- since 2026-10-20, its Forever layers (the Cat Form chain at 20 and the Windshaper Skyborne chains: quest IDs, levels
+-- and races are facts from there; QuestieDB says those layers do not supply complete objectives or restrictions).
+-- Trainer spells are not in either source; they come from in-game learning (Core/Learn.lua). The Windshaper's own
+-- Cat Form quests ("The Great Windborne Cat Spirit" ...) are not in the pack yet: a pending chain.
+-- VERIFY(beta): the forms (Bear Form at 10, Aquatic Form at 16, Cat Form at 20, Travel Form) and who learns them where
+-- are unconfirmed until a druid has done them; the level-60 set and reputation chains are not listed.
 ns.Classes:Register("DRUID", {
 	-- { [level] = { spellIDs } }: no spell IDs without a source; `.train class` stays empty until Learn records them.
 	trainerSpells = {},
 	classQuests = {
 		{ id = "verdant-note", name = "Verdant Note", level = 1, quests = { 3094 }, races = { "Tauren" } },
+		{
+			id = "student-of-nature",
+			name = "A Student of Nature",
+			level = 2,
+			quests = { 92485 },
+			races = { "Skyborne" },
+		},
 		{
 			id = "moonglade",
 			name = "Moonglade (Bear Form)",
@@ -19,6 +28,13 @@ ns.Classes:Register("DRUID", {
 			races = { "Tauren" },
 		},
 		{
+			id = "windshaper-bear-form",
+			name = "Child of Nature, Moonglade (Bear Form, Windshaper)",
+			level = 10,
+			quests = { 94911, 94913, 94006, 94638 },
+			races = { "Skyborne" },
+		},
+		{
 			id = "lessons-anew",
 			name = "Lessons Anew",
 			level = 14,
@@ -26,9 +42,25 @@ ns.Classes:Register("DRUID", {
 			races = { "Tauren" },
 		},
 		{ id = "aquatic-form", name = "Aquatic Form", level = 16, quests = { 26, 28, 30, 31 }, races = { "Tauren" } },
-		-- Forever's own chain (not in the Classic baseline, so no IDs yet; the lint wants a `.todo` naming it in the guide):
-		-- "The Great Cat Spirit" x3, "Blessings of the Great Cat Spirit", "To Thunder Bluff"; docs/CLASS-QUESTS.md
-		{ id = "cat-form", name = "Cat Form", level = 20, quests = {}, pending = true },
+		{
+			id = "cat-form",
+			name = "Cat Form",
+			level = 20,
+			-- The Great Cat Spirit (Turak to Dendrite), The Great Cat Spirit (Dendrite to the Spirit), The Great Cat
+			-- Spirit (the Spirit), Blessings of the Great Cat Spirit, To Thunder Bluff
+			quests = { 98340, 98405, 98342, 98739, 98362 },
+			races = { "Tauren" },
+		},
+		-- The Windshaper starts and ends in the same two places (98340 and 98362 are shared); its quests in between
+		-- (the "Windborne" versions) are not in the pack yet: the lint wants a `.todo` naming the chain in the guide.
+		{
+			id = "windshaper-cat-form",
+			name = "Cat Form (Windshaper)",
+			level = 20,
+			quests = {},
+			pending = true,
+			races = { "Skyborne" },
+		},
 		{ id = "torwa-pathfinder", name = "Torwa Pathfinder", level = 52, quests = { 9063, 9052, 9051, 9053 } },
 	},
 })

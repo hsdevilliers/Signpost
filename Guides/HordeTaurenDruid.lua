@@ -13,7 +13,6 @@ ns.Guides:Register({
 #include druid-bear-form-10
 #include barrens-10-20
 #include druid-forms-14-20
-step
-  .todo "Cat Form (level 20): a new quest chain in Forever (The Great Cat Spirit, then three relics in the Stormrage Barrow Dens); IDs and positions are pending, docs/CLASS-QUESTS.md"
+#include druid-cat-form-20
 ]],
 })
