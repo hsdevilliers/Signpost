@@ -53,5 +53,8 @@ step
 step
   .goto 1456,76.48,27.22
   .turnin 98362 .class DRUID -- To Thunder Bluff
+step
+  .todo "travel from Thunder Bluff to Stonetalon Mountains: the travel graph has no route yet"
+  .zone 1442 >> Go to Stonetalon Mountains
 ]]
 )

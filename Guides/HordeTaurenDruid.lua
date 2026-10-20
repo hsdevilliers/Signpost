@@ -6,7 +6,7 @@ ns.Guides:Register({
 	faction = "Horde",
 	races = { "Tauren" },
 	classes = { "DRUID" },
-	levels = { 1, 20 },
+	levels = { 1, 30 },
 	text = [[
 #guide Tauren Druid, hardcore route
 #include mulgore-1-12
@@ -14,5 +14,6 @@ ns.Guides:Register({
 #include barrens-10-20
 #include druid-forms-14-20
 #include druid-cat-form-20
+#include stonetalon-ashenvale-20-30-druid
 ]],
 })

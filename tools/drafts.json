@@ -146,6 +146,27 @@
             "--chain",
             "98340,98405,98342,98739,98362"
           ]
+        },
+        {
+          "id": "stonetalon-ashenvale-20-30-druid",
+          "name": "Stonetalon, Ashenvale and Thousand Needles",
+          "race": "Tauren",
+          "class": "DRUID",
+          "zones": [
+            1442,
+            1440,
+            1441
+          ],
+          "levels": "21-30",
+          "args": [
+            "--xp-levels",
+            "--exclude",
+            6504,
+            "--exclude",
+            6621,
+            "--exclude-reason",
+            "an objective item has no known source in the data"
+          ]
         }
       ],
       "rewrites": [
