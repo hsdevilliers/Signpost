@@ -21,6 +21,7 @@ zone change, and tools/guide_travel.py proposes the travel steps. Output is DSL 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,6 +90,7 @@ class Draft:
     unreachable: list[int] = field(default_factory=list)
     unplaced: list[str] = field(default_factory=list)
     kept: int = 0
+    skipped: dict[int, str] = field(default_factory=dict)  # routed out on purpose: quest -> reason
 
 
 def _ids(value: object) -> list[int]:
@@ -207,9 +209,9 @@ def _clean(text: str) -> str:
 def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Namespace) -> Draft:
     pool, dropped = candidates(pack, world, spec)
     result = Draft(dropped=dropped)
-    excluded = set(spec.exclude)
-    for qid in sorted(excluded & set(pool)):
+    for qid in sorted(set(spec.skip_reasons) & set(pool)):
         pool.pop(qid)
+        result.skipped[qid] = spec.skip_reasons[qid]
         result.dropped.setdefault("excluded by the author", []).append(qid)
     result.kept = len(pool)
     blocking = {qid for reason in BLOCKING for qid in result.dropped.get(reason, [])}
@@ -311,6 +313,8 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
             for q in list(pool.values()):
                 if available(q) and any(at(place, s) for s in q.starts):
                     step.append(line(f".accept {q.id}", q))
+                    if q.id in spec.notes:
+                        step.append(f"  .note {_clean(spec.notes[q.id])}")
                     active[q.id] = {o.index for o in q.objectives}
                     for other in q.exclusive:
                         if other in pool and other not in done and other not in active:
@@ -337,8 +341,8 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
 def render(result: Draft, spec: argparse.Namespace, pool_names: dict[int, str]) -> str:
     levels = f"{spec.min_level}-{spec.max_level}"
     lines = [f"#chapter {levels} {spec.name}"]
-    for qid in sorted(spec.exclude):
-        lines.append(f"#skipquest {qid} >> {spec.exclude_reason}")
+    for qid, reason in sorted(result.skipped.items()):
+        lines.append(f"#skipquest {qid} >> {_clean(reason)}")
     for step in result.steps:
         lines.append("step")
         lines.extend(step)
@@ -382,6 +386,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--name", required=True, help="chapter name")
     parser.add_argument("--exclude", type=int, action="append", default=[], metavar="QUEST", help="never route this quest")
     parser.add_argument("--exclude-reason", default="hardcore: not routed", help="the #skipquest reason")
+    parser.add_argument(
+        "--hardcore",
+        nargs="?",
+        const=str(Path(__file__).resolve().parent / "hardcore_rules.json"),
+        metavar="RULES",
+        help="apply the hardcore rules (default tools/hardcore_rules.json): skips become #skipquest, notes become .note",
+    )
     parser.add_argument("--quests-per-level", type=int, default=5, help="placeholder level estimate (default 5)")
     parser.add_argument("--grey", type=int, default=8, help="drop quests this many levels below the range (default 8)")
     parser.add_argument("--no-gate-class", dest="gate_class", action="store_false", help="no .class gate on class quests")
@@ -390,6 +401,20 @@ def main(argv: list[str] | None = None) -> int:
     spec = parser.parse_args(argv)
     spec.min_level, spec.max_level = spec.levels
     spec.name = _clean(spec.name)
+    spec.skip_reasons = {qid: spec.exclude_reason for qid in spec.exclude}
+    spec.notes = {}
+    if spec.hardcore:
+        try:
+            rules = json.loads(Path(spec.hardcore).read_text(encoding="utf-8")).get("rules", [])
+        except (OSError, ValueError) as exc:
+            parser.error(f"--hardcore: {exc}")
+        for rule in rules:
+            if not isinstance(rule, dict) or not isinstance(rule.get("id"), int):
+                continue
+            if rule.get("action") == "skip":
+                spec.skip_reasons.setdefault(rule["id"], str(rule.get("reason") or "hardcore: not routed"))
+            elif rule.get("action") == "note" and rule.get("text"):
+                spec.notes[rule["id"]] = str(rule["text"])
 
     bit = spec.race_bit or RACE_BITS.get(spec.race.lower())
     if not bit:

@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import re
 import unittest
 
@@ -107,6 +108,36 @@ class PoolTest(DraftCase):
         self.assertNotIn(203, self.quests_in(text, "accept"))
         self.assertIn("#skipquest 203 >> hardcore: elite", text)
         self.assertIn("excluded by the author", report)
+
+    def rules_file(self, rules):
+        path = self.root / "rules.json"
+        path.write_text(json.dumps({"rules": rules}), encoding="utf-8")
+        return str(path)
+
+    def test_hardcore_rules_skip_quests_and_add_notes(self):
+        rules = [
+            {"id": 203, "action": "skip", "reason": "hardcore: elite boar"},
+            {"id": 201, "action": "note", "text": "Heal up first."},
+            {"id": 999, "action": "skip", "reason": "not in this chapter"},
+        ]
+        text, report = self.draft("--hardcore", self.rules_file(rules))
+        self.assertIn("#skipquest 203 >> hardcore: elite boar", text)
+        self.assertNotIn("#skipquest 999", text)  # only quests the chapter would have routed
+        self.assertNotIn(203, self.quests_in(text, "accept"))
+        self.assertRegex(text, r"\.accept 201 -- First\n  \.note Heal up first\.")
+        self.assertIn("excluded by the author", report)
+
+    def test_a_missing_rules_file_is_an_error(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.draft("--hardcore", str(self.root / "nowhere.json"))
+
+    def test_the_shipped_hardcore_rules_are_complete(self):
+        rules = json.loads(guide_draft.Path(guide_draft.__file__).with_name("hardcore_rules.json").read_text(encoding="utf-8"))
+        for rule in rules["rules"]:
+            self.assertIsInstance(rule["id"], int)
+            self.assertIn(rule["action"], ("skip", "note"))
+            self.assertTrue(rule.get("source") and rule.get("confidence") in ("high", "medium", "low"), rule)
+            self.assertTrue(rule.get("reason") if rule["action"] == "skip" else rule.get("text"), rule)
 
     def test_the_level_estimate_does_not_stall_on_a_gate(self):
         quests = {**QUESTS, 218: {"n": "Level Three", "r": 3, "l": 3, **HOME}}

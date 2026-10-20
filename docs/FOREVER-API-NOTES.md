@@ -169,8 +169,30 @@ Maps and travel
 | Secret guard | `issecretvalue(v)` exists; `UnitHealth`/`UnitPower` are secret |
 | Error isolation | `xpcall(fn, geterrorhandler(), ...)` — extra arguments are passed (`ns.SafeCall`) |
 
+## Skyborne / Zephras Isle (research 2026-10-20)
+What exists for the Windshaper (Horde Skyborne) start, and what does not:
+- **Known:** the client map dump has **Zephras Isle = uiMapID 2521** (also Riverglades 2548, Shen'dralas 2652, Mount Hyjal 2482).
+  QuestieDB's area table maps 28 Zephras subzone AreaIDs to 2521 (Thendal Grove, Shen'dar Highlands and Village, Windsong Lake,
+  Gustberry Lowlands, Valanaar Skydocks, Shrine of Akir, Rohashi Spires, Shadowfang Forest ...).
+- **Not in QuestieDB:** its Forever quest data holds **0 quests** in those areas and no Skyborne NPCs: the area table was prepared,
+  the content was not added. The pack therefore has no Zephras Isle quests, NPCs or objects.
+- **Not readable:** Wowhead's Forever zone, quest and NPC pages answer 403 to the exporter (see the Wowhead section above).
+- **Community descriptions (beta observations, names only, no IDs or coordinates, sources disagree):** the island is levels 1-12
+  (Blizzard confirms the range and the faction split; beta players report finishing around 12-14). The Horde fork is "The Gift of
+  Skysight" (Alliance: "Reading the Ley Lines"). An opening chain in Thendal Village is described as Coming of Age, Harmony in Balance,
+  Infestation Investigation, The Cirrusfly Queen, Falling With Style, The Anchors of Zephras. One tier-list site also names a level-2
+  Shaman class quest, Embracing the Elements. A separate site lists quests nobody else confirms; ignore it. Sources:
+  [timesaver.gg](https://timesaver.gg/blog/wow-forever-skyborne-starting-zone-zephras-isle-guide),
+  [wowforeverguides.com](https://wowforeverguides.com/races/skyborne),
+  [Blizzard news](https://news.blizzard.com/en-us/article/24302071/wow-forever-meet-the-new-skyborne).
+- **Consequence:** a Windshaper chapter needs IDs and positions from play: `Core/Learn.lua` records quest givers and enders, NPC and
+  object positions and the quest IDs of what a character accepts and turns in, which is enough to draft the chapter with
+  `guide_draft.py` (it needs no Wowhead). The Skyborne race bit in the pack's quest masks is unknown (`--race-bit`).
+
 ## Open probes (answer in game, record the evidence and build number, then move to Verified)
 - [ ] Launch client folder name (after Nov 4): `_classic_`? `_forever_`? other?
+- [ ] How does an addon tell that the character is on a Hardcore ruleset (a `C_` call, a character flag, a realm type)? The `.hc` gate
+  stays false until this is answered (docs/HARDCORE.md); the user reports hardcore exists from launch day.
 - [ ] The "Help improve Signpost" window (`UI/Contribute.lua`, `/signpost contribute`) in the real client: built from
   `ButtonFrameTemplate`, `UICheckButtonTemplate` and `UIPanelButtonTemplate` on specs only. Does it lay out (text not clipped, checkbox
   clickable on its label, Escape closes it, opens once by itself on a release build, not in combat)?

@@ -221,6 +221,12 @@ Acceptance
 - [ ] Helper script that copies a clean `Signpost.lua` to the shared folder (the friend's main path); in-game export block as the fallback.
 - [ ] Options panel entry for the checkbox once `UI/Options.lua` exists.
 
+## Hardcore (user, 2026-10-20)
+
+- [x] Research and policy: `docs/HARDCORE.md` (sources with confidence, what is not known). `tools/hardcore_rules.json` (4 skips, 1 note,
+  each with a source) and `tools/guide_draft.py --hardcore` (skips become `#skipquest`, notes become `.note`); 3 tests.
+- [ ] Dungeon chapters default to skipped in a hardcore guide (needs a chapter-header flag); the hardcore-ruleset probe; group/elite tags.
+
 ## Notes
 
 - 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,
