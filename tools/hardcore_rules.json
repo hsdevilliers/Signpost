@@ -1,0 +1,45 @@
+{
+  "about": "Hardcore route rules for tools/guide_draft.py --hardcore (docs/HARDCORE.md). Quest IDs are from the data pack; every rule names where it comes from and how sure that source is. A skip becomes '#skipquest <id> >> <reason>'; a note becomes a '.note' after the quest's '.accept'. Corrected from play (the contributors' deaths) over time.",
+  "rules": [
+    {
+      "id": 827,
+      "name": "Skull Rock",
+      "action": "skip",
+      "reason": "hardcore: cave with respawning enemies and a hard-hitting boss; kills a large share of players",
+      "source": "Blizzard forums, 'Advice on dangerous Horde quests to avoid in HC + SF' (several posters); dotesports top-10 hardcore quests to avoid",
+      "confidence": "high"
+    },
+    {
+      "id": 3912,
+      "name": "Meet at the Grave",
+      "action": "skip",
+      "reason": "hardcore: the quest kills your character",
+      "source": "dotesports top-10 hardcore quests to avoid",
+      "confidence": "high"
+    },
+    {
+      "id": 5096,
+      "name": "Scarlet Diversions",
+      "action": "skip",
+      "reason": "hardcore: notorious Scarlet Crusade quest",
+      "source": "dotesports top-10 hardcore quests to avoid",
+      "confidence": "medium"
+    },
+    {
+      "id": 746,
+      "name": "Dwarven Digging",
+      "action": "skip",
+      "reason": "hardcore: the forge is hard to reach without a group",
+      "source": "joanasworld Tauren 1-12 Mulgore guide",
+      "confidence": "medium"
+    },
+    {
+      "id": 6002,
+      "name": "Body and Heart",
+      "action": "note",
+      "text": "Summons Lunaclaw: be fully buffed and healed first; Entangling Roots buys distance for healing. Come back later if unsure.",
+      "source": "joanasworld Tauren 1-12 Mulgore guide",
+      "confidence": "medium"
+    }
+  ]
+}
