@@ -12,10 +12,10 @@ HORDE = availability.Character("Horde", availability.race_bit("Orc", "Horde"), a
 
 
 class PlannerCase(TempProject):
-    def planner(self, quests=None, character=HORDE, mandatory=(), **settings):
+    def planner(self, quests=None, character=HORDE, mandatory=(), npcs=None, **settings):
         base = dict(cap=6, skip_unprofitable=False, hub_radius=150.0)
         base.update(settings)
-        pack_dir = write_pack(self.pack_dir, {"maps": MAPS, "quests": quests or QUESTS, "npcs": NPCS, "travel": TRAVEL, "items": ITEMS})
+        pack_dir = write_pack(self.pack_dir, {"maps": MAPS, "quests": quests or QUESTS, "npcs": npcs or NPCS, "travel": TRAVEL, "items": ITEMS})
         pack = guide_travel.load_pack(pack_dir)
         world = guide_travel.World(pack, [], "Horde")
         return engine.Planner.build(pack, world, character, engine.Settings(**base), mandatory=mandatory)
@@ -223,6 +223,59 @@ class TidyTest(PlannerCase):
         self.assertEqual(tidy.final.active, {})
         self.assertNotIn(203, tidy.final.done)
         self.assertIn(203, tidy.stats["removed"])
+
+
+class ClassQuestTest(PlannerCase):
+    def test_a_class_quest_costs_for_each_level_it_is_undone_up_to_a_limit(self):
+        pl = self.planner(mandatory=(217,), class_push=600.0, class_grace=1, class_levels=4)
+        quest = pl.quests[217]  # opens at level 1
+        self.assertEqual([pl.lateness(quest, n) for n in (1, 2, 3, 4, 30)], [0.0, 0.0, 600.0, 1200.0, 2400.0])
+        self.assertEqual(pl.lateness(pl.quests[203], 30), 0.0)  # only a class quest is pushed
+
+    def test_the_search_sees_a_waiting_class_quest_and_the_plan_adds_up(self):
+        pl = self.planner(mandatory=(217,), class_push=600.0)
+        hub = self.start(pl)
+        waiting = pl.start(hub, 3)
+        self.assertEqual(pl.score(waiting) - pl.to_go(waiting), 1200.0)  # level 3, opens at 1: two levels late
+        plan = pl.plan("greedy", hub)
+        self.assertIn(217, plan.final.done)
+        self.assertGreaterEqual(plan.late, 0.0)
+        self.assertEqual(plan.total, plan.seconds + plan.penalty + plan.late)
+
+    def test_the_hubs_of_a_class_quest_past_its_level_are_always_tried(self):
+        pl = self.planner(mandatory=(217,))
+        giver = pl.quests[217].start_hubs[0]
+        elsewhere = next(h.id for h in pl.hubs if h.id != giver)
+        self.assertEqual(pl.overdue_hubs(pl.start(elsewhere, 3)), [giver])  # level 3, it opens at 1
+        self.assertEqual(pl.overdue_hubs(pl.start(elsewhere, 1)), [])  # not late yet
+        self.assertEqual(pl.overdue_hubs(pl.start(giver, 3)), [])  # already there
+        tried = [child.hub for child in pl.children(pl.start(elsewhere, 3), 1)]
+        self.assertIn(giver, tried)  # even when the ranking would have tried only one other hub
+
+
+class ActivityStepsTest(PlannerCase):
+    NEIGHBOUR = {1004: {"n": "Neighbour", "p": [[10, 41, 40]], "side": "Horde"}}
+
+    def text(self, **settings):
+        plain = {n: {"n": f"Plain {n}", "r": 1, "l": 1, **HOME} for n in range(270, 274)}  # a zone needs a few quests to count as theirs
+        quests = {**plain, 260: {"n": "Next Door", "r": 1, "l": 1, "s": {"npc": [1004]}, "e": {"npc": [1004]}, "side": "Horde", "races": 178}}
+        pl = self.planner(quests=quests, npcs={**NPCS, **self.NEIGHBOUR}, **settings)
+        plan = pl.plan("greedy", self.start(pl))
+        return "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+
+    def test_quest_givers_in_one_area_are_one_pick_up_step_and_the_steps_are_fewer(self):
+        grouped, apart = self.text(), self.text(group_yards=0.0)
+        self.assertLess(grouped.count("step\n"), apart.count("step\n"))
+        step = next(s for s in grouped.split("step\n") if ".accept 260" in s)
+        self.assertIn(".accept 270", step)  # the neighbour and the giver at the hub
+        self.assertNotIn(".accept 270", next(s for s in apart.split("step\n") if ".accept 260" in s))
+
+    def test_a_doing_step_holds_only_quests_to_do(self):
+        for step in self.text().split("step\n")[1:]:
+            if ".complete" in step and ".goto" in step:
+                if ".accept" in step or ".turnin" in step:
+                    continue  # a talk-to objective at an NPC is part of the NPC's step
+                self.assertNotIn(".level", step.replace(".level 2 ", ""))  # a doing step is not a level gate
 
 
 class EmitTest(PlannerCase):

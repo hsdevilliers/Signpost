@@ -4,7 +4,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import route_install
 import route_planner as rp
 from signpost_tools import guidefile
 from tests.guide_fixtures import BORDERS_LUA, MAPS, TRAVEL, TempProject, guide_lua, write_pack
@@ -143,6 +145,44 @@ class EndToEndTest(RouteCase):
         self.assertIn("[HARDCORE route]", text)
         code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0", "--mode", "normal")
         self.assertIn("[normal route]", text)
+
+
+class InstallTest(RouteCase):
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(route_install, "find_stylua", lambda root: None)  # never format files of a temporary project
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_the_best_route_that_passes_its_checks_becomes_the_guides_chapters(self):
+        code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--install", "--steps", "0", "--decisions", "0")
+        self.assertEqual(code, 0, text)
+        self.assertIn("INSTALLED", text)
+        chapters = sorted((self.root / "Guides" / "Chapters").glob("test-guide-*.lua"))
+        self.assertTrue(chapters)
+        guide = (self.root / "Guides" / "Test.lua").read_text(encoding="utf-8")
+        self.assertIn(f"#include {chapters[0].stem}", guide)
+        self.assertIn("levels = { 1, 6 }", guide)
+        self.assertIn("test-guide", guidefile.load_project(self.root).guides)  # the project still loads
+
+    def test_nothing_is_installed_without_asking_and_installing_needs_the_checks(self):
+        self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        self.assertFalse(list((self.root / "Guides" / "Chapters").glob("test-guide-*.lua")) if (self.root / "Guides" / "Chapters").exists() else [])
+        with self.assertRaises(SystemExit):
+            self.run_main("troll", "--install", "--no-check")
+
+    def test_a_route_that_does_not_pass_is_not_chosen(self):
+        class Fake:
+            def __init__(self, ok):
+                self.evaluation = mock.Mock(lint_errors=[] if ok else ["error"], sim=mock.Mock(violations=[]))
+                self.plan = mock.Mock(complete=True, total=1.0)
+                self.preset, self.monte = "greedy", {}
+
+        good, bad = Fake(True), Fake(False)
+        self.assertTrue(rp.passes(good))
+        self.assertFalse(rp.passes(bad))
+        self.assertIs(rp.choose([bad, good], []), good)
+        self.assertIsNone(rp.choose([bad], []))
 
 
 if __name__ == "__main__":

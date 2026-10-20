@@ -87,6 +87,9 @@ def insert_proposals(found: list[tuple[str, int, str]], root: Path = ROOT) -> in
 
 
 def rebuild(guide: dict, pack: Path) -> bool:
+    if guide.get("planned"):
+        print(f"rebuild_drafts: {guide['guide']}: planned, not drafted ({guide['planned']}); tools/route_planner.py --install replaces it")
+        return True
     ids = [chapter["id"] for chapter in guide["chapters"]]
     included = guide_includes(guide["guide"])
     if included is not None and [i for i in included if i in ids] != ids:

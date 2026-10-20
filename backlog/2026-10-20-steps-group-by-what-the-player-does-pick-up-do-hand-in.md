@@ -55,4 +55,7 @@ Added by Claude, to settle with the user before building:
   what a skipped or abandoned quest does to its step.
 - The group-quest line (an extra line beside the current step until the quest is done or the character is 5 levels above it; PROGRESS) is
   a second line next to the step and has to fit the new steps.
+- Decided with the user (2026-10-20): the step kind is inferred from the directives (no new syntax); "hand in" and "pick up" at one place is one
+  step; a doing step shows neither a marker nor words about where, only its quests with a done mark (the quest log marks the objectives, and the
+  guide sets the quest tracker to them: see the tracker item); neighbouring steps of one kind within 250 yards of the first become one.
 - Until this is built the drafter and the planner keep writing one NPC per step, with kills and collecting as steps of their own.

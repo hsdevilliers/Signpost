@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import guide_draft  # noqa: E402
 import guide_sim  # noqa: E402
 import guide_travel  # noqa: E402
-from signpost_tools import availability  # noqa: E402
+from signpost_tools import availability, steps  # noqa: E402
 from signpost_tools.guidefile import Coord  # noqa: E402
 
 GRIND = "grind"
@@ -56,6 +56,10 @@ class Settings:
     prune: float = 1.05  # a partial route estimated this much slower than the best finished one is dropped
     alternatives: int = 5  # other finished routes the beam keeps for the thorough preset to compare
     max_depth: int = 900  # visits in a route, a guard against a search that does not end
+    class_push: float = 1200.0  # seconds charged for each class quest still undone, for each level past the one it opens at
+    class_grace: int = 0  # levels past the one it opens at before the charge starts
+    class_levels: int = 6  # levels past that the charge keeps growing for: a quest this late is not worth bending the route for
+    group_yards: float = steps.GROUP_YARDS  # neighbouring steps of one kind this near each other are written as one
 
 
 @dataclass
@@ -133,7 +137,7 @@ class Visit:
 class PState:
     """A situation. States are shared along a path through `parent` and never changed once made."""
 
-    __slots__ = ("hub", "zone", "level", "xp", "clock", "penalty", "gated", "done", "active", "gone", "parent", "visit", "depth", "ground")
+    __slots__ = ("hub", "zone", "level", "xp", "clock", "penalty", "late", "gated", "done", "active", "gone", "parent", "visit", "depth", "ground")
 
     def __init__(self) -> None:
         self.hub: int | None = None
@@ -141,7 +145,8 @@ class PState:
         self.level = 1
         self.xp = 0.0
         self.clock = 0.0
-        self.penalty = 0.0
+        self.penalty = 0.0  # what zone changes cost the planner besides the play time
+        self.late = 0.0  # what class quests turned in after the level they open at cost it (Settings.class_push)
         self.gated = 0
         self.done: frozenset = frozenset()
         self.active: dict = {}
@@ -150,6 +155,11 @@ class PState:
         self.visit: Visit | None = None
         self.depth = 0
         self.ground = 0.0
+
+    @property
+    def total(self) -> float:
+        """The play time and everything the planner charges on top: what the search ranks routes by."""
+        return self.clock + self.penalty + self.late
 
     def key(self) -> tuple:
         return (self.hub, self.done, tuple(sorted((q, tuple(sorted(o))) for q, o in self.active.items())))
@@ -164,11 +174,17 @@ class Plan:
     final: PState | None = None
     seconds: float = 0.0
     penalty: float = 0.0
+    late: float = 0.0
     complete: bool = False  # reached the cap with every class quest done or accounted for
     stats: dict = field(default_factory=dict)
     trace: list = field(default_factory=list)  # (depth, routes kept, best estimated total seconds)
     alternatives: list = field(default_factory=list)  # other finished routes with a different order of zones, best first
     decisions: list = field(default_factory=list)  # at each change of zone: what the search chose and what else it held
+
+    @property
+    def total(self) -> float:
+        """The play time plus everything the planner charged on top (zone changes, class quests done late)."""
+        return self.seconds + self.penalty + self.late
 
     def levels_done(self) -> dict[int, int]:
         """The level the character had after the visit that turned each quest in."""
@@ -644,7 +660,7 @@ class Planner:
         gated = st.gated
         actions: list[Action] = []
         interact_s = p["interact_seconds"]
-        interact = objective = longest_wait = gained = 0.0
+        interact = objective = longest_wait = gained = owed = 0.0
         sweeps = 0
         progressed = True
         while progressed and sweeps < 8:
@@ -657,6 +673,7 @@ class Planner:
                     for q in self.ends_by_place.get(key, ()):
                         if q.id in active and not active[q.id]:
                             gained += progress.gain(self.reward(q.id, progress.level))
+                            owed += self.lateness(q, progress.level)
                             interact += interact_s
                             actions.append(Action("turnin", q.id, None, place))
                             del active[q.id]
@@ -697,6 +714,7 @@ class Planner:
         zone_change = new.zone != st.zone
         new.clock = st.clock + seconds
         new.penalty = st.penalty + (s.zone_friction if zone_change else 0.0)
+        new.late = st.late + owed
         new.gated, new.done, new.gone = gated, frozenset(done), frozenset(gone)
         new.active = {q: frozenset(o) for q, o in active.items()}
         new.parent, new.depth, new.ground = st, st.depth + 1, st.ground
@@ -735,7 +753,7 @@ class Planner:
             return None
         new = PState()
         new.hub, new.zone, new.level, new.xp = st.hub, st.zone, progress.level, progress.xp
-        new.clock, new.penalty = st.clock + seconds, st.penalty
+        new.clock, new.penalty, new.late = st.clock + seconds, st.penalty, st.late
         new.gated, new.done, new.gone, new.active = max(st.gated, target), st.done, st.gone, st.active
         new.parent, new.depth, new.ground = st, st.depth + 1, st.ground + progress.ground_xp
         new.visit = Visit(None, [Action(GRIND, None, target, None)], seconds, progress.ground_xp, False, progress.level, grind_seconds=seconds)
@@ -743,6 +761,13 @@ class Planner:
         return new
 
     # the goal and the estimate ---------------------------------------------------------------------------------------
+
+    def lateness(self, q: PQuest, level: int) -> float:
+        """What a class quest costs the route for being undone at this level: a push to do it early, not a deadline. The route
+        picks it up when it passes the giver, and makes the trip for a far one soon after it opens."""
+        if not q.mandatory:
+            return 0.0
+        return min(max(0, level - q.req - self.s.class_grace), self.s.class_levels) * self.s.class_push
 
     def pending_mandatory(self, st: PState) -> list[int]:
         """Class quests still to do that the route can do: not done, not closed by a quest it did."""
@@ -772,7 +797,7 @@ class Planner:
         return left
 
     def score(self, st: PState) -> float:
-        return st.clock + st.penalty + self.to_go(st)
+        return st.total + sum(self.lateness(self.quests[q], st.level) for q in self.pending_mandatory(st)) + self.to_go(st)
 
     # the searches ---------------------------------------------------------------------------------------------------
 
@@ -788,9 +813,36 @@ class Planner:
                 break
         return chosen
 
+    def overdue_hubs(self, st: PState, most: int = 4) -> list[int]:
+        """The nearest hubs where a class quest past the level it opens at can be got on with (its giver, an open objective, its
+        ender), so the search always considers the trip: a far hub never makes the best-ranked few on experience for the walk."""
+        found: dict[int, float] = {}
+        for qid in self.pending_mandatory(st):
+            q = self.quests[qid]
+            if st.level <= q.req + self.s.class_grace:
+                continue
+            if qid in st.active:
+                open_ = st.active[qid]
+                if not open_:
+                    hubs = q.end_hubs
+                elif self.soon(q, st.level):
+                    hubs = tuple(h for o in q.objectives if o.index in open_ for h in o.hubs)
+                else:
+                    continue
+            elif self.offered(q, st.level, st.done, st.active, st.gone):
+                hubs = q.start_hubs
+            else:
+                continue
+            for h in hubs:
+                if h != st.hub:
+                    found[h] = min(found.get(h, float("inf")), self.travel(st.hub, h))
+        return sorted(found, key=found.get)[:most]
+
     def children(self, st: PState, limit: int) -> list[PState]:
         out = []
-        for h in self.rank(st, self.options(st), limit):
+        hubs = self.rank(st, self.options(st), limit)
+        hubs += [h for h in self.overdue_hubs(st) if h not in hubs]
+        for h in hubs:
             child = self.visit(st, h)
             if child is not None:
                 out.append(child)
@@ -869,7 +921,7 @@ class Planner:
         return plan
 
     def _finish(self, final: PState) -> Plan:
-        plan = Plan(final=final, seconds=final.clock, penalty=final.penalty)
+        plan = Plan(final=final, seconds=final.clock, penalty=final.penalty, late=final.late)
         path, st = [], final
         while st is not None and st.visit is not None:
             path.append(st.visit)
@@ -938,7 +990,7 @@ class Planner:
         self.calibrate(base)
         frontier = [self.start(start_hub)]
         best_final = base.final if base.complete else None
-        best_time = (best_final.clock + best_final.penalty) if best_final else float("inf")
+        best_time = best_final.total if best_final else float("inf")
         finals = 0
         finished: list[PState] = []
         trace: list = []
@@ -954,8 +1006,8 @@ class Planner:
                     if self.terminal(child):
                         finals += 1
                         finished.append(child)
-                        if child.clock + child.penalty < best_time:
-                            best_final, best_time = child, child.clock + child.penalty
+                        if child.total < best_time:
+                            best_final, best_time = child, child.total
                         continue
                     value = self.score(child)
                     if value >= best_time * s.prune:
@@ -978,9 +1030,9 @@ class Planner:
         plan = self._finish(best_final if best_final is not None else base.final)
         plan.decisions = self._beam_decisions(plan.final, frontier_log)
         plan.trace = trace
-        plan.stats.update(pruned=pruned, finals=finals, baseline_seconds=base.seconds + base.penalty)
+        plan.stats.update(pruned=pruned, finals=finals, baseline_seconds=base.total)
         seen = {self.signature(plan.final)}
-        for final in sorted(finished, key=lambda f: f.clock + f.penalty):
+        for final in sorted(finished, key=lambda f: f.total):
             sig = self.signature(final)
             if sig not in seen and len(plan.alternatives) < self.s.alternatives:
                 seen.add(sig)
@@ -1064,9 +1116,11 @@ class Planner:
         return self.hubs[hub].label if hub is not None else "(grinding)"
 
     def emit(self, plan: Plan, class_token: str, split_after: int = 10) -> list:
-        """The route as chapters of guide steps: one step per NPC, a `.level` line before a quest above the last level asked
-        for, a `.level` step for a grind, `.optional` on group quests and `.note` where the rules have one. A chapter ends
-        where the zone changes (once it has `split_after` steps)."""
+        """The route as chapters of guide steps: written one place at a time, then neighbouring steps of one kind joined
+        (signpost_tools/steps.py: a pick-up and hand-in step per area, a doing step per group of quests whose objectives are
+        near each other), a `.level` line before a quest above the last level asked for, a `.level` step for a grind,
+        `.optional` on group quests and `.note` where the rules have one. A chapter ends where the zone changes (once it has
+        `split_after` steps)."""
         chapters: list[ChapterText] = []
         current: ChapterText | None = None
         gated = 0
@@ -1092,6 +1146,15 @@ class Planner:
                     group.append(a)
             level = v.level
             current.level_out = level
+
+        def near(a: Coord, b: Coord) -> bool:
+            return a.map == b.map and self._yards(a, b) <= self.s.group_yards
+
+        def objectives(qid: int) -> list[int] | None:
+            return [o.index for o in self.quests[qid].objectives] if qid in self.quests else None
+
+        for chapter in chapters:
+            chapter.steps = steps.group(chapter.steps, near, objectives)
         return chapters
 
     def _step(self, chapter: "ChapterText", group: list, class_token: str, gated: int) -> int:

@@ -99,38 +99,10 @@
     {
       "guide": "horde-troll-hunter",
       "faction": "Horde",
-      "chapters": [
-        {
-          "id": "durotar-1-12",
-          "name": "Durotar",
-          "race": "Troll",
-          "class": "HUNTER",
-          "zones": [
-            1411,
-            1454
-          ],
-          "levels": "1-12",
-          "args": [
-            "--exclude",
-            787,
-            "--exclude-reason",
-            "starts with Eitrigg in Orgrimmar: an intro for characters created there, not for the Valley of Trials"
-          ]
-        },
-        {
-          "id": "barrens-10-20-hunter",
-          "name": "The Barrens",
-          "race": "Troll",
-          "class": "HUNTER",
-          "zones": [
-            1413
-          ],
-          "levels": "10-20",
-          "args": []
-        }
-      ],
+      "chapters": [],
       "rewrites": [],
-      "hardcore": false
+      "hardcore": false,
+      "planned": "the beam route for Troll Hunter, planned by tools/route_planner.py on 2026-10-20 (docs/PLANNER.md)"
     },
     {
       "guide": "horde-windshaper-druid",
