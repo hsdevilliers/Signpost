@@ -314,6 +314,18 @@ class PoolTest(DraftCase):
         accept_201 = next(step for step in steps if ".accept 201" in step)
         self.assertNotIn(".turnin 202", accept_201)
 
+    def test_kills_and_collecting_are_steps_of_their_own(self):
+        text, _ = self.draft()
+        for step in text.split("step\n")[1:]:
+            has_npc = ".accept" in step or ".turnin" in step
+            has_work = ".complete" in step
+            if has_npc and has_work:
+                # only a "talk to" objective that is the NPC itself may share its step: nothing here is far from its NPC
+                coords = {line.strip() for line in step.splitlines() if line.strip().startswith(".goto")}
+                self.assertEqual(len(coords), 1, step)
+        accept_203 = next(step for step in text.split("step\n") if ".accept 203" in step)
+        self.assertNotIn(".complete 203,1", accept_203)  # the boars are not at Gornek
+
     def test_group_quests_are_optional_in_a_normal_guide_and_left_out_of_a_hardcore_one(self):
         text, _ = self.draft()
         self.assertIn(220, self.quests_in(text, "accept"))  # kills an elite

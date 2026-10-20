@@ -10,7 +10,8 @@ Steps, in the order PLAN §7 gives:
      prerequisites and chains (a prerequisite that is another class's or race's quest never counts), quests that close each
      other, quests a quest hands over when it is turned in. A quest whose prerequisites the route never does is not routed;
   3. town loops: from where the walker stands, the nearest place with something to do (accept, turn in, an objective
-     area); a step holds what can be done at that one place: one NPC for quests, one area for objectives;
+     area); a step holds what can be done at that one place: one NPC for quests, one area for objectives (kills and
+     collecting are steps of their own, never part of an NPC's);
   4. the walker's level is tools/guide_sim.py's: experience from the quests it turns in and the kills it makes. A quest above
      the level the route has asked for gets a `.level N` line before its `.accept`, so the step shows why a quest is not
      offered yet; when nothing can be done until the walker has levelled, a `.level N` step says so.
@@ -441,7 +442,8 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
             stay = 0.0 if zone_of(target[1].map) == last_zone else ZONE_STICKINESS
             return far + stay, target[0]
 
-        place = min(targets, key=cost)[1]
+        kind, place = min(targets, key=cost)[:2]
+        working = kind == 2  # a step for an objective area: kills and collecting are steps of their own, not part of an NPC's
         step: list[str] = []
         if zone_of(place.map) != last_zone and last_zone is not None:
             result.notes.append(f"travel from {world.label(last_zone)} to {world.label(zone_of(place.map))}: run tools/guide_travel.py")
@@ -481,8 +483,9 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
                     changed = True
             for q in list(pool.values()):
                 if q.id in active and soon(q):
+                    near = at if working else at_npc  # beside an NPC only what is at that NPC (a "talk to" objective)
                     for objective in q.objectives:
-                        if objective.index in active[q.id] and any(at(place, s) for s in objective.spots):
+                        if objective.index in active[q.id] and any(near(place, s) for s in objective.spots):
                             step.append(line(f".complete {q.id},{objective.index}", q))
                             if q.optional:
                                 optional_here[q.id] = q.name
