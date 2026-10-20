@@ -149,9 +149,9 @@ changes: a step completes when every completable directive in it is satisfied.
 
 | Kind | What it holds | Done when | Markers (map pin, minimap pin, edge arrow) |
 |---|---|---|---|
-| **Pick up** | one area, N `.accept` (a `.goto` for each NPC when several stand in the area) | every quest is in the log (or done already) | the quest givers |
+| **Pick up** | one area, N `.accept` (a `.goto` for each NPC when several stand in the area: each is a pin; without the data pack only the first pin is named for the quests) | every quest is in the log (or done already) | the quest givers |
 | **Doing** | N `.complete <questID>` (with `.goto`, `.use`, `.note`, ...) | every one of those quests is complete in the quest log | none |
-| **Hand in** | N `.turnin` (a `.goto` for each NPC when several stand in the area) | every quest is turned in | the quest enders |
+| **Hand in** | N `.turnin` (a `.goto` for each NPC when several stand in the area: each is a pin; without the data pack only the first pin is named for the quests) | every quest is turned in | the quest enders |
 | **Hand in + pick up** | `.turnin` and `.accept` at one place | all of them | both |
 
 The guide's markers exist to steer the player **to a place**: where to pick up, where to hand in, and travel. The quest

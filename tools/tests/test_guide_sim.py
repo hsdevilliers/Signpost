@@ -22,6 +22,22 @@ def model(overrides=None, quests=None, quest_xp=None):
     return Model(params, QUESTS if quests is None else quests, NPCS, {}, quest_xp)
 
 
+class PercentileTest(unittest.TestCase):
+    def test_interpolated_and_empty(self):
+        self.assertEqual(guide_sim.percentile([1.0, 3.0], 50), 2.0)
+        self.assertEqual(guide_sim.percentile([3.0, 1.0, 2.0], 0), 1.0)
+        self.assertEqual(guide_sim.percentile([], 50), 0.0)
+
+    def test_a_run_that_never_got_there_is_infinity_and_never_nan(self):
+        inf = float("inf")
+        values = [100.0, 101.0, 102.0, inf, inf]
+        self.assertEqual(guide_sim.percentile(values, 0), 100.0)
+        self.assertEqual(guide_sim.percentile(values, 50), 102.0)  # exactly the third of five
+        self.assertEqual(guide_sim.percentile(values, 60), inf)  # between 102 and a run that never got there
+        self.assertEqual(guide_sim.percentile(values, 75), inf)  # exactly the fourth
+        self.assertEqual(guide_sim.percentile([inf, inf], 50), inf)  # infinity minus infinity is not asked for
+
+
 class ParamsTest(unittest.TestCase):
     def test_overrides_and_unknown_names(self):
         params = guide_sim.load_params(overrides=["kill_seconds=30", "respawn_seconds.normal=60"])

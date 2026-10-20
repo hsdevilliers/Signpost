@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 5 route for Troll Hunter: tools/route_planner.py troll --preset all --install --force --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 1 route for Troll Hunter: tools/route_planner.py troll --preset all --install --force --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -11,11 +11,11 @@ step
   .goto 1411,53.08,9.4
   .complete 5726 -- Hidden Enemies
 step
-  .goto 1411,59.22,17.6
-  .complete 99052 -- Threat from Below
+  .goto 1411,51.27,19.19
+  .complete 835 -- Securing the Lines
 step
-  .goto 1411,52.24,43.15
-  .turnin 99052 -- Threat from Below
+  .goto 1411,46.37,22.94
+  .turnin 835 -- Securing the Lines
 step
   .todo "travel from Durotar to Orgrimmar: the travel graph has no route yet"
   .zone 1454 >> Go to Orgrimmar
@@ -24,8 +24,6 @@ step
   .turnin 5726 -- Hidden Enemies
   .accept 5727 -- Hidden Enemies
   .turnin 5727 -- Hidden Enemies
-  .accept 5728 -- Hidden Enemies
-  .optional 5728 -- group quest: Hidden Enemies
 step
   .level 12 -- reach it first: kill or grind on the way
 step
@@ -37,11 +35,5 @@ step
 step
   .goto 1454,66.0,28.4
   .complete 97242 -- Yelmak's Medley
-step
-  .goto 1454,56.05,34.12
-  .turnin 97242 -- Yelmak's Medley
-step
-  .todo "travel from Orgrimmar to Undercity: the travel graph has no route yet"
-  .zone 1458 >> Go to Undercity
 ]]
 )

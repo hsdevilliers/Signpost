@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import planner as engine
 import route_install
 import route_planner as rp
 from signpost_tools import guidefile
@@ -140,11 +141,49 @@ class EndToEndTest(RouteCase):
         self.assertEqual(code, 0, text)  # no hub on that map: the race's first quest decides
         self.assertIn("(the race's first quest)", text)
 
+    def test_the_zones_that_are_not_leveling_content_come_from_the_rules_file(self):
+        rules = self.root / "tools" / "hardcore_rules.json"
+        rules.parent.mkdir(exist_ok=True)
+        reason = "battleground (PvP) quest, not leveling content"
+        rules.write_text(json.dumps({"rules": [], "skip_zones": [{"zone": 20, "reason": reason}]}), encoding="utf-8")
+        args = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        code, text = self.run_main(*args)
+        self.assertEqual(code, 0, text)
+        self.assertIn(reason, text)  # the quest of that zone is left out, and the report says why
+        rules.unlink()
+        self.assertNotIn(reason, self.run_main(*args)[1])
+
     def test_hardcore_is_taken_from_the_guide_and_can_be_overridden(self):
         code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0")
         self.assertIn("[HARDCORE route]", text)
         code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0", "--mode", "normal")
         self.assertIn("[normal route]", text)
+
+
+class SearchReportTest(unittest.TestCase):
+    def report(self, **stats):
+        plan = engine.Plan(complete=True, seconds=900.0, stats=stats, alternatives=[object()])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rp.report_search(rp.Out(), mock.Mock(s=engine.Settings(), quests={}), rp.Outcome("beam", plan, 1.0))
+        return out.getvalue()
+
+    def test_a_beam_that_finished_nothing_says_so(self):
+        text = self.report(finals=0, baseline_seconds=1000.0, chosen="greedy")
+        self.assertIn("NO route of its own", text)
+        self.assertNotIn("none faster", text)
+
+    def test_a_beam_that_beat_nothing_says_the_route_is_the_greedy_one(self):
+        text = self.report(finals=12, baseline_seconds=800.0, chosen="greedy")
+        self.assertIn("none faster than the greedy one once tidied", text)
+        self.assertNotIn("NO route of its own", text)
+
+    def test_a_beam_that_won_says_how_many_routes_it_finished_and_how_much_faster(self):
+        text = self.report(finals=12, baseline_seconds=1000.0, chosen="beam")
+        self.assertIn("12 complete routes reached the cap", text)
+        self.assertIn("the best 2 with different orders of zones", text)
+        self.assertIn("10.0% faster", text)  # the route takes 900 s against the greedy route's 1000 s
+        self.assertNotIn("this is the greedy route", text)
 
 
 class Fake:
@@ -188,6 +227,39 @@ class ChoiceTest(unittest.TestCase):
         self.assertIs(rp.choose([beam], [beam, tie], 6), tie)  # equal medians: the shorter 90th percentile
         same = measured("same", 100.0, 130.0, 1.5, 0.0)
         self.assertIs(rp.choose([beam], [beam, same], 6), same)  # then the lower planner total
+
+    def test_a_run_that_never_gets_to_the_cap_counts_as_infinitely_slow(self):
+        def runs(reached):  # results of a Monte Carlo: `reached` of the 10 runs got to level 6, at 100 + i seconds
+            return [mock.Mock(levels={6: (100.0 + i, "c")} if i < reached else {}) for i in range(10)]
+
+        steady = rp.monte_summary(runs(10), [6], 3, 10)
+        fragile = rp.monte_summary(runs(6), [6], 7, 10)  # four runs never got there
+        self.assertEqual(steady["reached"], {6: 1.0})
+        self.assertEqual(fragile["reached"], {6: 0.6})
+        self.assertEqual(fragile["p10"][6], 100.9)  # the lucky runs are still the quick ones
+        self.assertEqual(fragile["p50"][6], 104.5)  # the median of all ten runs, the four that failed counted as the slowest
+        self.assertEqual(fragile["p90"][6], float("inf"))
+        broken = rp.monte_summary(runs(4), [6], 0, 10)
+        self.assertEqual(broken["p50"][6], float("inf"))  # fails more than half the runs: no median at all
+        a, b = Fake(total=2.0, name="steady"), Fake(total=1.0, name="fragile")
+        a.monte, b.monte = steady, fragile
+        self.assertEqual(steady["p50"][6], fragile["p50"][6])  # the same typical time...
+        self.assertIs(rp.choose([b, a], [], 6), a)  # ...and the one that never fails has the shorter 90th percentile, whatever the totals
+        c = Fake(total=0.5, name="broken")
+        c.monte = broken
+        self.assertIs(rp.choose([c, a], [], 6), a)  # never the route with no median, however low its total
+        self.assertEqual(rp.hms(float("inf")), "never")
+
+    def test_the_report_says_when_a_route_does_not_reach_the_cap_in_every_run(self):
+        o = Fake(name="beam")
+        o.monte = rp.monte_summary([mock.Mock(levels={6: (100.0, "c")}), mock.Mock(levels={})], [6], 1, 2)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rp.report_monte(rp.Out(), [o])
+        text = out.getvalue()
+        self.assertIn("REACHED THE CAP IN ONLY 50% OF RUNS", text)
+        self.assertIn("never", text)  # the 90th percentile of the runs
+        self.assertNotIn("shortest median to level 6", text)  # the median is infinite: no route is named for it
 
     def test_the_planner_of_an_outcome_and_the_command_line_that_made_it(self):
         planners = {"thorough": "T", "beam": "B"}

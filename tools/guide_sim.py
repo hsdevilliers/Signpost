@@ -555,13 +555,18 @@ def monte_carlo(route, world, quests, npcs, items, quest_xp, params, runs: int, 
 
 
 def percentile(values: list, pct: float) -> float:
+    """The pct-th percentile, interpolated. A value may be infinity (a run that never got there): the percentile is then infinite
+    once pct reaches the share of such runs, and never nan."""
     ordered = sorted(values)
     if not ordered:
         return 0.0
     index = (len(ordered) - 1) * pct / 100
     low = int(index)
     high = min(low + 1, len(ordered) - 1)
-    return ordered[low] + (ordered[high] - ordered[low]) * (index - low)
+    here, there = ordered[low], ordered[high]
+    if index == low or here == there:
+        return here
+    return here + (there - here) * (index - low)
 
 
 # Reports --------------------------------------------------------------------------------------------------------------

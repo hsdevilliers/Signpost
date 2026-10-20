@@ -24,14 +24,17 @@ The guide is named by any words of its id, name, race or class. `--help` lists e
 | `greedy` | nearest hub with something to do, a zone finished before the next (how the guides are drafted) | seconds |
 | `lookahead` | each choice is tried by playing the next 12 visits on greedily; the best is kept | seconds |
 | `beam` (default) | compares routes by **how far they have got** (the level and half of the next one): keeps the 30 best of each half level (8 hubs tried from each), drops a route when another reaches the same situation sooner | about a minute |
-| `thorough` | the beam once for each grain of progress (2, 4 and 8 parts to a level; 40 routes wide, 10 hubs from each), the best route of them all, then the finalists walked hundreds of times with uncertain assumptions (Monte Carlo: pace, kills, drops, respawns) | minutes |
+| `thorough` | the beam once for each grain of progress (2, 4 and 8 parts to a level; 40 routes wide, 10 hubs from each; each grain on its own, none prunes another), the best finished routes of all of them, then the finalists walked hundreds of times with uncertain assumptions (Monte Carlo: pace, kills, drops, respawns) | minutes |
 | `all` | every technique above and a comparison | the sum |
 
 Why the beam compares by progress and not by the number of visits: a beam that keeps the best routes after each visit ranks a route that has
-dawdled (small visits, a low level) against one that has levelled, and the estimate of what is left is always kinder to the first (it has more
-to find out); the beam fills with dawdlers and the good routes are gone by the time it matters (a review found it finishing no route at all
-on the druids, and routes 10 to 40% slower than the ones now found). Wider is not always better and the search is rough: the width and the
-grain change the result by a few hours, which is why `thorough` runs several grains and keeps the best.
+dawdled (small visits, a low level) against one that has levelled, and the estimate of what is left (the experience at the greedy walk's pace, the
+class quests' charges) was kinder to the first: on the Skyborne, at the hundredth visit the beam's best route was at level 12 with a lower estimate
+than the greedy walk's at level 17. The beam filled with dawdlers and the good routes were gone by the time it mattered (a review found it finishing
+no route at all on the druids, and routes 10 to 40% slower than the ones now found). Wider is not always better and the search is rough: the width and the
+grain change the result by a few hours, which is why `thorough` runs several grains and keeps the best. A route is written out *tidied*: the quests the
+search left in the log at the cap are taken out and the same hubs walked again, which can cost a route a lot (it is the search's free experience), so the
+beam compares its best finished routes as they would be written, and against the greedy route written the same way; the result is never slower than that.
 
 ## What the planner models
 
@@ -96,8 +99,9 @@ Installing is the step you take on purpose, and it refuses what looks like a mis
 guide's own, a route that stops below the guide's current top level and uncommitted changes in the guide files (`--force` overrides the last
 two). The route to install is chosen among the routes that pass every check (it reaches the cap in the planner and in the full simulation, the
 game would offer every quest where the route accepts it, no lint error): when `thorough` ran, every technique's route and thorough's finalists
-are walked many times with varied assumptions and the one with the shortest median time to the cap wins (ties: the shorter 90th percentile, then
-the lower planner total), otherwise the lowest total wins. ("Fastest in most runs" is printed too but not used: finalists a few minutes apart
+are walked many times with varied assumptions and the one with the shortest median time to the cap wins (a run that never reached the cap counts as
+infinitely slow, so a route that fails often has no median and the report says how often; ties: the shorter 90th percentile, then the lower planner
+total), otherwise the lowest total wins. ("Fastest in most runs" is printed too but not used: finalists a few minutes apart
 win it by luck.) The report then describes that route.
 
 `tools/route_install.py` reads and checks everything first and writes nothing if anything is wrong. Then it writes the chapters as

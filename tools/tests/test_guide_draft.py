@@ -352,6 +352,26 @@ class PoolTest(DraftCase):
         apart = self.draft_with_neighbours(*only, "--group-yards", "0")[0].split("step\n")
         self.assertNotIn(".accept 201", next(s for s in apart if ".accept 260" in s))
 
+    def test_a_cave_and_its_zone_are_two_places_however_near_they_lie(self):
+        # Westland (10) and the cave inside it (11): the cave's (50, 50) is Westland's (47.5, 45), no yards apart, but two maps (and a
+        # joined step would hold gotos in two zones, which the travel check calls a zone jump)
+        npcs = {
+            **NPCS,
+            1010: {"n": "On The Hill", "p": [[10, 47.5, 45]], "side": "Horde"},
+            1011: {"n": "In The Cave", "p": [[11, 50, 50]], "side": "Horde"},
+        }
+        quests = {
+            **QUESTS,
+            270: {"n": "Hill Errand", "r": 1, "l": 1, "s": {"npc": [1010]}, "e": {"npc": [1010]}, "side": "Horde", "races": 178},
+            271: {"n": "Cave Errand", "r": 1, "l": 1, "s": {"npc": [1011]}, "e": {"npc": [1011]}, "side": "Horde", "races": 178},
+        }
+        text = self.draft("--only", "270", "--only", "271", quests=quests, npcs=npcs)[0]
+        steps = text.split("step\n")
+        hill = next(s for s in steps if ".accept 270" in s)
+        self.assertIn(".goto 10,47.5,45.0", hill)
+        self.assertNotIn(".accept 271", hill)  # not joined with the cave's giver
+        self.assertIn(".goto 11,50.0,50.0", next(s for s in steps if ".accept 271" in s))
+
     def test_objectives_close_to_each_other_are_one_doing_step_and_a_far_one_is_not(self):
         steps = self.draft_with_neighbours()[0].split("step\n")
         doing = next(s for s in steps if ".complete 203" in s)

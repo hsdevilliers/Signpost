@@ -22,8 +22,19 @@ nothing on the druids). It is much better, and still rough. Runs on the same dat
 - The same search with the old estimate of what the class quests will cost (every undone quest charged at the character's present level) was
   10 to 40% slower on the druids and found nothing at all on the Skyborne.
 
-`beam` is 2 parts to a level, 30 wide (about 40 s a guide); `thorough` runs 2, 4 and 8 parts and keeps the best, and its finalists are walked by
-the Monte Carlo. Nobody knows how far the best route found is from the best route there is.
+`beam` is 2 parts to a level, 30 wide (about 40 s a guide); `thorough` runs 2, 4 and 8 parts (each on its own: an earlier grain's best route used to
+prune a later one, which made the answer depend on the order of the grains, 21h09 to 23h33 on the Troll Hunter; fixed in PR #38) and keeps the best
+finished routes as they would be written, and its finalists are walked by the Monte Carlo. Nobody knows how far the best route found is from the
+best route there is. More the final review measured:
+
+- The default beam does not dominate: on the Tauren Druid the lookahead technique (4 s) makes 41h39 against the beam's 44h40 (the beam is better
+  on the Skyborne, 28h52 against 37h53, and on the Troll Hunter, 22h42 against 27h01). `--preset all` takes the best of all of them.
+- Skyborne totals as written, by grain: 53.8, 28.9, 30.5, 38.0, 27.0 and 26.2 h for 1, 2, 3, 4, 6 and 8 parts to a level.
+- The headline gains are totals with the class-quest charges. Play time alone, greedy to beam: Troll Hunter 24h17 to 20h52, Skyborne 29h47 to
+  22h59, Tauren 32h43 to 24h57 (the old beam's play time was 21h31, 29h46 and 29h49).
+- A route is tidied when written (the quests the search left in the log are taken out). The search ranks routes before that, so its best route and the
+  best route as written can differ by hours on the wrong settings (Skyborne, 1 part: 35.0 h before, 53.8 h after); the beam now compares its finalists
+  as written, but it still searches with the free experience.
 
 ## Why
 

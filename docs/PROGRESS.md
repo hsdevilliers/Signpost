@@ -447,14 +447,19 @@ prerequisite, the lint did not model prerequisites, and its 20 or so level warni
   independent algorithm review of PR #38 found the old beam finishing no route at all on the Skyborne Druid: the estimate charged an undone class
   quest at the character's level, so a route that levelled looked worse than one that dawdled). A class quest that has not opened costs nothing, an open one
   costs for the level the character will have when it gets there (the trip included), and that estimate ranks routes without ever dropping one
-  (`hopeless` leaves it out). Against the greedy route the beam now makes the Troll Hunter 22% faster (29h05 to 22h42), the Skyborne 37% (46h01 to
-  28h52) and the Tauren 39% (72h46 to 44h40), in about 40 s a guide; `thorough` runs 2, 4 and 8 parts to a level and keeps the best (the whole
-  `--preset all` for the Troll Hunter, Monte Carlo included, takes two minutes). The installed Troll Hunter route is the thorough run's: 17h31 to level 30
-  in the full simulation, 55 `.todo` steps, 0 lint errors, no availability findings. The search is still
-  rough (a few hours between near-identical settings): backlog item. The report says when the beam finished no route of its own.
+  (`hopeless` leaves it out). Against the greedy route (written the same way) the beam makes the Troll Hunter 23% faster (29h14 to 22h33), the Skyborne
+  37% (45h55 to 28h52) and the Tauren 38% (72h24 to 44h40), planner totals with the class-quest charges, in about 40 s a guide; `thorough` runs 2, 4 and
+  8 parts to a level, each on its own, and `--preset all` for the Troll Hunter (Monte Carlo included) takes about eight minutes. A second review of the
+  beam fixed: the winner was picked before the quests the search left in the log were taken out (now the finalists are compared as written, and
+  against the greedy route as written), an earlier grain's best route pruned a later grain (the answer depended on the order of the grains), the Monte
+  Carlo counted only the runs that reached the cap (now a run that never got there is infinitely slow and the report says how often), the drafter joined
+  steps across a cave and its zone. The installed Troll Hunter route is the thorough run's: 17h10 to level 30 in the full simulation (median 17h37 in the
+  Monte Carlo, level 30 reached in 96% of the runs), 51 `.todo` steps, 0h30 of grinding at level gates, 0 lint errors, no availability findings. The
+  search is still rough (a few hours between near-identical settings): backlog item. The report says when the beam finished no route of its own.
 - [x] Joined steps keep what a player without the data pack needs (review of PR #38): a pick-up or hand-in step keeps the `.goto` of every place in it
-  (the simulator walks them in order), a doing step keeps one; a step with a gate or `.hub` line of its own is never joined; the simulator grinds
-  to a `.level` gate where the line stands, after the hand-ins written before it in a joined step.
+  (the simulator walks them in order; the engine puts the step's quests on the first pin only: backlog item), a doing step keeps one; a step with a gate
+  or `.hub` line of its own is never joined; the simulator grinds to a `.level` gate where the line stands, after the hand-ins written before it in a
+  joined step.
 - [x] Install a planned route on purpose (`route_planner.py --install`, `tools/route_install.py`): the Troll Hunter guide is the planner's
   route (levels 1 to 30), replacing `durotar-1-12` and `barrens-10-20-hunter`; the druid chapters were rebuilt with grouped steps. Not yet:
   the druid guides from planner routes (they stay drafted to level 20; 21 to 30 is open).

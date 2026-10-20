@@ -25,8 +25,8 @@ and experience by level, the quests done and left out, the decisions at each cha
 check of the finished route by the same simulator and lint the shipped guides go through. It is written to plans/<guide>/.
 Every number is an assumption (tools/sim_params.json): this is the best route under those assumptions, not a prediction.
 
---install is the step taken on purpose: the route that passes every check and was fastest in most of the Monte Carlo runs (or, without
-thorough, has the lowest total) becomes the guide's chapters; tools/route_install.py says what it changes (docs/PLANNER.md).
+--install is the step taken on purpose: the route that passes every check and has the shortest median time to the cap over the Monte Carlo
+runs (or, without thorough, the lowest total) becomes the guide's chapters; tools/route_install.py says what it changes (docs/PLANNER.md).
 """
 
 from __future__ import annotations
@@ -71,6 +71,8 @@ PRESET_SETTINGS = {  # what each technique changes in the planner's settings
 
 
 def hms(seconds: float) -> str:
+    if seconds == float("inf"):
+        return "never"  # a run of the Monte Carlo that did not get there
     minutes = int(round(seconds / 60))
     return f"{minutes // 60}h{minutes % 60:02d}"
 
@@ -523,12 +525,13 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
     p = plan.stats
     s = pl.s
     out.section(f"THE SEARCH: {outcome.preset}")
+    grain = ", ".join(str(n) for n in s.parts)
     how = {
         "greedy": "nearest hub with something to do, a zone finished before the next; one path, no alternatives considered",
         "lookahead": f"at every step the {s.branch} best hubs are each tried by playing {s.horizon} visits on greedily; the best is kept",
-        "beam": f"routes are compared by how far they have got ({s.parts[0]} parts to a level): the {s.width} best of each part are kept "
+        "beam": f"routes are compared by how far they have got ({grain} parts to a level): the {s.width} best of each part are kept "
                 f"({s.branch} hubs tried from each); a route is dropped when another reaches the same situation sooner",
-        "thorough": f"as beam, once for each grain of progress ({', '.join(str(n) for n in s.parts)} parts to a level), {s.width} routes wide and "
+        "thorough": f"as beam, once for each grain of progress ({grain} parts to a level), {s.width} routes wide and "
                     f"{s.branch} hubs from each; the finalists are then walked with uncertain assumptions",
     }[outcome.preset]
     out("technique     " + how)
@@ -541,10 +544,12 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
             f"{better:.1f}% {'faster' if better >= 0 else 'slower'}")
     if "finals" in p:
         if not p["finals"]:
-            out("finished      NO route of its own: every partial route was dropped before the cap, so this is the greedy route (the search found nothing "
-                "better; read the estimate above, and --class-push 0 shows whether the class quests are the cause)")
-        elif plan.total >= p.get("baseline_seconds", 0):
-            out(f"finished      {p['finals']:,} complete routes reached the cap during the search, none faster than the greedy one: this is the greedy route")
+            out("finished      NO route of its own: no partial route reached the cap with every class quest done, so this is the greedy route "
+                "(the class quests may not all be doable, or the search dropped every route as hopeless; --class-push 0 shows whether the "
+                "class quests are the cause)")
+        elif p.get("chosen") == "greedy":
+            out(f"finished      {p['finals']:,} complete routes reached the cap during the search, none faster than the greedy one once tidied: "
+                f"this is the greedy route")
         else:
             out(f"finished      {p['finals']:,} complete routes reached the cap during the search; the best {len(plan.alternatives) + 1} with different "
                 f"orders of zones are kept to compare")
@@ -705,13 +710,16 @@ def report_monte(out: Out, outcomes: list[Outcome]) -> None:
         cells = []
         for level in m["levels"]:
             cells.append(f"L{level}: {hms(m['p10'][level])} - {hms(m['p50'][level])} - {hms(m['p90'][level])}")
-        out(f"  {o.preset:<14} " + "   ".join(cells) + f"   fastest in {m['wins']:.0%} of runs")
+        cap = max(m["levels"])
+        reached = m.get("reached", {}).get(cap, 1.0)
+        out(f"  {o.preset:<14} " + "   ".join(cells) + f"   fastest in {m['wins']:.0%} of runs"
+            + (f"   REACHED THE CAP IN ONLY {reached:.0%} OF RUNS" if reached < 1.0 else ""))
     best = max((o for o in outcomes if o.monte), key=lambda o: o.monte["wins"], default=None)
     if best is not None:
         out(f"  most often the fastest: {best.preset} ({best.monte['wins']:.0%} of the runs; finalists a few minutes apart win by luck)")
     cap = max((l for o in outcomes if o.monte for l in o.monte["levels"]), default=None)
     typical = min((o for o in outcomes if o.monte and cap in o.monte["p50"]), key=lambda o: o.monte["p50"][cap], default=None)
-    if typical is not None:
+    if typical is not None and typical.monte["p50"][cap] != float("inf"):
         out(f"  shortest median to level {cap}: {typical.preset} ({hms(typical.monte['p50'][cap])}): the route --install takes if it passes its checks")
 
 
@@ -728,17 +736,25 @@ def monte_carlo(job: Job, outcomes: list[Outcome], runs: int, seed: int) -> None
         times = [res[i].seconds if res[i].level >= job.settings.cap else float("inf") for res in per_outcome]
         wins[times.index(min(times))] += 1
     for o, results, w in zip(outcomes, per_outcome, wins):
-        def at(level):
-            return [r.levels[level][0] for r in results if level in r.levels]
+        o.monte = monte_summary(results, levels, w, runs)
 
-        o.monte = dict(
-            levels=levels,
-            p10={l: guide_sim.percentile(at(l), 10) for l in levels},
-            p50={l: guide_sim.percentile(at(l), 50) for l in levels},
-            p90={l: guide_sim.percentile(at(l), 90) for l in levels},
-            wins=w / runs,
-            runs=runs,
-        )
+
+def monte_summary(results: list, levels: list[int], wins: int, runs: int) -> dict:
+    """The Monte Carlo runs of one route as percentiles of the time to each level. A run that never reached a level counts as infinitely
+    slow there: the median is of all the runs, not of the lucky ones, and a route that fails more often cannot win on its survivors."""
+
+    def at(level):
+        return [r.levels[level][0] if level in r.levels else float("inf") for r in results]
+
+    return dict(
+        levels=levels,
+        p10={l: guide_sim.percentile(at(l), 10) for l in levels},
+        p50={l: guide_sim.percentile(at(l), 50) for l in levels},
+        p90={l: guide_sim.percentile(at(l), 90) for l in levels},
+        wins=wins / runs,
+        reached={l: sum(1 for r in results if l in r.levels) / max(1, len(results)) for l in levels},
+        runs=runs,
+    )
 
 
 def report_compare(out: Out, pls: dict, outcomes: list[Outcome]) -> None:
@@ -784,10 +800,11 @@ def passes(o: Outcome, cap: int) -> bool:
 
 def choose(outcomes: list[Outcome], finalists: list[Outcome], cap: int) -> Outcome | None:
     """The route to install: of those that pass their checks, the one with the shortest median time to the cap over the Monte Carlo runs
-    (every technique's route and thorough's finalists meet the same luck), then the shorter 90th percentile, then the lower planner total;
-    without a Monte Carlo, the lowest total. ("Fastest in most runs" is not used: finalists a few minutes apart win by luck.)"""
+    (every technique's route and thorough's finalists meet the same luck; a run that never reached the cap counts as infinitely slow, so
+    a route that fails often has no median), then the shorter 90th percentile, then the lower planner total; without a Monte Carlo, the
+    lowest total. ("Fastest in most runs" is not used: finalists a few minutes apart win by luck.)"""
     pool = list({id(o): o for o in [*outcomes, *finalists] if passes(o, cap)}.values())
-    measured = [o for o in pool if o.monte and cap in o.monte.get("p50", {})]
+    measured = [o for o in pool if o.monte and cap in o.monte.get("p50", {})]  # a median of infinity (half the runs failed) sorts last
     if measured:
         return min(measured, key=lambda o: (o.monte["p50"][cap], o.monte.get("p90", {}).get(cap, float("inf")), o.plan.total))
     return min(pool, key=lambda o: o.plan.total, default=None)

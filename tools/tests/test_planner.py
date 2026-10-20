@@ -219,13 +219,126 @@ class SearchTest(PlannerCase):
         self.assertEqual(plan.penalty, changes * 300.0)
         self.assertAlmostEqual(plan.seconds, sum(v.seconds for v in plan.visits))
 
-    def test_decisions_name_the_zones_the_search_chose_between(self):
-        pl = self.planner(width=30, branch=8)
+
+class BeamTest(PlannerCase):
+    """What the beam keeps and reports, on a fixture whose class quest is in the other zone (the route has to change zone)."""
+
+    def two_zones(self, **settings):
+        east = {n: {"n": f"East {n}", "r": 1, "l": 2, "s": {"npc": [1002]}, "e": {"npc": [1002]}, "side": "Horde", "races": 178} for n in range(281, 287)}
+        east[290] = {"n": "Far Hunter Quest", "r": 1, "l": 1, "classes": 4, "s": {"npc": [1002]}, "e": {"npc": [1002]}, "side": "Horde", "races": 178}
+        settings.setdefault("width", 20)
+        settings.setdefault("branch", 6)
+        return self.planner(quests={**QUESTS, **east}, mandatory=(290,), **settings)
+
+    def test_decisions_name_the_zones_the_search_chose_between_and_the_ones_it_held(self):
+        pl = self.two_zones()
         plan = pl.plan("beam", self.start(pl))
+        changes = [v for v in plan.visits if v.zone_change]
+        self.assertTrue(changes)  # the class quest is in the other zone
+        self.assertEqual(len(plan.decisions), len(changes))
         for d in plan.decisions:
             self.assertNotEqual(d["from_zone"], d["to_zone"])
             for score, zone, level, clock in d["alternatives"]:
                 self.assertNotEqual(zone, d["to_zone"])
+        self.assertTrue(any(d["alternatives"] for d in plan.decisions))  # the beam held routes that stayed in a zone
+
+    def test_the_route_is_never_slower_than_the_greedy_one_as_it_would_be_written(self):
+        pl = self.two_zones()
+        hub = self.start(pl)
+        greedy = pl.plan("greedy", hub)
+        beam = pl.plan("beam", hub)
+        self.assertEqual(beam.stats["baseline_seconds"], greedy.total)  # the greedy route tidied, as the route is
+        self.assertLessEqual(beam.total, greedy.total + 1e-6)
+        self.assertEqual(beam.stats["chosen"], "beam" if beam.total < greedy.total else "greedy")
+
+    def test_two_routes_to_the_same_situation_keep_the_better_one(self):
+        pl = self.two_zones()
+        hub = self.start(pl)
+        slow, quick = pl.start(hub, 2), pl.start(hub, 2)  # the same quests done, the same bucket of progress, one sooner
+        slow.clock, quick.clock = 900.0, 600.0
+        pl.children = lambda st, limit: [slow, quick] if st.level == 1 else []
+        run = pl._layers(hub, 2, float("inf"), None)
+        self.assertEqual([(n, e) for level, n, e in run.trace if level == 2.0], [(1, pl.score(quick))])
+
+    def test_a_route_the_greedy_one_beats_once_written_is_not_the_result(self):
+        pl = self.two_zones()
+        hub = self.start(pl)
+        real, calls = pl.tidy, []
+
+        def tidy(plan, start_hub):  # every route the beam finished turns out slow when written; the greedy one (the first tidied) does not
+            out = real(plan, start_hub)
+            calls.append(plan)
+            if len(calls) > 1 and not plan.stats:
+                out.penalty += 1e7
+            return out
+
+        pl.tidy = tidy
+        plan = pl.plan("beam", hub)
+        self.assertGreater(len(calls), 2)  # the beam's finalists were tidied after the greedy route
+        self.assertEqual(plan.stats["chosen"], "greedy")
+        self.assertLess(plan.total, 1e7)
+
+    def test_finished_routes_are_compared_after_tidy_not_before(self):
+        pl = self.two_zones()
+        hub = self.start(pl)
+        run = pl._layers(hub, 2, float("inf"), None)
+        best_before = min(run.finished, key=lambda f: f.total)
+        real = pl.tidy
+
+        def tidy(plan, start_hub):  # as if the best route turned out slow once its unfinished quests were taken out
+            out = real(plan, start_hub)
+            if plan.final is not None and abs(plan.final.total - best_before.total) < 1e-9:
+                out.penalty += 1e7
+            return out
+
+        pl.tidy = tidy
+        plan = pl.plan("beam", hub)
+        self.assertLess(plan.total, 1e7)  # another route (or the greedy one) won once the first was written out
+
+    def test_every_grain_of_progress_starts_from_the_greedy_route_never_from_another_grain(self):
+        pl = self.two_zones(parts=(2, 4, 1))
+        hub = self.start(pl)
+        bounds = []
+        real = pl._layers
+        pl._layers = lambda start_hub, parts, best_time, progress: (bounds.append(best_time), real(start_hub, parts, best_time, progress))[1]
+        pl.plan("beam", hub)
+        greedy = pl._finish(pl.rollout(pl.start(hub))).final.total
+        self.assertEqual(bounds, [greedy, greedy, greedy])  # what an earlier grain found never prunes a later one
+
+    def test_a_bucket_keeps_at_most_width_routes_and_a_run_stops_at_the_depth_limit(self):
+        pl = self.two_zones(width=3)
+        hub = self.start(pl)
+        run = pl._layers(hub, 2, float("inf"), None)
+        kept = [n for _, n, _ in run.trace]
+        self.assertEqual(max(kept), 3)  # the fixture fills a bucket, and no bucket holds more
+        levels = [level for level, _, _ in run.trace]
+        self.assertEqual(levels, sorted(levels))  # the buckets are worked in order of progress
+        self.assertGreater(run.finals, 0)
+        shallow = self.two_zones(max_depth=2)
+        self.assertEqual(shallow._layers(hub, 2, float("inf"), None).finals, 0)  # no route is that short
+
+    def test_a_route_that_cannot_beat_the_one_to_beat_is_dropped_as_hopeless(self):
+        pl = self.two_zones()
+        run = pl._layers(self.start(pl), 2, 1.0, None)  # a route to beat that takes one second: nothing can
+        self.assertEqual(run.finals, 0)
+        self.assertGreater(run.pruned, 0)
+
+    def test_routes_are_ranked_by_what_the_class_quests_waiting_will_cost(self):
+        pl = self.two_zones()
+        pl.pending_charge = lambda st: 1e6
+        run = pl._layers(self.start(pl), 2, float("inf"), None)
+        self.assertTrue(run.trace)
+        self.assertTrue(all(estimate >= 1e6 for _, _, estimate in run.trace))  # every estimate has the charge in it
+
+    def test_the_best_few_finished_routes_are_kept_to_compare_and_the_trace_is_reported(self):
+        pl = self.two_zones()
+        plan = pl.plan("beam", self.start(pl))
+        self.assertTrue(plan.trace)
+        self.assertTrue(plan.alternatives)
+        for other in plan.alternatives:
+            self.assertTrue(other.complete)
+            self.assertGreaterEqual(other.total, plan.total - 1e-6)
+        self.assertGreater(plan.stats["finals"], len(plan.alternatives))
 
 
 class CapTest(PlannerCase):
@@ -265,6 +378,10 @@ class TidyTest(PlannerCase):
         self.assertEqual(tidy.final.active, {})
         self.assertNotIn(203, tidy.final.done)
         self.assertIn(203, tidy.stats["removed"])
+        before = list(tidy.stats["removed"])
+        self.assertEqual(before, [203])
+        again = pl.tidy(tidy, hub)  # a plan the search tidied is tidied once more by plan(): what was taken out is still said
+        self.assertEqual(again.stats["removed"], before)
 
 
 class ClassQuestTest(PlannerCase):
@@ -297,6 +414,25 @@ class ClassQuestTest(PlannerCase):
         self.assertEqual(pl.pending_charge(low), 0.0)  # level 2: it has not opened
         self.assertEqual(pl.pending_charge(there), 2 * 600.0)  # level 5, opens at 3, standing at the giver
         self.assertGreater(pl.pending_charge(away), pl.pending_charge(there))  # the trip to it takes levels too
+
+    def test_a_class_quest_is_worked_where_its_next_step_is(self):
+        pl = self.planner(mandatory=(217,))
+        st = pl.start(self.start(pl), 1)
+        second, boars = pl.quests[202], pl.quests[203]
+        self.assertEqual(pl._next_hubs(second, st), second.start_hubs)  # not accepted: its giver
+        st.active = {202: frozenset()}
+        self.assertEqual(pl._next_hubs(second, st), second.end_hubs)  # accepted, nothing left to do: its ender
+        self.assertNotEqual(second.start_hubs, second.end_hubs)
+        st.active = {203: frozenset({1})}
+        self.assertEqual(pl._next_hubs(boars, st), boars.objectives[0].hubs)  # an objective open: where it is done
+        self.assertNotEqual(boars.objectives[0].hubs, boars.start_hubs)
+
+    def test_the_charge_for_a_waiting_class_quest_stops_growing(self):
+        pl = self.planner(mandatory=(217,), class_push=600.0, class_levels=1)
+        quest = pl.quests[217]
+        quest.req = 1
+        st = pl.start(quest.start_hubs[0], 5)  # four levels past the one it opens at, standing at its giver
+        self.assertEqual(pl.pending_charge(st), 600.0)  # one level's worth, the limit
 
     def test_the_hubs_of_a_class_quest_past_its_level_are_always_tried(self):
         # a second giver whose own quest makes its hub the one the ranking tries first when standing there

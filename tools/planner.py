@@ -183,7 +183,7 @@ class Plan:
     late: float = 0.0
     complete: bool = False  # reached the cap with every class quest done or accounted for
     stats: dict = field(default_factory=dict)
-    trace: list = field(default_factory=list)  # (depth, routes kept, best estimated total seconds)
+    trace: list = field(default_factory=list)  # (level reached, routes kept, best estimated total seconds) for each bucket of progress
     alternatives: list = field(default_factory=list)  # other finished routes with a different order of zones, best first
     decisions: list = field(default_factory=list)  # at each change of zone: what the search chose and what else it held
 
@@ -207,7 +207,6 @@ class BeamRun:
     """What one run of the beam found."""
 
     parts: int  # buckets to a level
-    best: PState | None = None  # the best route it finished that beat what was known when it started
     finals: int = 0  # routes it finished
     finished: list = field(default_factory=list)
     pruned: int = 0
@@ -1038,7 +1037,7 @@ class Planner:
         self.forbidden = set()
         plan.stats, plan.trace, plan.preset = stats, trace, preset
         plan.alternatives, plan.decisions = alternatives, decisions
-        plan.stats["removed"] = sorted(removed)
+        plan.stats["removed"] = sorted(removed | set(stats.get("removed", ())))  # a plan tidied twice still says what was taken out
         return plan
 
     def _finish(self, final: PState) -> Plan:
@@ -1115,37 +1114,48 @@ class Planner:
         """A beam over how far the routes have got. Partial routes are compared with others that have got as far (the same level and
         part of the next), never with a route that has made as many visits: a route that dawdles is not ahead of one that has levelled,
         and the one that has levelled is not penalised for it. One run per entry of `Settings.parts` (a different grain of progress
-        each); the best finished route of all of them is the result, and the others' finalists are kept to compare."""
+        each, every one independent: what an earlier grain found never prunes a later one). The runs' best finished routes are then
+        compared as they would be written, tidied (a guide may not leave quests in the log, and taking them out can cost a route much),
+        with the greedy route tidied too: the result is never slower than that."""
         s = self.s
         base = self._finish(self.rollout(self.start(start_hub)))
         self.calibrate(base)
-        best_final = base.final if base.complete else None
-        best_time = best_final.total if best_final else float("inf")
-        runs = []
-        for parts in s.parts or (2,):
-            run = self._layers(start_hub, max(1, parts), best_time, progress)
-            runs.append(run)
-            if run.best is not None:
-                best_final, best_time = run.best, run.best.total
-        winner = next((r for r in runs if r.best is not None and r.best is best_final), runs[0])
-        plan = self._finish(best_final if best_final is not None else base.final)
-        plan.decisions = self._beam_decisions(plan.final, winner)
-        plan.trace = winner.trace
-        plan.stats.update(
-            pruned=sum(r.pruned for r in runs), finals=sum(r.finals for r in runs), baseline_seconds=base.total, runs=len(runs)
-        )
-        seen = {self.signature(plan.final)}
-        for final in sorted((f for r in runs for f in r.finished), key=lambda f: f.total):
+        known = base.final.total if base.complete else float("inf")
+        runs = [self._layers(start_hub, max(1, parts), known, progress) for parts in s.parts or (2,)]
+        reference = self.tidy(base, start_hub)
+        origin: dict[int, BeamRun] = {}
+        tidied: list[Plan] = []
+        seen: set = set()
+        for final, run in sorted(((f, r) for r in runs for f in r.finished), key=lambda pair: pair[0].total):
             sig = self.signature(final)
-            if sig not in seen and len(plan.alternatives) < self.s.alternatives:
-                seen.add(sig)
-                plan.alternatives.append(self.tidy(self._finish(final), start_hub))
+            if sig in seen:
+                continue
+            seen.add(sig)
+            candidate = self.tidy(self._finish(final), start_hub)
+            origin[id(candidate)] = run
+            tidied.append(candidate)
+            if len(tidied) >= s.alternatives + 8:
+                break
+        pool = sorted((c for c in tidied if c.complete), key=lambda c: c.total)
+        plan = pool[0] if pool and (not reference.complete or pool[0].total < reference.total) else reference
+        winner = origin.get(id(plan), runs[0])
+        plan.decisions = self._beam_decisions(plan.final, winner) if plan is not reference else []
+        plan.trace = winner.trace
+        plan.alternatives = [c for c in pool if c is not plan][: s.alternatives]
+        plan.stats.update(
+            pruned=sum(r.pruned for r in runs),
+            finals=sum(r.finals for r in runs),
+            baseline_seconds=reference.total,
+            runs=len(runs),
+            chosen="greedy" if plan is reference else "beam",
+        )
         return plan
 
     def _layers(self, start_hub: int, parts: int, best_time: float, progress) -> "BeamRun":
         """One beam run: the buckets of progress are taken in order, each keeps its `width` best routes (by the estimate of the whole
         route), and every one of them is tried at `branch` hubs. A route that lands in the bucket being worked is worked on with it
-        again, so the routes in a bucket are always compared with each other, never with ones that have not got there yet."""
+        again, so the routes in a bucket are always compared with each other, never with ones that have not got there yet.
+        `best_time` is the total of the route to beat (the greedy one's); a route that finishes lowers it for the rest of this run."""
         s = self.s
         run = BeamRun(parts)
         start = self.start(start_hub)
@@ -1172,8 +1182,7 @@ class Planner:
                     if self.terminal(child):
                         run.finals += 1
                         run.finished.append(child)
-                        if child.total < best_time:
-                            best_time, run.best = child.total, child
+                        best_time = min(best_time, child.total)  # the bound of this run only
                         continue
                     if self.hopeless(child, best_time):
                         run.pruned += 1

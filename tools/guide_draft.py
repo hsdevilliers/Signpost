@@ -508,14 +508,14 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
     yards = getattr(spec, "group_yards", 0.0) or 0.0
     if yards > 0:  # activity steps (signpost_tools/steps.py): pick up and hand in per area, doing steps per group of objectives
 
-        def near(a: Coord, b: Coord) -> bool:
-            gap = world.geo.distance(a, b)
+        def close_by(a: Coord, b: Coord) -> bool:  # on one map: two maps (a cave and its zone) are two places however near they lie
+            gap = world.geo.distance(a, b) if a.map == b.map else None
             return gap is not None and gap <= yards
 
         def objectives(qid: int) -> list[int] | None:
             return [o.index for o in pool[qid].objectives] if qid in pool else None
 
-        result.steps = steps.group(result.steps, near, objectives)
+        result.steps = steps.group(result.steps, close_by, objectives)
     result.unreachable = sorted(q.id for q in pool.values() if q.id not in done and q.id not in active and q.id not in gone)
     for qid in sorted(active):
         result.notes.append(f"quest {qid} ({pool[qid].name}) was accepted but never finished: check its objectives")
