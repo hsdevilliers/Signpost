@@ -26,7 +26,9 @@
 -- unplaced: quest 882 (Ishamuhale) objective 1 (item 5101): no position
 local ADDON_NAME, ns = ...
 
-ns.Chapters:Register("barrens-10-20-hunter", [[
+ns.Chapters:Register(
+	"barrens-10-20-hunter",
+	[[
 #chapter 10-20 The Barrens
 step
   .goto 1413,52.62,29.84
@@ -549,4 +551,5 @@ step
 step
   .goto 1413,65.84,43.86
   .turnin 873 -- Isha Awak
-]])
+]]
+)

@@ -770,6 +770,11 @@ Caveats: the output compares routes, it does not predict a player's clock: a ran
 parameter is trusted, and the sensitivity report names the cases where it flips. Forever's XP and kill rates are assumptions until measured. Suggested order: stages
 1 and 2 before drafting levels 20-60 (they fix the ordering the weak estimate gets wrong), stages 3 and 4 after the first release.
 
+**The Route Planner** (user, 2026-10-20; `tools/route_planner.py`, `tools/planner.py`, docs/PLANNER.md): searches for the fastest route of a
+guide's character as a weighted state graph (a node is a situation, an edge is a visit to a hub, its cost the simulator's time), with four
+techniques (greedy, lookahead, beam, thorough), the game's availability rules on every edge, any travel allowed, HARDCORE as hard rules and
+a report of what it did inside the tool. Its routes are candidates written to `plans/`; they are installed in the guides on purpose.
+
 ## 8a. Bootstrapping — directories, repos, where Claude Code runs
 
 **Local layout** (dev machine, Windows; repositories directory `C:\Users\StephandeVilliers\Repos`):

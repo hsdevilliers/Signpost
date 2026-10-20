@@ -46,10 +46,12 @@ import guide_travel  # noqa: E402
 import planner as engine  # noqa: E402
 import rebuild_drafts  # noqa: E402
 from signpost_tools import availability, guidefile  # noqa: E402
+from signpost_tools.guidefile import Coord  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PRESETS = ("greedy", "lookahead", "beam", "thorough")
 WIDTH = 112
+CLASS_LATE = 5  # levels after it opens at which a class quest done is called late in the report
 PRESET_SETTINGS = {  # what each technique changes in the planner's settings
     "greedy": {},
     "lookahead": {"branch": 8, "horizon": 12},
@@ -88,6 +90,15 @@ def wrap(text: str, indent: str = "", width: int = WIDTH) -> list[str]:
         line += word + " "
     if line.strip():
         lines.append(line.rstrip())
+    return lines
+
+
+def labelled(label: str, text: str, width: int = WIDTH) -> list[str]:
+    """A report line with its label in the first column and the text wrapped under it."""
+    pad = " " * len(label)
+    lines = wrap(text, pad, width)
+    if lines:
+        lines[0] = label + lines[0][len(pad):]
     return lines
 
 
@@ -130,6 +141,8 @@ class Job:
     exclude: dict
     notes: dict
     class_chains: list = field(default_factory=list)
+    chains: tuple = ()
+    start: Coord | None = None
 
 
 def manifest_hardcore(root: Path, guide_id: str) -> bool | None:
@@ -140,6 +153,35 @@ def manifest_hardcore(root: Path, guide_id: str) -> bool | None:
     for entry in manifest.get("guides", []):
         if entry.get("guide") == guide_id and isinstance(entry.get("hardcore"), bool):
             return entry["hardcore"]
+    return None
+
+
+def manifest_chains(root: Path, guide_id: str) -> list[list[int]]:
+    """The `--chain` hints the guide's chapters are drafted with: quests of a chain the data does not link."""
+    try:
+        manifest = json.loads((root / "tools" / "drafts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    found = []
+    for entry in manifest.get("guides", []):
+        if entry.get("guide") == guide_id:
+            for chapter in entry.get("chapters", []):
+                args = [str(a) for a in chapter.get("args", [])]
+                found += [[int(x) for x in args[i + 1].split(",")] for i, a in enumerate(args[:-1]) if a == "--chain"]
+    return found
+
+
+def start_of(job_project: guidefile.Project, guide: guidefile.Guide, world, override: str | None) -> Coord | None:
+    """Where the character begins: --start, else the first place the guide as it is sends it to."""
+    if override:
+        m, x, y = override.split(",")
+        return Coord(int(m), float(x), float(y))
+    options = Namespace(faction=None, race=None, cls=None, profession=[], no_tracks=True)
+    routes = guide_travel.guide_routes(job_project, guide, options, lambda faction: world)
+    for rs in routes[0].steps if routes else []:
+        target = rs.first_target()
+        if target is not None:
+            return target
     return None
 
 
@@ -209,9 +251,12 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
         gateways=(1454, 1458) if guide.faction == "Horde" else (1453, 1455, 1457),
     )
     world = guide_travel.World(pack, project.borders, guide.faction)
-    return Job(
-        options.root, project, pack, pack_dir, guide, hardcore, character, race, cls, world, settings, params, mandatory, exclude, notes, chains
+    hints = manifest_chains(options.root, guide.id) + [list(c) for c in options.chain]
+    job = Job(
+        options.root, project, pack, pack_dir, guide, hardcore, character, race, cls, world, settings, params, mandatory, exclude, notes, chains,
+        tuple(tuple(c) for c in hints), start_of(project, guide, world, options.start),
     )
+    return job
 
 
 # plan -> guide text -> the shipped guides' checks ------------------------------------------------------------------------
@@ -314,6 +359,8 @@ def planner_for(job: Job, out: Out, overrides: dict | None = None, quiet: bool =
         exclude=job.exclude,
         notes=job.notes,
         mandatory=job.mandatory,
+        chains=job.chains,
+        home=job.start,
         log=(lambda text: None) if quiet else (lambda text: out("  " + text)),
     )
     return pl
@@ -325,7 +372,7 @@ def run_preset(job: Job, preset: str, options, out: Out, base: engine.Planner | 
         if getattr(options, name) is not None:
             overrides[name] = getattr(options, name)
     pl = planner_for(job, out, overrides, quiet=base is not None)
-    start = engine.start_hub_for(pl)
+    start = pl.hub_near(job.start) if job.start is not None else engine.start_hub_for(pl)
     if start is None:
         raise SystemExit("no quest to start from")
     started = time.perf_counter()
@@ -391,13 +438,13 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         f"talk {p['interact_seconds']} s; respawn {p['respawn_seconds']['normal']} s (normal)")
     out("              every one of these is an assumption (tools/sim_params.json): the route is the best one under them")
     total = len(pack.table("quests"))
-    routable = sum(len(v) for v in pl.dropped.values())
-    out(f"quests        {total} in the pack; {len(pl.quests)} can be routed for this character; "
+    out(f"quests       {total} in the pack; {len(pl.quests)} can be routed for this character; "
         f"{sum(1 for q in pl.quests.values() if q.kept)} kept for the planner")
     reasons = sorted(pl.dropped.items(), key=lambda kv: -len(kv[1]))
     out("              left out: " + "; ".join(f"{len(ids)} {reason}" for reason, ids in reasons[:7]))
+    begin = pl.hub_near(job.start) if job.start is not None else engine.start_hub_for(pl)
     out(f"hubs          {len(pl.hubs)} of about {s.hub_radius:.0f} yards; {len(pl.gateways)} continent gateways; the route starts at "
-        f"{pl.hubs[engine.start_hub_for(pl)].label}")
+        f"{pl.hubs[begin].label} ({'the guide\'s first step' if job.start is not None else 'the race\'s first quest'})")
     rules = [
         "a quest is accepted only where the game would offer it (level, prerequisites, chains, exclusive quests)",
         f"a change of zone costs {s.zone_friction / 60:.0f} min on top of the travel; a trip between continents is the walk to "
@@ -411,8 +458,8 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         else f"a normal route: quests up to {pl.accept_over} levels above you are accepted and worked on up to {pl.work_over}; group quests are tagged optional",
         f"{len(job.mandatory)} class quests are mandatory: each is done or accounted for with a #skipquest reason",
     ]
-    for rule in rules:
-        out("rules         " + rule if rule is rules[0] else "              " + rule)
+    for n, rule in enumerate(rules):
+        out(("rules         " if n == 0 else "              ") + rule)
 
 
 def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
@@ -427,7 +474,7 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
                 f"when another reaches the same situation sooner",
         "thorough": f"as beam but {s.width} routes wide and {s.branch} hubs from each; the finalists are then walked with uncertain assumptions",
     }[outcome.preset]
-    out(wrap(f"technique     {how}", "              ")[0] if False else "technique     " + how)
+    out("technique     " + how)
     out(f"work          {outcome.wall:.1f} s; {p.get('nodes', 0):,} situations made" + (f"; {p['pruned']:,} dropped (worse than another route to the same situation, "
         f"beyond the beam, or hopeless against the best finished route)" if "pruned" in p else ""))
     if "baseline_seconds" in p:
@@ -516,8 +563,14 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
     other = {k: len(v) for k, v in pl.dropped.items() if k != "slower than grinding"}
     out("not routable  " + "; ".join(f"{n} {k}" for k, n in sorted(other.items(), key=lambda kv: -kv[1])[:8]))
     if job.mandatory:
-        out(f"class quests  {len(job.mandatory)} (mandatory): "
-            + ", ".join(f"{q} {'done' if q in done else 'skipped'}" for q in job.mandatory))
+        levels = plan.levels_done()
+        parts = [f"{q} " + (f"at {levels[q]} (opens {pl.quests[q].req})" if q in levels else "skipped") for q in job.mandatory]
+        for line in labelled("class quests  ", f"{len(job.mandatory)} mandatory; done at level (the level it opens at): " + ", ".join(parts)):
+            out(line)
+        late = [q for q in levels if q in job.mandatory and levels[q] - pl.quests[q].req > CLASS_LATE]
+        if late:
+            out(f"              {len(late)} of them come more than {CLASS_LATE} levels after they open: the planner has no rule yet for when a "
+                f"class quest is due, so it does them when that is cheapest")
         for qid, reason in pl.skipquests(plan).items():
             if qid in job.mandatory:
                 out(f"              #skipquest {qid} ({pl.quests[qid].name if qid in pl.quests else '?'}): {reason}")
@@ -688,6 +741,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--horizon", type=int, help="visits a lookahead plays out (default 12)")
     parser.add_argument("--param", action="append", default=[], help="a simulator assumption: name=value or name.part=value")
     parser.add_argument("--exclude", type=int, action="append", default=[], metavar="QUEST", help="never route this quest")
+    parser.add_argument("--chain", type=lambda t: [int(x) for x in t.split(",")], action="append", default=[], metavar="Q1,Q2,...",
+                        help="quests of a chain the data does not link, in order (the guide manifest's hints are used already)")
+    parser.add_argument("--start", metavar="MAP,X,Y", help="where the character begins (default: the first place the guide sends it to)")
     parser.add_argument("--runs", type=int, default=300, help="Monte Carlo runs for the thorough technique (default 300)")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--decisions", type=int, default=8, help="changes of zone to explain with alternatives (0: none)")

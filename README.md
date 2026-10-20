@@ -50,7 +50,7 @@ The addon folder must be named `Signpost`. On a development machine `tools/dev_l
 the repository into the AddOns folder, using paths from `tools/dev.local.json` (copy `tools/dev.local.example.json`). An optional private
 data pack (`Signpost_Data`) adds names, positions and validation; it is built locally with the tools and is not distributed.
 Guide drafts are generated with `tools/guide_draft.py` and checked with `tools/guide_lint.py`; `tools/guide_sim.py` estimates the time
-a route takes.
+a route takes, and `tools/route_planner.py` searches for a faster one and explains what it did ([`docs/PLANNER.md`](docs/PLANNER.md)).
 
 `tools/check.ps1` runs every check CI runs: busted, luacheck, StyLua, `tools/check_repo.py` and the Python tool tests.
 One-time setup on Windows (everything except the compiler stays inside the gitignored `.venv`):

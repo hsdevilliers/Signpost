@@ -170,6 +170,15 @@ class Plan:
     alternatives: list = field(default_factory=list)  # other finished routes with a different order of zones, best first
     decisions: list = field(default_factory=list)  # at each change of zone: what the search chose and what else it held
 
+    def levels_done(self) -> dict[int, int]:
+        """The level the character had after the visit that turned each quest in."""
+        found: dict[int, int] = {}
+        for v in self.visits:
+            for a in v.actions:
+                if a.kind == "turnin":
+                    found[a.quest] = v.level
+        return found
+
 
 class Planner:
     """Everything the searches need about one character: its quests, hubs and the cost of every edge."""
@@ -196,6 +205,8 @@ class Planner:
         self._rates: dict[tuple, bool] = {}
         self._order: dict[tuple, list] = {}
         self.nodes_made = 0
+        self.home: Coord | None = None  # where the character begins
+        self.core: set[int] = set()  # the class quests and the quests they need: all that is done once the cap is reached
         self.forbidden: set[int] = set()  # quests a tidied route no longer accepts (it never turned them in)
         self.accept_over = settings.hardcore_over if settings.hardcore else settings.accept_over
         self.work_over = settings.hardcore_over if settings.hardcore else settings.work_over
@@ -214,6 +225,8 @@ class Planner:
         exclude: dict | None = None,
         notes: dict | None = None,
         mandatory: tuple = (),
+        chains: tuple = (),
+        home: Coord | None = None,
         log: Callable[[str], None] | None = None,
     ) -> "Planner":
         say = log or (lambda text: None)
@@ -223,10 +236,15 @@ class Planner:
         planner.notes = dict(notes or {})
         planner.skip_reasons = dict(exclude or {})
         planner.mandatory = set(mandatory)
+        planner.home = home
         started = time.perf_counter()
         for qid, record in sorted(quests.items()):
             if isinstance(record, dict):
                 planner._consider(qid, record)
+        for chain in chains:  # quests of a chain the data does not link: each waits for the one before it
+            for earlier, later in zip(chain, chain[1:]):
+                if earlier in planner.quests and later in planner.quests and earlier not in planner.quests[later].pre_all:
+                    planner.quests[later].pre_all += (earlier,)
         say(f"{len(planner.quests)} of {len(quests)} quests can be routed for this character")
         planner._prune_territory(character.faction)
         planner._prune_unreachable()
@@ -308,8 +326,17 @@ class Planner:
         for qid in [qid for qid, q in self.quests.items() if zone_of(q.start_places[0].map) not in friendly and not q.mandatory]:
             del self.quests[qid]
             self._drop("the other side's territory", qid)
-        # an objective is worked where the character can go: friendly zones, on the continent the quest starts on
+        # a continent or island with no boat or zeppelin from a capital (another race's start island) cannot be reached,
+        # unless it is where the character begins
         geo = self.world.geo
+        reachable = {geo.instance(m) for m in self.s.gateways} - {None}
+        if self.home is not None:
+            reachable.add(geo.instance(self.home.map))
+        if reachable:
+            for qid in [qid for qid, q in self.quests.items() if geo.instance(q.start_places[0].map) not in reachable and not q.mandatory]:
+                del self.quests[qid]
+                self._drop("on an island with no boat or zeppelin", qid)
+        # an objective is worked where the character can go: friendly zones, on the continent the quest starts on
         for q in self.quests.values():
             home = geo.instance(q.start_places[0].map)
             for o in q.objectives:
@@ -413,6 +440,19 @@ class Planner:
                 if p not in keep:
                     keep.add(p)
                     stack.append(p)
+        # what the class quests need: past the cap nothing else is worth the time
+        core = {q.id for q in self.quests.values() if q.mandatory}
+        stack = list(core)
+        while stack:
+            q = self.quests[stack.pop()]
+            needed = list(q.pre_all)
+            if q.pre_any and not any(p in core for p in q.pre_any):
+                needed.append(max(q.pre_any, key=lambda p: self.quests[p].rate))
+            for p in needed:
+                if p not in core:
+                    core.add(p)
+                    stack.append(p)
+        self.core = core
         for q in self.quests.values():
             q.kept = q.id in keep
             if not q.kept:
@@ -454,7 +494,7 @@ class Planner:
             for c in q.end_places:
                 self.ends_by_place.setdefault(note(c), []).append(q)
             for o in q.objectives:
-                for c in o.spots:
+                for c in o.spots or q.start_places:  # no position in the data: worked where it starts, and the guide says so
                     self.objs_by_place.setdefault(note(c), []).append((q, o))
         self.places_at = {hub: list(found.values()) for hub, found in places.items()}
 
@@ -551,6 +591,8 @@ class Planner:
     def offered(self, q: PQuest, level: int, done, active, gone) -> bool:
         if level < q.req or q.level > level + self.accept_over or q.id in self.forbidden:
             return False
+        if level >= self.s.cap and q.id not in self.core:
+            return False  # at the cap only the class quests (and what they need) are still worth the walk
         return self.ready(q, done, active, gone, level) and self.worth_now(q, level)
 
     def soon(self, q: PQuest, level: int) -> bool:
@@ -568,8 +610,11 @@ class Planner:
         """The hubs with something to do now, with a rough worth for ranking: the experience at stake there."""
         level, done, active, gone = st.level, st.done, st.active, st.gone
         worth: dict[int, float] = {}
+        capped = level >= self.s.cap
         for qid, open_ in active.items():
             q = self.quests[qid]
+            if capped and qid not in self.core:
+                continue
             if not open_:
                 for h in q.end_hubs:
                     worth[h] = worth.get(h, 0.0) + self.reward(qid, level)
@@ -630,6 +675,8 @@ class Planner:
                         gone.update(x for x in q.excl if x not in done)
                         changed = True
                     for q, o in self.objs_by_place.get(key, ()):
+                        if progress.level >= s.cap and q.id not in self.core:
+                            continue
                         if q.id in active and o.index in active[q.id] and self.soon(q, progress.level):
                             seconds, wait, xp = self.objective(q.id, o.index, progress.level)
                             objective += seconds - wait
@@ -807,10 +854,13 @@ class Planner:
             self.forbidden = set(removed)
             st = self.start(start_hub)
             for v in plan.visits:
-                if v.hub is not None:
+                if v.hub is None:  # a level ground to open quests that waited for it: ground again, to the same level
+                    target = v.actions[0].index
+                    child = self._grind_to(st, target) if target > st.level else None
+                else:
                     child = self.visit(st, v.hub)
-                    if child is not None:
-                        st = child
+                if child is not None:
+                    st = child
             plan = self._finish(self.rollout(st))
         self.forbidden = set()
         plan.stats, plan.trace, plan.preset = stats, trace, preset
@@ -1002,6 +1052,14 @@ class Planner:
                     skips[other] = f"alternative to quest {qid}, which is routed"
         return skips
 
+    def hub_near(self, coord: Coord) -> int | None:
+        """The hub a coordinate is in, or the nearest hub on its map."""
+        found = self.hub_of.get((coord.map, coord.x, coord.y))
+        if found is not None:
+            return found
+        on_map = [h for h in self.hubs if h.map == coord.map]
+        return min(on_map, key=lambda h: self._yards(h.center, coord)).id if on_map else None
+
     def hub_name(self, hub: int | None) -> str:
         return self.hubs[hub].label if hub is not None else "(grinding)"
 
@@ -1054,7 +1112,7 @@ class Planner:
             elif a.kind == "turnin":
                 lines.append(f"  .turnin {q.id}{gate} -- {name}")
             else:
-                if a.place is None:
+                if not q.objectives[a.index - 1].spots:
                     lines.append(f'  .todo "{name}: objective {a.index} has no position in the pack"')
                 lines.append(f"  .complete {q.id},{a.index}{gate} -- {name}")
             if q.optional:
