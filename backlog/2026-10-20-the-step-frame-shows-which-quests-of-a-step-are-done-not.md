@@ -1,12 +1,14 @@
 ---
 title: The step frame shows which quests of a step are done, not each quest's progress
 kind: feature
-status: open
+status: done
 priority: normal
 area: ui, engine
 source: user
 raised: 2026-10-20
 raised_in: the user, 2026-10-20, dictated while the Route Planner was being merged
+closed: 2026-10-20
+resolution: PR #39: the step frame lists each quest of a step as one line with a done mark ([x] / [ ]) and no objective counters (.complete has no progress lines; the per-objective form stays and shows none either); a step completes when every .complete quest in it is complete (as before); up to ten lines
 ---
 
 ## What
