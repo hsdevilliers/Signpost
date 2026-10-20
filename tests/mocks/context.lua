@@ -240,6 +240,20 @@ function M.install(mock)
 		IsOnQuest = function(questID)
 			return findQuest(questID) ~= nil
 		end,
+		-- the number of a quest in the log and the quest at a number (a header is no quest: 0), as the client has them
+		GetLogIndexForQuestID = function(questID)
+			for number, entry in ipairs(visibleEntries()) do
+				if not entry.header and entry.questID == questID then
+					return number
+				end
+			end
+		end,
+		GetQuestIDForLogIndex = function(number)
+			local entry = visibleEntries()[number]
+			if entry then
+				return entry.header and 0 or entry.questID
+			end
+		end,
 		GetTitleForQuestID = function(questID)
 			local entry = findQuest(questID)
 			return entry and entry.title
@@ -269,8 +283,10 @@ function M.install(mock)
 	--   world.watchLimit     when set, a quest is not tracked beyond that many
 	--   world.watchCalls     every call into the watch API, as { "FunctionName", arguments... }
 	--   world.watchFails     [function name] = true: that function raises
-	--   world.superTracked   the quest C_SuperTrack.SetSuperTrackedQuestID last got
-	world.watch, world.watchCalls, world.watchFails = {}, {}, {}
+	--   world.watchTypes     [questID] = what GetQuestWatchType answers for a tracked quest (default 1, Manual; 0 is
+	--                        Enum.QuestWatchType.Automatic: the game tracked it by itself)
+	--   world.superTracked   the quest C_SuperTrack answers with: SetSuperTrackedQuestID sets it, a test may too
+	world.watch, world.watchCalls, world.watchFails, world.watchTypes = {}, {}, {}, {}
 	local function watchCall(name, ...)
 		world.watchCalls[#world.watchCalls + 1] = { name, ... }
 		if world.watchFails[name] then
@@ -321,7 +337,7 @@ function M.install(mock)
 		C_QuestLog.GetQuestWatchType = function(questID)
 			watchCall("GetQuestWatchType", questID)
 			if watchIndex(questID) then
-				return 1
+				return world.watchTypes[questID] or 1
 			end
 		end
 		C_QuestLog.GetNumQuestWatches = function()
@@ -336,6 +352,10 @@ function M.install(mock)
 			SetSuperTrackedQuestID = function(questID)
 				watchCall("SetSuperTrackedQuestID", questID)
 				world.superTracked = questID
+			end,
+			GetSuperTrackedQuestID = function()
+				watchCall("GetSuperTrackedQuestID")
+				return world.superTracked
 			end,
 		}
 	end

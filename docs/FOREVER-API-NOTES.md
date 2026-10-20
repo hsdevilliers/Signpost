@@ -322,11 +322,14 @@ Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.
 - [ ] **Quest tracking follows the step** (`Engine/Tracking.lua`, user 2026-10-20; built on the mock, none of it seen in the client;
   `/signpost probe` now lists the names, and the Classic ones as expected-absent): do `C_QuestLog.AddQuestWatch(questID[, watchType])`,
   `RemoveQuestWatch(questID)`, `GetQuestWatchType(questID)` (nil for a quest nobody tracks?), `GetNumQuestWatches()`,
-  `GetQuestIDForQuestWatchIndex(i)`, `C_SuperTrack.SetSuperTrackedQuestID(questID)` and `Enum.QuestWatchType.Manual` exist on
-  Forever, and does `AddQuestWatch` take the watch type? Or is it the Classic shape (global `AddQuestWatch(logIndex)`,
-  `IsQuestWatched`, `GetQuestIndexForWatch`, which the module falls back to)? Does the watch list read back an add or a remove
-  at once, before `QUEST_WATCH_LIST_CHANGED` (the module compares right after)? How many quests can be tracked (a step with
-  more quests tracks the first ones)? Does the game's own auto-tracking (on accept, on progress) leave the module's result
+  `GetQuestIDForQuestWatchIndex(i)`, `C_SuperTrack.GetSuperTrackedQuestID()`, `SetSuperTrackedQuestID(questID)` and
+  `Enum.QuestWatchType.Manual` exist on Forever, and does `AddQuestWatch` take the watch type? Or is it the Classic shape (global
+  `AddQuestWatch(logIndex)`, `IsQuestWatched`, `GetQuestIndexForWatch`, which the module falls back to, with
+  `C_QuestLog.GetLogIndexForQuestID` and `GetQuestIDForLogIndex` for the numbers)? Does the watch list read back an add or a
+  remove at once, before `QUEST_WATCH_LIST_CHANGED` (the module compares right after, and stops for the session if no quest of
+  a step shows as tracked)? How many quests can be tracked: a full tracker refuses the add, which the module takes for a broken
+  `AddQuestWatch` (it then leaves the tracker alone and stops). Does `C_QuestLog.GetInfo` list the quests under a collapsed
+  header (the module asks `Context:QuestInLog` either way)? Does the game's own auto-tracking (on accept, on progress) leave the module's result
   alone (a quest accepted mid-step is untracked at the next change of the quest log's set of quests)? Do the minimap and the
   objective tracker then show only the step's quests with their progress, and does the check box under "Quest tracker" in
   Journal > Settings (second column) fit the pane?

@@ -326,6 +326,16 @@ Acceptance
   quest log numbers as the fallback. 24 new specs (`tests/tracking_spec.lua` on the watch list in `tests/mocks/context.lua`, and the
   Journal's check box; the walk of `tests/integration_spec.lua` follows the tracker too); 732 in all. Unverified in the client: every one
   of those functions (API notes, "Open probes"; `/signpost probe` lists them).
+- [x] Review fixes for both (independent review of PR #39, 2026-10-20). Tracking does nothing at all while the step card is hidden (the saved
+  `stepFrame.shown`; the card's own hides in combat, when dead or with the Journal open do not count) and shows in the docs the real
+  conditions (setting on, a guide, the card shown). It tracks the step's quests first and untracks the others only once the client tracks
+  at least one (a raising or refusing `AddQuestWatch`, a full tracker included, leaves the player's tracker as it was: one error-log
+  entry, then stopped until the setting is toggled). A step quest under a collapsed quest log header is in the log (`Context:QuestInLog`)
+  and collapsing or expanding a header sets nothing again. The same step announced again (a re-parse) keeps the hands-off decision and
+  otherwise re-applies without the focus; the tracker is pointed once per step, not when it already points at a quest of the step. Specs:
+  43 in `tests/tracking_spec.lua` (was 23), two re-parse walks in `tests/integration_spec.lua`, the check box's anchors and header in
+  `tests/journal_spec.lua`; the scripted client has `GetLogIndexForQuestID`, `GetQuestIDForLogIndex`, `GetSuperTrackedQuestID` and
+  watch types; 755 in all; 21 mutations of `Engine/Tracking.lua` are each caught by a spec.
 
 ## Notes
 

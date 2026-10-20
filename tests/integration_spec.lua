@@ -204,6 +204,54 @@ describe("Wave 1 integration", function()
 		assert.is_true(record.done["track:skinning:1"])
 	end)
 
+	-- The engine announces the current step again when it parses the guide again (a profession plan change, a guide
+	-- choice): the quest tracker must not take that for a new step.
+	local function trackedStepWithAStray(setup)
+		local ns, world, mock, log = start(setup)
+		ns.db.settings.trackStepQuests = true -- chosen here, so this walk does not depend on the module's default
+		world.log = {
+			quest(QUEST, { objectives = { objective("Boar slain", 0, 2) } }),
+			quest(5000, { objectives = { objective("Other", 0, 2) } }),
+		}
+		world.watch = {}
+		event(world, mock, "QUEST_ACCEPTED", QUEST)
+		assert.are.equal("valley:2", current(ns))
+		assert.are.same({ QUEST }, world.watch)
+		assert.are.equal(QUEST, world.superTracked)
+		return ns, world, mock, log
+	end
+
+	it("keeps staying hands off when the engine parses the guide again for the same step", function()
+		local ns, world, mock, log = trackedStepWithAStray()
+		-- the player tracks another quest by hand, and the game tracks one that was just accepted
+		table.insert(world.watch, 5000)
+		world.log[#world.log + 1] = quest(5001, { objectives = { objective("New", 0, 1) } })
+		table.insert(world.watch, 5001)
+		event(world, mock, "QUEST_ACCEPTED", 5001)
+		assert.is_true(ns.Tracking.state.manual)
+		local announced = #log.steps
+		ns.Progress:OnPlanChanged(nil) -- what PROFESSION_PLAN_CHANGED does
+		world.advance(1.5)
+		assert.is_true(#log.steps > announced) -- the same step was announced again
+		assert.are.equal("valley:2", current(ns))
+		assert.is_true(ns.Tracking.state.manual)
+		assert.are.same({ QUEST, 5000, 5001 }, world.watch)
+	end)
+
+	it("sets the tracking again without moving the focus when the engine parses the guide again", function()
+		local ns, world, _, log = trackedStepWithAStray()
+		world.superTracked = nil
+		table.insert(world.watch, 5000) -- something the module did not set, which nothing has noticed yet
+		local announced = #log.steps
+		ns.Progress:OnPlanChanged(nil)
+		world.advance(1.5)
+		assert.is_true(#log.steps > announced) -- the same step was announced again
+		assert.are.equal("valley:2", current(ns))
+		assert.are.same({ QUEST }, world.watch)
+		assert.is_nil(world.superTracked)
+		assert.is_false(ns.Tracking.state.manual)
+	end)
+
 	it("auto-skips what the character has done at login, and skipping a track's learn step declines it", function()
 		local ns, world, mock, log = start(function(w)
 			w.completed = { QUEST }

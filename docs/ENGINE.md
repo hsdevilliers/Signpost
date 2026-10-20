@@ -295,28 +295,44 @@ The quest log's tracked quests follow the current step (user, 2026-10-20): the q
 quests of the step, and the tracker shows their progress (which is why the step frame lists the quests and leaves their
 objectives to the quest log).
 
-- When a step becomes current (`STEP_CHANGED`; also when the setting is turned on while a guide is active) every tracked quest
-  the step is not about is untracked and the quests it is about are tracked: those of its `.complete` and `.turnin`
-  directives (`Tracking.NamedQuests(step)`: in directive order, each once) that are in the quest log (`ns.Context`). A step
-  that names no quest in the log (a pick-up, a trip) changes nothing and makes no client call. The first of the step's
-  quests that is not complete is also given to `C_SuperTrack.SetSuperTrackedQuestID`, where the client has it.
-- While the step is current, on `CONTEXT_CHANGED("quests")` and only when the *set* of quests in the log changed (a quest
-  accepted or removed; progress inside a quest changes nothing and costs no call), the tracking is set again for the same
-  step, without the focus. Unless one of the quests the log already had has been tracked or untracked since the module last
-  set it (by the player, or by the game tracking a quest as its progress changes: the module cannot tell them apart): then
-  `Tracking.state.manual` is true and the module leaves the tracking alone until the next step.
+- **When it acts:** `Tracking:Active()`: the setting is on (`Tracking:Enabled()`), a guide is active (`ns.Progress:Guide()`),
+  the step card is shown and the client has not refused a step's quests this session (`Tracking.failed`). The card's flag is
+  the saved one, `SignpostDB.stepFrame.shown` (`/signpost hide`, the Journal's "Show the step card"), not the hides the card
+  does by itself in combat, when dead or while the Journal is open. Otherwise it does nothing at all: no client call, not even
+  for a change of the quest log. Showing the card again takes effect at the next step or change of the quest log's quests.
+- **A step becomes current** (`STEP_CHANGED` for another step id; `Tracking:SetEnabled(true)` forces it): the quests the step
+  is about are tracked first, those of its `.complete` and `.turnin` directives (`Tracking.NamedQuests(step)`: in directive
+  order, each once) that are in the quest log (`ns.Context:QuestInLog`, which also finds a quest under a collapsed header).
+  Only when the client tracks at least one of them are all the other tracked quests untracked, and the step's quests a full
+  tracker refused are added again. If none got tracked (AddQuestWatch raised or refused it: a full tracker looks the same) it
+  changes nothing else, records one entry in the error log ("Signpost: quest tracking stopped: ...", `ns.Errors`) and stops
+  until the setting is toggled either way. A step that names no quest in the log (a pick-up, a trip) changes nothing and makes
+  no client call. The first successful application for the step also gives the first of its quests that is not complete to
+  `C_SuperTrack.SetSuperTrackedQuestID`, unless `GetSuperTrackedQuestID` already returns one of them; later applications for
+  the same step do not move the focus.
+- **The same step announced again** (the engine parsed the guide again: `PROFESSION_PLAN_CHANGED`, `GUIDE_SELECTED`) is not a
+  new start: when the module stayed hands off it still does, otherwise it sets the tracking again without the focus. A reload
+  or login is a new session and a new start.
+- **The quest log changes while the step is current** (`CONTEXT_CHANGED("quests")`): only when the *set* of quests changed (a
+  quest accepted or removed; progress inside a quest, or a header collapsed or expanded, changes nothing and costs no call)
+  the tracking is set again for the step, without the focus. Unless one of the quests the log already had has been tracked or
+  untracked since the module last set it (by the player, or by the game tracking a quest as its progress changes: the module
+  cannot tell them apart): then `Tracking.state.manual` is true and the module leaves the tracking alone until the next step,
+  even if the change is put back.
 - The player's earlier tracking is not remembered and not given back when the step ends or the setting is turned off (v1).
 - `Tracking:Enabled()`, `Tracking:SetEnabled(on)`: `SignpostDB.settings.trackStepQuests` holds only the player's own choice
-  (Journal > Settings > Quest tracker); until they choose, `Tracking.DEFAULT_ENABLED` is the answer (the one place the
-  default lives). Nothing happens without an active guide (`ns.Progress:Guide()`).
+  (Journal > Settings > Quest tracker); until they choose, `Tracking.DEFAULT_ENABLED` (true, the user's choice) is the answer
+  and the one place the default lives.
 - Client API, all through `Util.Call` so a missing or failing function costs this feature and never the step engine.
-  Retail shape: `C_QuestLog.GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`, `GetQuestWatchType(questID)`,
-  `AddQuestWatch(questID, Enum.QuestWatchType.Manual)`, `RemoveQuestWatch(questID)`. Where `C_QuestLog` lacks
-  `AddQuestWatch` or `RemoveQuestWatch`, the Classic shape on quest log numbers: `AddQuestWatch(index)`,
-  `RemoveQuestWatch(index)`, `IsQuestWatched(index)`, `GetNumQuestWatches()`, `GetQuestIndexForWatch(i)` (a quest's number
-  from `C_QuestLog.GetLogIndexForQuestID`, else a walk of `C_QuestLog.GetInfo`). Unverified on Forever (API notes, "Open
-  probes"; `/signpost probe` lists which names exist). `QUEST_WATCH_LIST_CHANGED` is probed but not used: the watch list is
-  compared when it matters.
+  Retail shape: `C_QuestLog.GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`, `GetQuestWatchType(questID)` (any value
+  but nil and false is tracked, `Enum.QuestWatchType.Automatic` (0) too; the watch list answers when it is missing),
+  `AddQuestWatch(questID, Enum.QuestWatchType.Manual)`, `RemoveQuestWatch(questID)`; `C_SuperTrack.GetSuperTrackedQuestID()`
+  and `SetSuperTrackedQuestID(questID)`. Where `C_QuestLog` lacks `AddQuestWatch` or `RemoveQuestWatch`, the Classic shape on
+  quest log numbers: `AddQuestWatch(number)`, `RemoveQuestWatch(number)`, `IsQuestWatched(number)`, `GetNumQuestWatches()`,
+  `GetQuestIndexForWatch(i)` (a quest's number from `C_QuestLog.GetLogIndexForQuestID`, else a walk of `C_QuestLog.GetInfo`;
+  the quest at a number from `GetQuestIDForLogIndex`, else `GetInfo`). Unverified on Forever (API notes, "Open probes";
+  `/signpost probe` lists which names exist). `QUEST_WATCH_LIST_CHANGED` is probed but not used: the watch list is compared when
+  it matters.
 
 ### Core/Learn.lua — `ns.Learn`
 

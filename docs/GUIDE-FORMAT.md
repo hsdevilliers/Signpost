@@ -183,11 +183,18 @@ no counters either.
 
 **Quest tracking follows the step** (engine behaviour, no syntax; `Engine/Tracking.lua`). When a step becomes current, the
 quest log's tracker is set to the quests the step is about, the quests of its `.complete` and `.turnin` directives that are
-in the quest log: every other tracked quest is untracked, so the minimap and the quest tracker show only those quests, and
-the tracker shows their progress (the step frame does not). A step that names no quest in the log (a pick-up, a trip) leaves
-the tracking as it is. It acts only while a guide is active and the player has not turned it off (Journal > Settings >
-Quest tracker). It does not fight the player: a quest tracked or untracked by hand during the step stays so until the step
-changes, and the player's earlier tracking is not restored afterwards.
+in the quest log (a quest under a collapsed header is in it): they are tracked first, and only once the client has tracked at
+least one of them is every other tracked quest untracked, so the minimap and the quest tracker show only those quests, and
+the tracker shows their progress (the step frame does not). If the client tracks none of them (it raises or refuses, a full
+tracker looks the same) the tracker is left as it was and the module stops until the setting is toggled. A step that names no
+quest in the log (a pick-up, a trip) leaves the tracking as it is. It acts only while all of these hold: the player has not
+turned it off (Journal > Settings > Quest tracker; on until they do), a guide is active, and the step card is shown (the
+saved setting, `/signpost hide` and the Journal's "Show the step card"; with the card hidden it does nothing at all, while
+the card's own hides in combat, when dead or with the Journal open do not count). It does not fight the player: a quest the
+log already had that is tracked or untracked by hand (or by the game) during the step stays so until the step changes, even
+if the change is put back, and the step announced again after the guide is parsed again keeps that. The tracker is pointed
+once at the first quest of the step that is not complete, when the step begins. The player's earlier tracking is not
+restored afterwards.
 
 ## Display text
 

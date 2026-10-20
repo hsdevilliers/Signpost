@@ -51,8 +51,13 @@ local OTHER = {
 local sessions = {}
 
 -- The generic client mock keeps no widget state: these frames remember what the Journal sets on them (text, checked,
--- the menu builder given to a dropdown) so the specs can read it back.
+-- the anchors, the menu builder given to a dropdown) so the specs can read it back.
 local function instrument(obj)
+	rawset(obj, "SetPoint", function(self, ...)
+		local points = rawget(self, "_points") or {}
+		points[#points + 1] = { ... }
+		rawset(self, "_points", points)
+	end)
 	rawset(obj, "SetText", function(self, text)
 		rawset(self, "_text", text ~= nil and tostring(text) or nil)
 	end)
@@ -417,6 +422,32 @@ describe("Journal", function()
 			box.check.scripts.OnClick(box.check)
 			assert.are.equal(not default, ns.db.settings.trackStepQuests)
 			assert.are.equal(not default, box.def.get())
+		end)
+
+		it("lays the quest tracker out under a header of its own at the end of the second column", function()
+			local ns = start()
+			ns.Journal:Show("settings")
+			local pane = ns.Journal.frame.settings
+			local column = {}
+			for _, box in ipairs(pane.boxes) do
+				if box.def.column == 2 then
+					column[#column + 1] = box
+				end
+			end
+			-- nine automation boxes under the Automation header, then the Quest tracker header and its box
+			assert.are.equal(10, #column)
+			assert.are.equal("Quest tracker", column[10].def.section)
+			assert.is_nil(column[9].def.section)
+			assert.are.equal(1, #pane.sectionHeaders)
+			local header = pane.sectionHeaders[1]
+			assert.are.equal("Quest tracker", header:GetText())
+			assert.are.same({ "TOPLEFT", pane, "TOPLEFT", 470, -36 }, pane.automationHeader._points[1])
+			assert.are.same({ "TOPLEFT", pane.automationHeader, "BOTTOMLEFT", -4, -2 }, column[1].check._points[1])
+			assert.are.same({ "TOPLEFT", column[1].check, "BOTTOMLEFT", 0, -2 }, column[2].check._points[1])
+			-- the header hangs 10 under the last automation box, 4 to the right of it (the box art is padded by 4), so its
+			-- text lines up with the Automation header's; the box under it sits 4 to the left of the header's text
+			assert.are.same({ "TOPLEFT", column[9].check, "BOTTOMLEFT", 4, -10 }, header._points[1])
+			assert.are.same({ "TOPLEFT", header, "BOTTOMLEFT", -4, -2 }, column[10].check._points[1])
 		end)
 
 		it("lists the automation toggles, all off, and writes them to the character's settings", function()
