@@ -6,11 +6,13 @@ A chapter's steps are lists of directive lines. Their kind is read from the dire
   do     a step with `.complete` and nothing that sends the player to a place: quests whose objectives are close to each other.
          The step only knows which of its quests are complete; the quest log shows the progress and marks the objectives, so
          the guide draws no marker for it.
-  other  everything else (travel, `.level`, `.todo`, profession and class steps): never merged.
+  other  everything else (travel, `.level`, `.todo`, profession and class steps, a step with a gate or `.hub` line of its own): never
+         merged.
 
 `group` joins neighbouring steps of one kind that stand near each other: three NPCs of a camp who give a quest each become one
-pick-up step, and the kill areas of five quests within a few hundred yards one doing step. The tools (the drafter and the Route
-Planner) write the steps one place at a time and call it last. docs/GUIDE-FORMAT.md ("Step kinds").
+pick-up step (with the position of each, for the player who has no data pack), and the kill areas of five quests within a few
+hundred yards one doing step. The tools (the drafter and the Route Planner) write the steps one place at a time and call it last.
+docs/GUIDE-FORMAT.md ("Step kinds").
 """
 
 from __future__ import annotations
@@ -18,10 +20,11 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
-from .guidefile import Coord
+from .guidefile import GATES, Coord
 
 PLACE, DO, OTHER = "place", "do", "other"
 GROUP_YARDS = 250.0  # steps whose first positions are this near each other are one area
+STEP_LINES = frozenset({*GATES, "hub"})  # lines that belong to a whole step: a step that has one cannot share it with another
 
 _GOTO = re.compile(r"^\s*\.goto\s+(\d+)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)")
 _DIRECTIVE = re.compile(r"^\s*\.([a-z][a-z0-9]*)\b")
@@ -39,6 +42,8 @@ def kind(step: Step) -> str:
     found = names(step)
     if "todo" in found:
         return OTHER  # a step that says something is missing stays a step of its own
+    if found & STEP_LINES:
+        return OTHER  # a gate on its own line gates the whole step, and a step has one `.hub`: joined, they would cover its neighbour
     if found & {"accept", "turnin"}:
         return PLACE
     if "complete" in found:
@@ -63,15 +68,25 @@ def _joins(a: Step, b: Step, near: Callable[[Coord, Coord], bool]) -> bool:
 def group(
     steps: list[Step], near: Callable[[Coord, Coord], bool], objectives: Callable[[int], list[int] | None] | None = None
 ) -> list[Step]:
-    """The steps with neighbours of one kind that are near each other joined into one. The joined step keeps the first
-    `.goto` (the other places are in the data pack's pins and the quest log); every other line is kept in order.
+    """The steps with neighbours of one kind that are near each other joined into one; every line is kept in order. A pick-up and
+    hand-in step keeps the `.goto` of each place (they are its pins when there is no data pack, and the walk between them is
+    priced); a doing step keeps the first only (it draws no markers: the quest log shows where the objectives are).
     `objectives(questID)`, when given, lists a quest's objective numbers: a doing step that finishes all of them says
     `.complete <quest>` once instead of one line per objective."""
     out: list[Step] = []
     for step in steps:
         k = kind(step)
         if out and k != OTHER and kind(out[-1]) == k and _joins(out[-1], step, near):
-            out[-1] = out[-1] + [line for line in step if not _GOTO.match(line)]
+            seen = {line.strip() for line in out[-1] if _GOTO.match(line)}
+            joined = list(out[-1])
+            for line in step:
+                if _GOTO.match(line):
+                    if k == PLACE and line.strip() not in seen:
+                        seen.add(line.strip())
+                        joined.append(line)
+                else:
+                    joined.append(line)
+            out[-1] = joined
         else:
             out.append(list(step))
     return [whole_quests(step, objectives) if objectives and kind(step) == DO else step for step in out]

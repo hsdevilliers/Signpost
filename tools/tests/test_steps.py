@@ -33,14 +33,22 @@ class KindTest(unittest.TestCase):
 
 
 class GroupTest(unittest.TestCase):
-    def test_pick_ups_and_hand_ins_near_each_other_are_one_step_that_keeps_the_first_goto(self):
+    def test_pick_ups_and_hand_ins_near_each_other_are_one_step_that_keeps_every_place(self):
+        # the pins of a step are its gotos when the player has no data pack: each NPC keeps the position that sits with its quests
         out = steps.group(
             [step(".goto 1,10,10", ".turnin 4 -- Z"), step(".goto 1,12,11", ".accept 5 -- A"), step(".goto 1,13,10", ".accept 6 -- B")], near
         )
         self.assertEqual(len(out), 1)
-        self.assertEqual(out[0], step(".goto 1,10,10", ".turnin 4 -- Z", ".accept 5 -- A", ".accept 6 -- B"))
+        self.assertEqual(
+            out[0], step(".goto 1,10,10", ".turnin 4 -- Z", ".goto 1,12,11", ".accept 5 -- A", ".goto 1,13,10", ".accept 6 -- B")
+        )
 
-    def test_doing_steps_near_each_other_are_one_step(self):
+    def test_a_place_that_comes_back_is_written_once(self):
+        out = steps.group([step(".goto 1,10,10", ".turnin 4 -- Z"), step(".goto 1,10,10", ".accept 5 -- A")], near)
+        self.assertEqual(out, [step(".goto 1,10,10", ".turnin 4 -- Z", ".accept 5 -- A")])
+
+    def test_doing_steps_near_each_other_are_one_step_that_keeps_the_first_goto(self):
+        # a doing step draws no markers (the quest log shows the objectives), so one position is all the tools read from it
         out = steps.group([step(".goto 1,10,10", ".complete 5 -- A"), step(".goto 1,11,12", ".complete 6 -- B")], near)
         self.assertEqual(out, [step(".goto 1,10,10", ".complete 5 -- A", ".complete 6 -- B")])
 
@@ -57,6 +65,18 @@ class GroupTest(unittest.TestCase):
     def test_a_step_that_says_something_is_missing_stays_alone(self):
         todo = step(".goto 1,10,10", ".todo \"no position\"", ".complete 5,1 -- A")
         self.assertEqual(len(steps.group([step(".goto 1,10,10", ".complete 6 -- B"), todo, step(".goto 1,10,10", ".complete 7 -- C")], near)), 3)
+
+    def test_a_step_with_a_line_for_the_whole_step_stays_alone(self):
+        # a gate on its own line gates every line of the step it is in, and a step has one .hub line: joined, they would cover a neighbour
+        plain = step(".goto 1,10,10", ".accept 5 -- A")
+        for line in (".class HUNTER", ".race Troll", ".faction Horde", ".prof leatherworking", ".hc", ".hub Orgrimmar"):
+            lone = step(".goto 1,11,10", line, ".accept 6 -- B")
+            self.assertEqual(steps.kind(lone), steps.OTHER, line)
+            self.assertEqual(steps.group([plain, lone, step(".goto 1,12,10", ".accept 7 -- C")], near)[1], lone, line)
+        trailing = step(".goto 1,11,10", ".accept 6 .class HUNTER -- B")  # a gate at the end of a line gates that line only
+        self.assertEqual(
+            steps.group([plain, trailing], near), [step(".goto 1,10,10", ".accept 5 -- A", ".goto 1,11,10", ".accept 6 .class HUNTER -- B")]
+        )
 
     def test_grouping_twice_changes_nothing_and_the_input_is_not_touched(self):
         original = [step(".goto 1,10,10", ".accept 5 -- A"), step(".goto 1,12,10", ".accept 6 -- B")]

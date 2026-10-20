@@ -435,14 +435,10 @@ def run(
             log.events.append(f"travel {minutes(walk)}")
         longest_wait = 0.0  # a step is done together: its objectives run side by side, so the longest wait counts once
         todo = False
-        # `.level N` is the guide's own gate: the player gets there first, which costs grinding and is not a fault
-        gate = max((d.args["level"] for d in rs.directives if d.name == "level"), default=0)
-        gated = max(gated, gate)
-        if gate > progress.level:
-            seconds = progress.grind_to(gate)
-            log.stall += seconds
-            result.stalls.append(Stall(rs, f"needs level {gate}", gate, seconds))
-            log.events.append(f"reach level {gate} first: grinding {minutes(seconds)}")
+        # `.level N` is the guide's own gate: the player gets there first, which costs grinding and is not a fault. The whole step is
+        # gated by it (an accept anywhere in the step is not ungated), but the grinding happens where the line stands: the experience
+        # of a hand-in or an objective written before it in a joined step has been credited by then
+        gated = max(gated, max((d.args["level"] for d in rs.directives if d.name == "level"), default=0))
         for d in rs.directives:
             quest = d.args.get("quest")
             if quest in skip and d.name in ("accept", "turnin", "complete"):
@@ -454,6 +450,13 @@ def run(
             if d.name == "todo":
                 todo = True
                 log.events.append(f"TODO: {d.args.get('reason') or d.raw}")
+            elif d.name == "level":
+                gate = d.args["level"]
+                if gate > progress.level:
+                    seconds = progress.grind_to(gate)
+                    log.stall += seconds
+                    result.stalls.append(Stall(rs, f"needs level {gate}", gate, seconds))
+                    log.events.append(f"reach level {gate} first: grinding {minutes(seconds)}")
             elif d.name == "accept":
                 need = record.get("r") or 0
                 if rules is not None:

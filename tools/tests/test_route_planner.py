@@ -173,13 +173,21 @@ class ChoiceTest(unittest.TestCase):
         self.assertIs(rp.choose([slow, bad, fast], [], 6), fast)
         self.assertIsNone(rp.choose([bad], [], 6))
 
-    def test_with_a_monte_carlo_the_route_fastest_in_most_runs_wins_whatever_its_total(self):
-        beam = Fake(total=2.0, wins=0.2, name="beam")
-        lucky = Fake(total=3.0, wins=0.5, name="thorough alt 3")
-        broken = Fake(ok=False, total=1.0, wins=0.9, name="thorough alt 1")
-        self.assertIs(rp.choose([beam], [beam, lucky, broken], 6), lucky)  # a route that fails its checks never wins, however often fastest
-        tie = Fake(total=1.5, wins=0.5, name="tie")
-        self.assertIs(rp.choose([beam], [lucky, tie], 6), tie)  # equal wins: the lower total
+    def test_with_a_monte_carlo_the_shortest_median_wins_whatever_the_totals_and_the_wins(self):
+        def measured(name, median, p90, total, wins):
+            o = Fake(total=total, wins=wins, name=name)
+            o.monte.update(p50={6: median}, p90={6: p90})
+            return o
+
+        beam = measured("beam", 100.0, 130.0, 2.0, 0.01)
+        lucky = measured("thorough alt 1", 110.0, 120.0, 3.0, 0.46)  # fastest in most runs, a slower typical time
+        broken = measured("thorough alt 2", 50.0, 60.0, 1.0, 0.9)
+        broken.evaluation.lint_errors = ["error"]  # fails its checks: never chosen, however fast
+        self.assertIs(rp.choose([beam], [beam, lucky, broken], 6), beam)
+        tie = measured("tie", 100.0, 125.0, 9.0, 0.0)
+        self.assertIs(rp.choose([beam], [beam, tie], 6), tie)  # equal medians: the shorter 90th percentile
+        same = measured("same", 100.0, 130.0, 1.5, 0.0)
+        self.assertIs(rp.choose([beam], [beam, same], 6), same)  # then the lower planner total
 
     def test_the_planner_of_an_outcome_and_the_command_line_that_made_it(self):
         planners = {"thorough": "T", "beam": "B"}

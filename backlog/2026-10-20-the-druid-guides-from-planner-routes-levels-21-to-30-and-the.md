@@ -13,7 +13,11 @@ raised_in: independent review of the installed Troll Hunter guide, 2026-10-20
 
 The Tauren and Skyborne Druid guides stay drafted chapters to level 20 (levels 21 to 30 and the Skyborne's 12 to 20 are not written), and
 `druid-cat-form-20.lua` has no step. Version 1 of every guide stops at 30. The planner can make the routes (`python tools/route_planner.py
-tauren --preset all`, `skyborne`), but the Cat Form chain of both is still done 5 to 9 levels after it opens.
+tauren --preset all`, `skyborne`). With the beam that compares routes by how far they have got (PR #38) the Cat Form chains come at or soon after
+the level they open at: the default beam makes the Skyborne route 28h52 (22h59 of play and 4h20 of charges for class quests done late; a start on
+an island has no way to the other continents' class quests before it leaves) and the Tauren route 44h40 (24h57 of play and 17h40 of charges for 22
+class quests: the planner's charge is 20 minutes a level a quest, and the druids' chains are long). Before it the beam did them at 27 to 30 and
+the Skyborne's beam found no route of its own.
 
 ## Why
 

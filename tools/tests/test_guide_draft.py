@@ -347,6 +347,8 @@ class PoolTest(DraftCase):
         steps = self.draft_with_neighbours(*only)[0].split("step\n")
         together = next(s for s in steps if ".accept 260" in s)
         self.assertIn(".accept 201", together)  # the NPC next door and the one at the hub are one area
+        gotos = [line.strip().split("--")[0].strip() for line in together.splitlines() if line.strip().startswith(".goto")]
+        self.assertEqual(sorted(gotos), [".goto 10,40.0,40.0", ".goto 10,41.0,40.0"])  # each NPC keeps its own position: the pins without the pack
         apart = self.draft_with_neighbours(*only, "--group-yards", "0")[0].split("step\n")
         self.assertNotIn(".accept 201", next(s for s in apart if ".accept 260" in s))
 
@@ -356,7 +358,9 @@ class PoolTest(DraftCase):
         self.assertIn(".complete 262", doing)  # two boar camps 20 units apart
         self.assertNotIn(".accept", doing)
         self.assertNotIn(".turnin", doing)
-        self.assertNotIn(".complete 228", doing)  # the rats of the other zone are a step of their own, if routed at all
+        far = next((s for s in steps if ".complete 229" in s), None)
+        self.assertIsNotNone(far)  # the hub rats are routed, about 450 yards from the boars...
+        self.assertNotIn(".complete 229", doing)  # ...and are a doing step of their own
 
     def test_a_quest_finished_in_one_step_is_one_complete_line_and_a_split_quest_keeps_its_objectives(self):
         text = self.draft_with_neighbours()[0]

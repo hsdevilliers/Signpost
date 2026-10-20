@@ -136,6 +136,20 @@ class RunTest(TempProject):
         slower = self.run_text(text, ["kill_seconds=60"])
         self.assertGreater(slower.stall, result.stall)
 
+    def test_a_level_gate_after_a_hand_in_in_the_same_step_waits_for_its_experience(self):
+        # a joined step: the hand-in's experience is credited before the gate that stands after it, so nothing is ground for
+        steps = "step\n  .goto 10,40,40\n  .accept 1\nstep\n  .goto 10,40,40\n  .complete 1,1\n"
+        quest_xp = {1: 900}
+        before_turnin = self.run_text("#chapter 1-5 One\n" + steps, quest_xp=quest_xp).level
+        reached = self.run_text("#chapter 1-5 One\n" + steps + "step\n  .goto 10,40,40\n  .turnin 1\n", quest_xp=quest_xp).level
+        self.assertGreater(reached, before_turnin)  # the hand-in is what gets the character to the level the gate asks for
+        gate = f"  .level {reached}\n"
+        after = self.run_text("#chapter 1-5 One\n" + steps + "step\n  .goto 10,40,40\n  .turnin 1\n" + gate, quest_xp=quest_xp)
+        self.assertEqual((after.level, after.stall), (reached, 0))
+        first = self.run_text("#chapter 1-5 One\n" + steps + "step\n  .goto 10,40,40\n" + gate + "  .turnin 1\n", quest_xp=quest_xp)
+        self.assertGreater(first.stall, 0)  # the gate first: the character grinds the level, and the hand-in comes on top of it
+        self.assertEqual(first.stalls[0].needs, reached)
+
     def test_risk_marks_elite_objectives_and_quests_above_the_character(self):
         text = "#chapter 1-5 One" + NL + "step" + NL + "  .goto 10,40,40" + NL + "  .accept 3" + NL + "  .accept 2" + NL
         result = self.run_text(text)

@@ -131,7 +131,7 @@
       ],
       "rewrites": [],
       "hardcore": false,
-      "planned": "the beam route for Troll Hunter, planned by tools/route_planner.py on 2026-10-20 (docs/PLANNER.md)"
+      "planned": "the thorough alt 5 route for Troll Hunter: tools/route_planner.py troll --preset all --install --force --quiet (docs/PLANNER.md)"
     },
     {
       "guide": "horde-windshaper-druid",

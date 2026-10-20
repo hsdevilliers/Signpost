@@ -37,17 +37,20 @@ ns.Chapters:Register(
 step
   .goto 1413,51.21,29.05
   .accept 6361 -- A Bundle of Hides
+  .goto 1413,51.44,30.15
   .turnin 6361 -- A Bundle of Hides
   .accept 848 -- Fungal Spores
   .accept 1492 -- Wharfmaster Dizzywig
+  .goto 1413,51.5,30.87
   .level 12
   .accept 867 -- Harpy Raiders
   .accept 871 -- Disrupt the Attacks
+  .goto 1413,51.93,30.32
   .accept 869 -- Raptor Thieves
+  .goto 1413,52.23,31.01
   .accept 844 -- Plainstrider Menace
+  .goto 1413,52.26,31.93
   .accept 870 -- The Forgotten Pools
-  .turnin 870 -- The Forgotten Pools
-  .accept 877 -- The Stagnant Oasis
 step
   .goto 1413,52.76,28.2
   .complete 844 -- Plainstrider Menace
@@ -66,12 +69,15 @@ step
   .goto 1413,51.93,30.32
   .turnin 869 -- Raptor Thieves
   .accept 3281 -- Stolen Silver
+  .goto 1413,52.23,31.01
   .turnin 845 -- The Zhevra
   .accept 903 -- Prowlers of the Barrens
+  .goto 1413,51.95,31.58
   .level 14
   .accept 899 -- Consumed by Hatred
   .accept 4921 -- Lost in Battle
   .accept 95774 -- Her Name Is Olgra
+  .goto 1413,51.5,30.87
   .turnin 871 -- Disrupt the Attacks
   .accept 872 -- The Disruption Ends
   .accept 5041 -- Supplies for the Crossroads
@@ -85,6 +91,7 @@ step
 step
   .goto 1413,45.18,23.27
   .complete 848 -- Fungal Spores
+  .complete 870 -- The Forgotten Pools
 step
   .goto 1413,45.34,28.41
   .turnin 855 -- Centaur Bracers
@@ -94,8 +101,12 @@ step
 step
   .goto 1413,51.44,30.15
   .turnin 848 -- Fungal Spores
+  .goto 1413,52.23,31.01
   .turnin 903 -- Prowlers of the Barrens
   .accept 881 -- Echeyakee
+  .goto 1413,52.26,31.93
+  .turnin 870 -- The Forgotten Pools
+  .accept 877 -- The Stagnant Oasis
 step
   .goto 1413,57.32,24.6
   .complete 872,1 -- The Disruption Ends
@@ -111,8 +122,10 @@ step
   .goto 1413,52.65,29.06
   .level 15
   .accept 97003 -- Chol'aruk the Ravener
+  .goto 1413,52.23,31.01
   .turnin 881 -- Echeyakee
   .accept 905 -- The Angry Scytheclaws
+  .goto 1413,51.5,30.87
   .turnin 872 -- The Disruption Ends
   .turnin 5041 -- Supplies for the Crossroads
 step
@@ -123,9 +136,13 @@ step
   .accept 865 -- Raptor Horns
   .accept 895 -- WANTED: Baron Longshore
   .accept 92706 -- WANTED: Bruuz
+  .goto 1413,62.98,37.22
   .accept 894 -- Samophlange
+  .goto 1413,63.07,36.32
   .accept 97253 -- Parts and Pieces
+  .goto 1413,62.68,36.23
   .accept 887 -- Southsea Freebooters
+  .goto 1413,63.35,38.45
   .turnin 1492 -- Wharfmaster Dizzywig
   .accept 896 -- Miner's Fortune
 step
@@ -138,9 +155,11 @@ step
 step
   .goto 1413,63.07,36.32
   .turnin 97253 -- Parts and Pieces
+  .goto 1413,62.68,36.23
   .turnin 887 -- Southsea Freebooters
   .turnin 895 -- WANTED: Baron Longshore
   .accept 890 -- The Missing Shipment
+  .goto 1413,63.35,38.45
   .turnin 890 -- The Missing Shipment
   .accept 892 -- The Missing Shipment
   .turnin 892 -- The Missing Shipment
@@ -164,6 +183,7 @@ step
 step
   .goto 1413,52.26,31.93
   .turnin 880 -- Altered Beings
+  .goto 1413,52.23,31.01
   .turnin 905 -- The Angry Scytheclaws
   .accept 3261 -- Jorn Skyseer
 step
@@ -177,6 +197,7 @@ step
   .accept 95508 -- Unwelcome Guests
   .accept 95621 -- Trouble in the Valley
   .turnin 95508 -- Unwelcome Guests
+  .goto 1413,43.8,12.21
   .accept 95494 -- Bruised Pride and Lion Hides
   .accept 95495 -- The Hermit Tanner
   .accept 95507 -- Vrang's Game
@@ -226,6 +247,7 @@ step
 step
   .goto 1413,62.37,37.62
   .turnin 865 -- Raptor Horns
+  .goto 1413,62.98,37.22
   .turnin 902 -- Samophlange
   .accept 3921 -- Wenikee Boltbucket
 step

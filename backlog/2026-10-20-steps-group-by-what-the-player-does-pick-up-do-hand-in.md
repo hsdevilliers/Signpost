@@ -1,12 +1,14 @@
 ---
 title: Steps group by what the player does: pick up, do, hand in (replaces one NPC per step)
 kind: feature
-status: open
+status: done
 priority: normal
 area: engine, ui, guides
 source: user
 raised: 2026-10-20
 raised_in: the user, 2026-10-20, dictated while the Route Planner was being merged
+closed: 2026-10-21
+resolution: Done: the engine in PR #39 (doing steps, the quest-level state, no markers for a doing step), the tools in PR #38 (tools/signpost_tools/steps.py: the drafter and the planner write pick-up, doing and hand-in steps; the simulator and the lint read them; the three guides were rebuilt). docs/GUIDE-FORMAT.md 'Step kinds' has the rules. Verification in the game stays with the doing-steps and quest-tracking verify items.
 ---
 
 ## What

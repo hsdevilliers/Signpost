@@ -16,8 +16,8 @@ cost of an edge is the simulator's time, and a quest is accepted only where the 
 The techniques (--preset):
   greedy     nearest thing first, finish a zone, move on (the way the guides are drafted); seconds
   lookahead  greedy, but each choice is tried by playing the rest out greedily and the best is kept; seconds
-  beam       keeps the best partial routes at every step, drops one when another is both faster and further along; the default
-  thorough   a wide beam, then the finalists walked hundreds of times with uncertain assumptions (Monte Carlo)
+  beam       keeps the best partial routes for each part of a level (routes are compared by how far they have got); the default
+  thorough   the beam at several grains of progress, then the finalists walked hundreds of times with uncertain assumptions (Monte Carlo)
   all        every technique above, with a comparison
 
 The report says what the search did (how many situations, how many dropped and why), the route as a graph of zones, the time
@@ -62,8 +62,8 @@ CLASS_LATE = 5  # levels after it opens at which a class quest done is called la
 PRESET_SETTINGS = {  # what each technique changes in the planner's settings
     "greedy": {},
     "lookahead": {"branch": 8, "horizon": 12},
-    "beam": {"branch": 8, "width": 60},
-    "thorough": {"branch": 10, "width": 300, "alternatives": 5},
+    "beam": {"branch": 8, "width": 30, "parts": (2,)},
+    "thorough": {"branch": 10, "width": 40, "parts": (2, 4, 8), "alternatives": 5},
 }
 
 
@@ -150,6 +150,7 @@ class Job:
     class_chains: list = field(default_factory=list)
     chains: tuple = ()
     start: Coord | None = None
+    skip_zones: dict = field(default_factory=dict)
 
 
 def manifest_hardcore(root: Path, guide_id: str) -> bool | None:
@@ -255,8 +256,13 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
     params = guide_sim.load_params(overrides=options.param)
     exclude: dict = {}
     notes: dict = {}
+    skip_zones: dict = {}
     try:
-        rules = json.loads((options.root / "tools" / "hardcore_rules.json").read_text(encoding="utf-8")).get("rules", [])
+        rules_file = json.loads((options.root / "tools" / "hardcore_rules.json").read_text(encoding="utf-8"))
+        rules = rules_file.get("rules", [])
+        for zone in rules_file.get("skip_zones", []):
+            if isinstance(zone, dict) and isinstance(zone.get("zone"), int):
+                skip_zones[zone["zone"]] = str(zone.get("reason") or "not leveling content")
     except (OSError, ValueError):
         rules = []
     for rule in rules:
@@ -290,7 +296,7 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
     hints = manifest_chains(options.root, guide.id) + [list(c) for c in options.chain]
     job = Job(
         options.root, project, pack, pack_dir, guide, hardcore, character, race, cls, world, settings, params, mandatory, exclude, notes, chains,
-        tuple(tuple(c) for c in hints), start_of(project, guide, world, options.start),
+        tuple(tuple(c) for c in hints), start_of(project, guide, world, options.start), skip_zones,
     )
     return job
 
@@ -397,6 +403,7 @@ def planner_for(job: Job, out: Out, overrides: dict | None = None, quiet: bool =
         mandatory=job.mandatory,
         chains=job.chains,
         home=job.start,
+        skip_zones=job.skip_zones,
         log=(lambda text: None) if quiet else (lambda text: out("  " + text)),
     )
     return pl
@@ -413,7 +420,7 @@ def start_hub(job: Job, pl: engine.Planner) -> tuple[int | None, str]:
 
 def run_preset(job: Job, preset: str, options, out: Out, base: engine.Planner | None = None) -> tuple[engine.Planner, Outcome]:
     overrides = dict(PRESET_SETTINGS[preset])
-    for name in ("width", "branch", "horizon"):
+    for name in ("width", "branch", "horizon", "parts"):
         if getattr(options, name) is not None:
             overrides[name] = getattr(options, name)
     pl = planner_for(job, out, overrides, quiet=base is not None)
@@ -519,9 +526,10 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
     how = {
         "greedy": "nearest hub with something to do, a zone finished before the next; one path, no alternatives considered",
         "lookahead": f"at every step the {s.branch} best hubs are each tried by playing {s.horizon} visits on greedily; the best is kept",
-        "beam": f"at every step the {s.width} best partial routes are kept ({s.branch} hubs tried from each); a route is dropped "
-                f"when another reaches the same situation sooner",
-        "thorough": f"as beam but {s.width} routes wide and {s.branch} hubs from each; the finalists are then walked with uncertain assumptions",
+        "beam": f"routes are compared by how far they have got ({s.parts[0]} parts to a level): the {s.width} best of each part are kept "
+                f"({s.branch} hubs tried from each); a route is dropped when another reaches the same situation sooner",
+        "thorough": f"as beam, once for each grain of progress ({', '.join(str(n) for n in s.parts)} parts to a level), {s.width} routes wide and "
+                    f"{s.branch} hubs from each; the finalists are then walked with uncertain assumptions",
     }[outcome.preset]
     out("technique     " + how)
     out(f"work          {outcome.wall:.1f} s; {p.get('nodes', 0):,} situations made" + (f"; {p['pruned']:,} dropped (worse than another route to the same situation, "
@@ -531,17 +539,23 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
         better = (base - plan.total) / base * 100 if base else 0
         out(f"baseline      the greedy route takes {hms(base)} (with the planner's charges); this one {hms(plan.total)}: "
             f"{better:.1f}% {'faster' if better >= 0 else 'slower'}")
-    if p.get("finals"):
-        out(f"finished      {p['finals']:,} complete routes reached the cap during the search; the best {len(plan.alternatives) + 1} with different "
-            f"orders of zones are kept to compare")
+    if "finals" in p:
+        if not p["finals"]:
+            out("finished      NO route of its own: every partial route was dropped before the cap, so this is the greedy route (the search found nothing "
+                "better; read the estimate above, and --class-push 0 shows whether the class quests are the cause)")
+        elif plan.total >= p.get("baseline_seconds", 0):
+            out(f"finished      {p['finals']:,} complete routes reached the cap during the search, none faster than the greedy one: this is the greedy route")
+        else:
+            out(f"finished      {p['finals']:,} complete routes reached the cap during the search; the best {len(plan.alternatives) + 1} with different "
+                f"orders of zones are kept to compare")
     if p.get("removed"):
         names = ", ".join(pl.quests[q].name for q in p["removed"][:6] if q in pl.quests)
         out(f"tidied        {len(p['removed'])} quests the search had accepted but never finished were taken out of the route (a guide may not leave them in the log): {names}"
             + (" ..." if len(p["removed"]) > 6 else ""))
     if plan.trace:
-        out("progress      best estimated total time as the search deepened (visits made | routes kept | estimate):")
+        out("progress      best estimated total time as the search moved up the levels (level | routes kept | estimate):")
         picks = plan.trace[:: max(1, len(plan.trace) // 8)]
-        out("              " + "   ".join(f"{d}: {n}, {hms(e)}" for d, n, e in picks))
+        out("              " + "   ".join(f"{lv:g}: {n}, {hms(e)}" for lv, n, e in picks))
     out(f"result        {'reaches level ' + str(s.cap) if plan.complete else 'does NOT complete'}: {hms(plan.seconds)} of play"
         f" (+ {hms(plan.penalty)} of zone-change cost"
         + (f" and {hms(plan.late)} for class quests done late" if plan.late else "")
@@ -694,7 +708,11 @@ def report_monte(out: Out, outcomes: list[Outcome]) -> None:
         out(f"  {o.preset:<14} " + "   ".join(cells) + f"   fastest in {m['wins']:.0%} of runs")
     best = max((o for o in outcomes if o.monte), key=lambda o: o.monte["wins"], default=None)
     if best is not None:
-        out(f"  most often the fastest: {best.preset} ({best.monte['wins']:.0%} of the runs)")
+        out(f"  most often the fastest: {best.preset} ({best.monte['wins']:.0%} of the runs; finalists a few minutes apart win by luck)")
+    cap = max((l for o in outcomes if o.monte for l in o.monte["levels"]), default=None)
+    typical = min((o for o in outcomes if o.monte and cap in o.monte["p50"]), key=lambda o: o.monte["p50"][cap], default=None)
+    if typical is not None:
+        out(f"  shortest median to level {cap}: {typical.preset} ({hms(typical.monte['p50'][cap])}): the route --install takes if it passes its checks")
 
 
 def monte_carlo(job: Job, outcomes: list[Outcome], runs: int, seed: int) -> None:
@@ -765,12 +783,13 @@ def passes(o: Outcome, cap: int) -> bool:
 
 
 def choose(outcomes: list[Outcome], finalists: list[Outcome], cap: int) -> Outcome | None:
-    """The route to install: of those that pass their checks, the one that was fastest in the most Monte Carlo runs (every technique's
-    route and thorough's finalists meet the same luck), ties by the planner's total; without a Monte Carlo, the lowest total."""
+    """The route to install: of those that pass their checks, the one with the shortest median time to the cap over the Monte Carlo runs
+    (every technique's route and thorough's finalists meet the same luck), then the shorter 90th percentile, then the lower planner total;
+    without a Monte Carlo, the lowest total. ("Fastest in most runs" is not used: finalists a few minutes apart win by luck.)"""
     pool = list({id(o): o for o in [*outcomes, *finalists] if passes(o, cap)}.values())
-    measured = [o for o in pool if o.monte]
+    measured = [o for o in pool if o.monte and cap in o.monte.get("p50", {})]
     if measured:
-        return max(measured, key=lambda o: (o.monte.get("wins", 0.0), -o.plan.total))
+        return min(measured, key=lambda o: (o.monte["p50"][cap], o.monte.get("p90", {}).get(cap, float("inf")), o.plan.total))
     return min(pool, key=lambda o: o.plan.total, default=None)
 
 
@@ -892,7 +911,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-skip", action="store_true", help="do not leave out quests for being slower than grinding")
     parser.add_argument("--instant-quests", action="store_true",
                         help="keep quests that have no objective and are handed in where they were accepted (free experience: the data probably lacks them)")
-    parser.add_argument("--width", type=int, help="routes the beam keeps (default by technique)")
+    parser.add_argument("--width", type=int, help="routes the beam keeps for each part of a level (default by technique)")
+    parser.add_argument("--parts", type=lambda t: tuple(int(x) for x in t.split(",")), metavar="N[,N...]",
+                        help="parts of a level the beam compares routes by, one run for each number (default by technique: beam 2, thorough 2,4,8)")
     parser.add_argument("--branch", type=int, help="hubs tried from each situation (default by technique)")
     parser.add_argument("--horizon", type=int, help="visits a lookahead plays out (default 12)")
     parser.add_argument("--param", action="append", default=[], help="a simulator assumption: name=value or name.part=value")

@@ -3,7 +3,7 @@ import unittest
 
 import guide_travel
 import planner as engine
-from signpost_tools import availability
+from signpost_tools import availability, steps
 from tests.guide_fixtures import MAPS, TRAVEL, TempProject, write_pack
 from tests.test_guide_draft import HOME, NPCS, QUESTS, START
 
@@ -122,8 +122,50 @@ class SearchTest(PlannerCase):
         hub = self.start(pl)
         greedy = pl.plan("greedy", hub)
         beam = pl.plan("beam", hub)
-        self.assertLessEqual(beam.seconds + beam.penalty, greedy.seconds + greedy.penalty + 1e-6)
+        self.assertLessEqual(beam.total, greedy.total + 1e-6)
         self.assertGreater(beam.stats["nodes"], greedy.stats["nodes"])
+        self.assertGreater(beam.stats["finals"], 0)  # it finished routes of its own, it did not fall back on the greedy one
+
+    def test_the_beam_compares_routes_by_how_far_they_have_got(self):
+        pl = self.planner()
+        hub = self.start(pl)
+        start = pl.start(hub, 3)
+        self.assertEqual(pl._bucket(start, 2), 6)  # level 3, nothing of the next
+        start.xp = pl.model.to_next(3) * 0.6
+        self.assertEqual(pl._bucket(start, 2), 7)  # past the half of level 3
+        self.assertEqual(pl._bucket(start, 4), 14)  # a finer grain: 0.6 of the way is the third quarter
+        self.assertEqual(pl._bucket(pl.start(hub, 6), 2), pl._bucket(pl.start(hub, 9), 2))  # the cap and beyond is one bucket
+        starts = [pl.start(hub, n) for n in range(1, 6)]
+        self.assertEqual([pl._bucket(s, 3) for s in starts], sorted(pl._bucket(s, 3) for s in starts))  # never goes down as the level rises
+
+    def test_a_beam_run_for_each_grain_of_progress_and_the_best_route_of_them_all(self):
+        pl = self.planner(parts=(1, 2, 4), width=10, branch=6)
+        plan = pl.plan("beam", self.start(pl))
+        self.assertEqual(plan.stats["runs"], 3)
+        self.assertTrue(plan.complete)
+        self.assertLessEqual(plan.total, pl.plan("greedy", self.start(pl)).total + 1e-6)
+
+    def test_class_quests_waiting_rank_a_route_but_never_make_it_hopeless(self):
+        # the regression: a pending charge above the margin against a finished route's real charges emptied the beam (finals == 0)
+        chain = {n: {"n": f"Chain {n}", "r": 1, "l": 1, "classes": 4, "o": [{"id": 3001, "k": "kill"}], **HOME} for n in (251, 252, 253)}
+        pl = self.planner(quests={**QUESTS, **chain}, mandatory=(217, 251, 252, 253), class_push=100000.0)
+        st = pl.start(self.start(pl), 5)
+        self.assertGreater(pl.pending_charge(st), 0.5 * (st.total + pl.to_go(st)))  # the four quests, long open, are charged heavily
+        finished = (st.total + pl.to_go(st)) * 1.01  # a finished route that is only a little slower than the work still to do
+        self.assertGreaterEqual(pl.score(st), finished * pl.s.prune)  # the ranking alone would have thrown the route away
+        self.assertFalse(pl.hopeless(st, finished))  # the bound does not
+        self.assertTrue(pl.hopeless(st, (st.total + pl.to_go(st)) / pl.s.prune))  # a route that cannot win still is
+
+    def test_many_class_quests_waiting_do_not_stop_the_beam_from_finishing(self):
+        chain = {n: {"n": f"Chain {n}", "r": 1, "l": 1, "classes": 4, "o": [{"id": 3001, "k": "kill"}], **HOME} for n in (251, 252, 253)}
+        pl = self.planner(quests={**QUESTS, **chain}, mandatory=(217, 251, 252, 253), class_push=1200.0, width=20, branch=6)
+        hub = self.start(pl)
+        greedy = pl.plan("greedy", hub)
+        beam = pl.plan("beam", hub)
+        self.assertGreater(beam.stats["finals"], 0)
+        self.assertTrue(beam.complete)
+        self.assertLessEqual(beam.total, greedy.total + 1e-6)
+        self.assertTrue({217, 251, 252, 253} <= set(beam.final.done))
 
     def test_plans_are_repeatable(self):
         a = self.planner()
@@ -239,18 +281,37 @@ class ClassQuestTest(PlannerCase):
         self.assertEqual(pl.score(waiting) - pl.to_go(waiting), 1200.0)  # level 3, opens at 1: two levels late
         plan = pl.plan("greedy", hub)
         self.assertIn(217, plan.final.done)
-        self.assertGreaterEqual(plan.late, 0.0)
+        # what the route was charged is what the quest cost at the level it was handed in at: a number to check, not a bound
+        expected = pl.lateness(pl.quests[217], plan.levels_done()[217])
+        self.assertEqual(plan.late, expected)
         self.assertEqual(plan.total, plan.seconds + plan.penalty + plan.late)
 
-    def test_the_hubs_of_a_class_quest_past_its_level_are_always_tried(self):
-        pl = self.planner(mandatory=(217,))
-        giver = pl.quests[217].start_hubs[0]
+    def test_a_quest_that_opens_later_costs_nothing_until_it_has_opened_and_a_far_one_costs_for_the_trip(self):
+        pl = self.planner(mandatory=(217,), class_push=600.0)
+        quest = pl.quests[217]
+        quest.req = 3  # as if it opened at level 3
+        giver = quest.start_hubs[0]
         elsewhere = next(h.id for h in pl.hubs if h.id != giver)
+        pl.calibrate(pl.plan("greedy", giver))
+        low, there, away = pl.start(giver, 2), pl.start(giver, 5), pl.start(elsewhere, 5)
+        self.assertEqual(pl.pending_charge(low), 0.0)  # level 2: it has not opened
+        self.assertEqual(pl.pending_charge(there), 2 * 600.0)  # level 5, opens at 3, standing at the giver
+        self.assertGreater(pl.pending_charge(away), pl.pending_charge(there))  # the trip to it takes levels too
+
+    def test_the_hubs_of_a_class_quest_past_its_level_are_always_tried(self):
+        # a second giver whose own quest makes its hub the one the ranking tries first when standing there
+        other = {"n": "Second Errand", "r": 1, "l": 1, "s": {"npc": [1003]}, "e": {"npc": [1003]}, "side": "Horde", "races": 178}
+        pl = self.planner(quests={**QUESTS, 250: other}, mandatory=(217,))
+        giver = pl.quests[217].start_hubs[0]
+        elsewhere = pl.quests[250].start_hubs[0]
+        self.assertNotEqual(giver, elsewhere)
+        st = pl.start(elsewhere, 3)
+        self.assertEqual(pl.rank(st, pl.options(st), 1), [elsewhere])  # the precondition: the ranking alone would try this hub only
         self.assertEqual(pl.overdue_hubs(pl.start(elsewhere, 3)), [giver])  # level 3, it opens at 1
         self.assertEqual(pl.overdue_hubs(pl.start(elsewhere, 1)), [])  # not late yet
         self.assertEqual(pl.overdue_hubs(pl.start(giver, 3)), [])  # already there
         tried = [child.hub for child in pl.children(pl.start(elsewhere, 3), 1)]
-        self.assertIn(giver, tried)  # even when the ranking would have tried only one other hub
+        self.assertIn(giver, tried)  # added to the one hub the ranking tried
 
 
 class ActivityStepsTest(PlannerCase):
@@ -270,12 +331,45 @@ class ActivityStepsTest(PlannerCase):
         self.assertIn(".accept 270", step)  # the neighbour and the giver at the hub
         self.assertNotIn(".accept 270", next(s for s in apart.split("step\n") if ".accept 260" in s))
 
-    def test_a_doing_step_holds_only_quests_to_do(self):
-        for step in self.text().split("step\n")[1:]:
-            if ".complete" in step and ".goto" in step:
-                if ".accept" in step or ".turnin" in step:
-                    continue  # a talk-to objective at an NPC is part of the NPC's step
-                self.assertNotIn(".level", step.replace(".level 2 ", ""))  # a doing step is not a level gate
+    BOARS = {3101: {"n": "Boar One", "p": [[10, 60, 20]], "side": "none"}, 3102: {"n": "Boar Two", "p": [[10, 63, 21]], "side": "none"}}  # 60 yards apart
+
+    def steps_of(self, extra=None, **settings):
+        plain = {n: {"n": f"Plain {n}", "r": 1, "l": 1, **HOME} for n in range(270, 274)}
+        near_door = {260: {"n": "Next Door", "r": 1, "l": 1, "s": {"npc": [1004]}, "e": {"npc": [1004]}, "side": "Horde", "races": 178}}
+        pl = self.planner(quests={**plain, **near_door, **(extra or {})}, npcs={**NPCS, **self.NEIGHBOUR, **self.BOARS}, **settings)
+        plan = pl.plan("greedy", self.start(pl))
+        text = "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+        return [[line for line in block.splitlines() if line.strip()] for block in text.split("step\n")[1:]]
+
+    def boar_quests(self):
+        return {
+            300: {"n": "Boars One", "r": 1, "l": 2, "o": [{"id": 3101, "k": "kill"}], **HOME},
+            301: {"n": "Boars Two", "r": 1, "l": 2, "o": [{"id": 3102, "k": "kill"}], **HOME},
+        }
+
+    def test_quests_whose_objectives_are_near_each_other_are_one_doing_step_with_one_position(self):
+        doing = [s for s in self.steps_of(self.boar_quests()) if steps.kind(s) == steps.DO]
+        both = [s for s in doing if any(".complete 300" in line for line in s)]
+        self.assertEqual(len(both), 1)
+        self.assertTrue(any(".complete 301" in line for line in both[0]), both[0])
+        self.assertEqual(len([line for line in both[0] if line.strip().startswith(".goto")]), 1)  # no markers: one position for the tools
+        alone = [s for s in self.steps_of(self.boar_quests(), group_yards=0.0) if steps.kind(s) == steps.DO]
+        self.assertGreater(len(alone), len(doing))  # the same quests, a step for each when nothing is joined
+
+    def test_a_doing_step_holds_nothing_that_sends_the_player_anywhere(self):
+        found = [s for s in self.steps_of(self.boar_quests()) if steps.kind(s) == steps.DO]
+        self.assertTrue(found)  # the fixture has doing steps to look at
+        for step in found:
+            self.assertFalse(steps.names(step) & {"accept", "turnin", "level", "todo", "zone", "path"}, step)
+
+    def test_every_position_of_a_joined_pick_up_step_is_kept(self):
+        # the givers of one area are one step; without the data pack each one's goto is its pin, so none may be lost
+        grouped = [s for s in self.steps_of() if steps.kind(s) == steps.PLACE]
+        apart = [s for s in self.steps_of(group_yards=0.0) if steps.kind(s) == steps.PLACE]
+        places = lambda found: {line.strip() for s in found for line in s if line.strip().startswith(".goto")}
+        self.assertLess(len(grouped), len(apart))
+        self.assertEqual(places(grouped), places(apart))  # fewer steps, the same places
+        self.assertTrue(any(len([line for line in s if line.strip().startswith(".goto")]) > 1 for s in grouped))  # and some step has several
 
 
 class DataQualityTest(PlannerCase):
@@ -355,6 +449,13 @@ class DataQualityTest(PlannerCase):
         self.assertIn('.todo "Taming: the pack has no objective for it', text)
         self.assertGreaterEqual(sum(v.objective_seconds for v in plan.visits), pl.s.unknown_work)
 
+    def test_a_quest_of_a_zone_that_is_not_leveling_content_is_left_out(self):
+        reason = "battleground (PvP) quest, not leveling content"
+        pl = engine_build(self, {}, skip_zones={20: reason})  # quest 210 belongs to zone 20
+        self.assertIn(210, pl.dropped[reason])
+        self.assertNotIn(210, list(pl.quests))
+        self.assertIn(210, list(engine_build(self, {}).quests))
+
     def test_what_is_left_out_on_purpose_is_named_in_the_skip_lines(self):
         pl = engine_build(self, {211: "battleground (PvP) quest, not leveling content"})
         plan = pl.plan("greedy", self.start(pl))
@@ -362,15 +463,16 @@ class DataQualityTest(PlannerCase):
         self.assertEqual(pl.skipquests(plan).get(211), "battleground (PvP) quest, not leveling content")
 
 
-def engine_build(case, exclude):
+def engine_build(case, exclude, **kw):
     pack_dir = write_pack(case.pack_dir, {"maps": MAPS, "quests": QUESTS, "npcs": NPCS, "travel": TRAVEL, "items": ITEMS})
     pack = guide_travel.load_pack(pack_dir)
-    return engine.Planner.build(pack, guide_travel.World(pack, [], "Horde"), HORDE, engine.Settings(cap=6, skip_unprofitable=False, instant_quests=True), exclude=exclude)
+    settings = engine.Settings(cap=6, skip_unprofitable=False, instant_quests=True)
+    return engine.Planner.build(pack, guide_travel.World(pack, [], "Horde"), HORDE, settings, exclude=exclude, **kw)
 
 
 class EmitTest(PlannerCase):
     def test_the_route_is_written_as_steps_one_npc_each_with_level_lines_and_optional_tags(self):
-        pl = self.planner(quests={**QUESTS, 250: {"n": "Needs Three", "r": 3, "l": 3, **HOME}})
+        pl = self.planner(quests={**QUESTS, 250: {"n": "Needs Three", "r": 3, "l": 3, **HOME}}, group_yards=0.0)  # as written, before joining
         plan = pl.plan("greedy", self.start(pl))
         chapters = pl.emit(plan, "HUNTER")
         text = "\n".join(c.text("West") for c in chapters)

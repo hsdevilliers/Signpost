@@ -13,7 +13,8 @@ raised_in: independent review of the installed Troll Hunter guide, 2026-10-20
 
 The planner names a chapter after the zone of its first hub and splits a chapter at a change of zone only once it has ten steps, so some
 chapters hold steps of another zone (chapter 5 "Durotar" has 6 of 8 positions in the Barrens, chapter 9 "Undercity" 4 of 7 in Silverpine). Six
-lone `.level N -- reach it first` steps have no place at all.
+lone `.level N -- reach it first` steps have no place at all. The ten-step rule counts the steps as the planner wrote them (one place each), before
+neighbouring ones are joined, so a finished chapter can hold fewer than ten (found by the algorithm review, 2026-10-21).
 
 ## Why
 

@@ -8,8 +8,8 @@ the legality of every edge: a quest is accepted only where the game would offer 
 
   greedy     the nearest hub with something to do, a zone finished before the next (what the guides are drafted with)
   lookahead  greedy, but each choice is tried by playing the rest out greedily for a while and the best is kept
-  beam       keeps the best few partial routes at every step and drops one when another is both faster and further along
-  thorough   a wide beam; tools/route_planner.py then polishes and checks the finalists under uncertain assumptions
+  beam       keeps the best few partial routes for each part of a level, comparing only routes that have got equally far
+  thorough   the beam at several grains of progress; tools/route_planner.py then polishes and checks the finalists under uncertain assumptions
 
 Every number is the simulator's (tools/guide_sim.py, tools/sim_params.json): this is the best route under those assumptions.
 """
@@ -51,7 +51,8 @@ class Settings:
     ferry_seconds: float = 420.0  # the boat or zeppelin between continents, waiting included (the walks to and from it extra)
     gateways: tuple = (1454, 1458)  # the capitals whose hubs a trip between continents leaves and arrives by (Horde)
     branch: int = 8  # hubs tried from each node
-    width: int = 60  # partial routes kept per step by the beam
+    width: int = 30  # partial routes kept per bucket of progress by the beam
+    parts: tuple = (2,)  # buckets of progress to a level, one beam run for each entry (a different grain finds different routes)
     horizon: int = 12  # visits a lookahead plays out
     prune: float = 1.05  # a partial route estimated this much slower than the best finished one is dropped
     alternatives: int = 5  # other finished routes the beam keeps for the thorough preset to compare
@@ -201,6 +202,19 @@ class Plan:
         return found
 
 
+@dataclass
+class BeamRun:
+    """What one run of the beam found."""
+
+    parts: int  # buckets to a level
+    best: PState | None = None  # the best route it finished that beat what was known when it started
+    finals: int = 0  # routes it finished
+    finished: list = field(default_factory=list)
+    pruned: int = 0
+    trace: list = field(default_factory=list)  # (level, routes kept, best estimated total seconds) for each bucket worked
+    log: dict = field(default_factory=dict)  # bucket -> the best routes held in it: (estimate, zone, level, clock)
+
+
 class Planner:
     """Everything the searches need about one character: its quests, hubs and the cost of every edge."""
 
@@ -226,6 +240,7 @@ class Planner:
         self._rates: dict[tuple, bool] = {}
         self._order: dict[tuple, list] = {}
         self.nodes_made = 0
+        self.skip_zones: dict[int, str] = {}  # map -> why no quest of it is routed (a battleground)
         self._giver_index: dict[int, list] = {}  # start NPC -> (quest, name, class mask) of every quest of the pack
         self._required: set[int] = set()  # quests that another quest needs first
         self.home: Coord | None = None  # where the character begins
@@ -250,6 +265,7 @@ class Planner:
         mandatory: tuple = (),
         chains: tuple = (),
         home: Coord | None = None,
+        skip_zones: dict | None = None,
         log: Callable[[str], None] | None = None,
     ) -> "Planner":
         say = log or (lambda text: None)
@@ -260,6 +276,7 @@ class Planner:
         planner.skip_reasons = dict(exclude or {})
         planner.mandatory = set(mandatory)
         planner.home = home
+        planner.skip_zones = dict(skip_zones or {})
         planner._giver_index = planner._index_givers(quests)
         planner._required = {
             p for record in quests.values() if isinstance(record, dict)
@@ -327,6 +344,8 @@ class Planner:
             return self._drop("a prerequisite is closed to this character", qid)
         if qid in self.skip_reasons:
             return self._drop("excluded", qid)
+        if record.get("zone") in self.skip_zones:
+            return self._drop(self.skip_zones[record["zone"]], qid)
         mine = self.rules.me.class_bit
         if self.rules.class_mask(record) is None and mine:
             inferred = self._inferred_class(qid, record)
@@ -860,8 +879,46 @@ class Planner:
             left += 2 * model.p["interact_seconds"] + sum(self.objective(qid, o.index, level)[0] for o in q.objectives)
         return left
 
+    def _pace(self, level: int) -> float:
+        """Levels gained per second at a level, by the pace of the greedy walk (the cost-to-go's)."""
+        if level >= self.s.cap:
+            return 0.0
+        rate = self.rate_curve.get(level) or self.model.grind_xp_per_second(level)
+        return rate / max(1.0, self.model.to_next(level))
+
+    def _next_hubs(self, q: PQuest, st: PState) -> tuple:
+        """Where a class quest is next worked on: its giver, the open objectives, its ender."""
+        open_ = st.active.get(q.id)
+        if open_ is None:
+            return q.start_hubs
+        if open_:
+            return tuple(h for o in q.objectives if o.index in open_ for h in o.hubs)
+        return q.end_hubs
+
+    def pending_charge(self, st: PState) -> float:
+        """What the class quests still undone are expected to cost the route: each at the level the character will have when it
+        gets there (the level it opens at, if that is above the character's, and the levels gained on the way to where it is next
+        worked on). A quest that opens later costs the same at every level before it opens, so levelling is never what a route is
+        charged for, and one that is far away costs for the levels the trip takes."""
+        s, pace, total = self.s, self._pace(st.level), 0.0
+        for qid in self.pending_mandatory(st):
+            q = self.quests[qid]
+            hubs = self._next_hubs(q, st)
+            trip = 0.0 if st.hub in hubs else min((self.travel(st.hub, h) for h in hubs), default=0.0)
+            late = st.level + trip * pace - q.req - s.class_grace
+            total += min(max(0.0, late), s.class_levels) * s.class_push
+        return total
+
     def score(self, st: PState) -> float:
-        return st.total + sum(self.lateness(self.quests[q], st.level) for q in self.pending_mandatory(st)) + self.to_go(st)
+        """What the searches rank partial routes by: the time so far, what class quests undone are costing, the time to go."""
+        return st.total + self.pending_charge(st) + self.to_go(st)
+
+    def hopeless(self, st: PState, best_time: float) -> bool:
+        """A partial route that cannot beat the best finished one (by more than the `prune` margin) even if the class quests still
+        undone were free. The charge for them is left out on purpose: it is a ranking, not a cost (a route that lets them wait has
+        not paid it yet), and set against a finished route's real charges it made every partial route look worse than the greedy one,
+        so the beam finished nothing."""
+        return st.total + self.to_go(st) >= best_time * self.s.prune
 
     # the searches ---------------------------------------------------------------------------------------------------
 
@@ -1048,64 +1105,92 @@ class Planner:
         plan.decisions = decisions
         return plan
 
+    def _bucket(self, st: PState, parts: int) -> int:
+        """How far a route has got: the level and the part of the next one (`parts` to a level), one bucket from the cap on."""
+        if st.level >= self.s.cap:
+            return self.s.cap * parts
+        return st.level * parts + int(min(st.xp / max(1.0, self.model.to_next(st.level)), 0.999) * parts)
+
     def _beam(self, start_hub: int, progress) -> Plan:
+        """A beam over how far the routes have got. Partial routes are compared with others that have got as far (the same level and
+        part of the next), never with a route that has made as many visits: a route that dawdles is not ahead of one that has levelled,
+        and the one that has levelled is not penalised for it. One run per entry of `Settings.parts` (a different grain of progress
+        each); the best finished route of all of them is the result, and the others' finalists are kept to compare."""
         s = self.s
         base = self._finish(self.rollout(self.start(start_hub)))
         self.calibrate(base)
-        frontier = [self.start(start_hub)]
         best_final = base.final if base.complete else None
         best_time = best_final.total if best_final else float("inf")
-        finals = 0
-        finished: list[PState] = []
-        trace: list = []
-        frontier_log: dict[int, list] = {}
-        pruned = 0
-        depth = 0
-        while frontier and depth < s.max_depth:
-            depth += 1
-            seen: dict[tuple, PState] = {}
-            scores: dict[tuple, float] = {}
-            for st in frontier:
-                for child in self.children(st, s.branch):
-                    if self.terminal(child):
-                        finals += 1
-                        finished.append(child)
-                        if child.total < best_time:
-                            best_final, best_time = child, child.total
-                        continue
-                    value = self.score(child)
-                    if value >= best_time * s.prune:
-                        pruned += 1
-                        continue
-                    key = child.key()
-                    if key in seen:
-                        pruned += 1  # the same situation, reached by another way: only the better one lives on
-                        if value >= scores[key]:
-                            continue
-                    seen[key], scores[key] = child, value
-            ranked = sorted(seen, key=lambda k: scores[k])
-            pruned += max(0, len(ranked) - s.width)
-            frontier = [seen[k] for k in ranked[: s.width]]
-            if frontier:
-                trace.append((depth, len(frontier), scores[ranked[0]]))
-                frontier_log[depth] = [(scores[k], seen[k].zone, seen[k].level, seen[k].clock) for k in ranked[:24]]
-                if progress and depth % 50 == 0:
-                    progress(f"  beam depth {depth}: {len(frontier)} routes kept, best estimate {scores[ranked[0]] / 3600:.2f} h")
+        runs = []
+        for parts in s.parts or (2,):
+            run = self._layers(start_hub, max(1, parts), best_time, progress)
+            runs.append(run)
+            if run.best is not None:
+                best_final, best_time = run.best, run.best.total
+        winner = next((r for r in runs if r.best is not None and r.best is best_final), runs[0])
         plan = self._finish(best_final if best_final is not None else base.final)
-        plan.decisions = self._beam_decisions(plan.final, frontier_log)
-        plan.trace = trace
-        plan.stats.update(pruned=pruned, finals=finals, baseline_seconds=base.total)
+        plan.decisions = self._beam_decisions(plan.final, winner)
+        plan.trace = winner.trace
+        plan.stats.update(
+            pruned=sum(r.pruned for r in runs), finals=sum(r.finals for r in runs), baseline_seconds=base.total, runs=len(runs)
+        )
         seen = {self.signature(plan.final)}
-        for final in sorted(finished, key=lambda f: f.total):
+        for final in sorted((f for r in runs for f in r.finished), key=lambda f: f.total):
             sig = self.signature(final)
             if sig not in seen and len(plan.alternatives) < self.s.alternatives:
                 seen.add(sig)
                 plan.alternatives.append(self.tidy(self._finish(final), start_hub))
         return plan
 
-    def _beam_decisions(self, final: PState, frontier_log: dict) -> list:
+    def _layers(self, start_hub: int, parts: int, best_time: float, progress) -> "BeamRun":
+        """One beam run: the buckets of progress are taken in order, each keeps its `width` best routes (by the estimate of the whole
+        route), and every one of them is tried at `branch` hubs. A route that lands in the bucket being worked is worked on with it
+        again, so the routes in a bucket are always compared with each other, never with ones that have not got there yet."""
+        s = self.s
+        run = BeamRun(parts)
+        start = self.start(start_hub)
+        layers: dict[int, dict] = {self._bucket(start, parts): {start.key(): (self.score(start), start)}}
+        last_level = 0
+        while layers:
+            b = min(layers)
+            ranked = sorted(layers.pop(b).values(), key=lambda pair: pair[0])
+            width = max(1, s.width)
+            run.pruned += max(0, len(ranked) - width)
+            ranked = ranked[:width]
+            held = run.log.setdefault(b, [])
+            held.extend((value, st.zone, st.level, st.clock) for value, st in ranked[:24])
+            held.sort(key=lambda item: item[0])
+            del held[24:]
+            run.trace.append((b / parts, len(ranked), ranked[0][0]))
+            if progress and b // parts > last_level:
+                last_level = b // parts
+                progress(f"  beam ({parts} to a level), level {last_level}: {len(ranked)} routes kept, best estimate {ranked[0][0] / 3600:.2f} h")
+            for _, st in ranked:
+                for child in self.children(st, s.branch):
+                    if child.depth >= s.max_depth:
+                        continue
+                    if self.terminal(child):
+                        run.finals += 1
+                        run.finished.append(child)
+                        if child.total < best_time:
+                            best_time, run.best = child.total, child
+                        continue
+                    if self.hopeless(child, best_time):
+                        run.pruned += 1
+                        continue
+                    value = self.score(child)
+                    key = child.key()
+                    slot = layers.setdefault(self._bucket(child, parts), {})
+                    if key in slot:
+                        run.pruned += 1  # the same situation, reached by another way, and as far on: only the better one lives on
+                        if slot[key][0] <= value:
+                            continue
+                    slot[key] = (value, child)
+        return run
+
+    def _beam_decisions(self, final: PState, run: "BeamRun") -> list:
         """At each change of zone on the route the search chose: the estimate of the route it chose and of the best route in each
-        other zone the beam held at that step (the same estimator it ranked them with)."""
+        other zone the beam held in that bucket of progress (the same estimator it ranked them with)."""
         path, st = [], final
         while st is not None:
             path.append(st)
@@ -1118,7 +1203,7 @@ class Planner:
                 continue
             chosen = self.score(after)
             best: dict = {}
-            for score, zone, level, clock in frontier_log.get(after.depth, ()):
+            for score, zone, level, clock in run.log.get(self._bucket(after, run.parts), ()):
                 if zone != after.zone and (zone not in best or score < best[zone][0]):
                     best[zone] = (score, zone, level, clock)
             decisions.append(

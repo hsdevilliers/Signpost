@@ -436,7 +436,25 @@ prerequisite, the lint did not model prerequisites, and its 20 or so level warni
   `.complete <quest>` when all of a quest's objectives are in the step); the planner and the drafter write them (`--group-yards`).
 - [x] Class quests have no deadline (user's answer, 2026-10-20): a class quest still undone costs the route 20 minutes per level past the level
   it opens at (at most 6 levels; `--class-push`, `--class-grace`), and the search always tries the nearest hubs of an overdue one. The druid
-  routes no longer do every class quest at level 30.
+  routes no longer do every class quest at level 30: with the beam of the next entry the Skyborne's Cat Form chain is done at 21 (it opens at
+  20), the Tauren's at 21 and 22 (it opens at 20) and its forms at 18 to 22 (they open at 14 and 16); what is left late is charged and reported.
+- [x] Independent reviews of the tools and of the first installed guide (2026-10-20) fixed: the installer checks everything before it writes and
+  keeps the rest of the guide text, one rule picks the route to install (the shortest median time to the cap in the Monte Carlo among the routes that pass their checks), the planner
+  no longer credits free experience for what the pack does not say (a Warlock quest, a step that needed books from other continents, explore
+  objectives dropped, turn-ins with no position, battleground quests, quests with no objective), and says so in `.todo` steps and the
+  `#skipquest` lines. What was left is backlog items.
+- [x] The planner's beam compares routes by how far they have got (the level and part of the next), not by the number of visits made (an
+  independent algorithm review of PR #38 found the old beam finishing no route at all on the Skyborne Druid: the estimate charged an undone class
+  quest at the character's level, so a route that levelled looked worse than one that dawdled). A class quest that has not opened costs nothing, an open one
+  costs for the level the character will have when it gets there (the trip included), and that estimate ranks routes without ever dropping one
+  (`hopeless` leaves it out). Against the greedy route the beam now makes the Troll Hunter 22% faster (29h05 to 22h42), the Skyborne 37% (46h01 to
+  28h52) and the Tauren 39% (72h46 to 44h40), in about 40 s a guide; `thorough` runs 2, 4 and 8 parts to a level and keeps the best (the whole
+  `--preset all` for the Troll Hunter, Monte Carlo included, takes two minutes). The installed Troll Hunter route is the thorough run's: 17h31 to level 30
+  in the full simulation, 55 `.todo` steps, 0 lint errors, no availability findings. The search is still
+  rough (a few hours between near-identical settings): backlog item. The report says when the beam finished no route of its own.
+- [x] Joined steps keep what a player without the data pack needs (review of PR #38): a pick-up or hand-in step keeps the `.goto` of every place in it
+  (the simulator walks them in order), a doing step keeps one; a step with a gate or `.hub` line of its own is never joined; the simulator grinds
+  to a `.level` gate where the line stands, after the hand-ins written before it in a joined step.
 - [x] Install a planned route on purpose (`route_planner.py --install`, `tools/route_install.py`): the Troll Hunter guide is the planner's
   route (levels 1 to 30), replacing `durotar-1-12` and `barrens-10-20-hunter`; the druid chapters were rebuilt with grouped steps. Not yet:
   the druid guides from planner routes (they stay drafted to level 20; 21 to 30 is open).

@@ -1,12 +1,14 @@
 ---
 title: The guide sets the quest tracker to the quests of the current step and untracks the rest
 kind: feature
-status: open
+status: done
 priority: normal
 area: ui, engine
 source: user
 raised: 2026-10-20
 raised_in: the user, 2026-10-20, answering what a doing step shows on the map
+closed: 2026-10-21
+resolution: Implemented in PR #39 (Engine/Tracking.lua, the setting trackStepQuests, on by default as decided); whether the watch calls exist on the Forever client is the verify item quest-tracking-in-the-game-do-the-watch-functions-exist-do.
 ---
 
 ## What

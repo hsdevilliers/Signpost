@@ -1,12 +1,14 @@
 ---
 title: When is a class quest due? The planner does them when cheapest, hours after they open
 kind: question
-status: open
+status: done
 priority: normal
 area: planner
 source: claude
 raised: 2026-10-20
 raised_in: Route Planner runs, PR #35
+closed: 2026-10-21
+resolution: The user answered (2026-10-20: no deadline, a soft push): implemented in PR #38. A class quest costs --class-push (default 20 min) for each level it is undone past the level it opens at (up to 6); while undone the search ranks a route by the level the character will have when it gets there; the report lists the late ones. With the beam that compares routes by how far they have got the druids' Cat Form chains come at 21 and 22 (they open at 20) and the forms at 18 to 22, not at 30. What is left: the druid guides and the search's roughness have items of their own.
 ---
 
 ## What
