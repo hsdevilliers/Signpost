@@ -747,6 +747,12 @@ hearthstone cooldown) and `guide_draft.py`'s placeholder level estimate (one lev
    escort time from spawn density and distance) and XP per quest and per kill, with the level thresholds, so level gates are met by a real estimate
    (this replaces the placeholder pacing in the drafter and gives the lint's `quest-level` warning real numbers). Output: time to each level,
    time per chapter, travel share, backtracking, over- and under-levelled quests.
+   **Respawns** (user, 2026-10-20): an objective that needs more kills than there are spawns in reach has to wait for respawns, and groups of
+   mobs respawn at very different speeds, so the model carries a respawn time per creature kind (normal, elite, rare; per-creature overrides
+   where known) and a "crowding" factor for other players killing the same mobs. Wait time = (kills needed - spawns in reach) against the
+   respawn time, shared between objectives that overlap in one area. The raw spawn count per NPC is a plain number the importer would keep
+   (QuestieDB lists every spawn point; the pack keeps three clusters). QuestieDB has no respawn field: the times are parameters, unverified
+   for Forever, and the sensitivity report shows whether a route's ranking depends on them.
 2. **XP data layer**: quest XP and the XP-to-level table. QuestieDB carries Classic's (`support/Forever/QuestXP`, a Classic seed, not Forever's);
    Wowhead's class quest listing has an `xp` field but its Forever pages are blocked to us. Forever's tuning is unknown: mark it as an assumption.
 3. **Light, passive calibration (optional)**: not per-quest timing (that would need many sessions; the user and one friend are the only players).
