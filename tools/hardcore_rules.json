@@ -5,7 +5,7 @@
       "id": 827,
       "name": "Skull Rock",
       "action": "skip",
-      "reason": "hardcore: cave with respawning enemies and a hard-hitting boss; kills a large share of players",
+      "reason": "HARDCORE: cave with respawning enemies and a hard-hitting boss; kills a large share of players",
       "source": "Blizzard forums, 'Advice on dangerous Horde quests to avoid in HC + SF' (several posters); dotesports top-10 hardcore quests to avoid",
       "confidence": "high"
     },
@@ -13,7 +13,7 @@
       "id": 3912,
       "name": "Meet at the Grave",
       "action": "skip",
-      "reason": "hardcore: the quest kills your character",
+      "reason": "HARDCORE: the quest kills your character",
       "source": "dotesports top-10 hardcore quests to avoid",
       "confidence": "high"
     },
@@ -21,7 +21,7 @@
       "id": 5096,
       "name": "Scarlet Diversions",
       "action": "skip",
-      "reason": "hardcore: notorious Scarlet Crusade quest",
+      "reason": "HARDCORE: notorious Scarlet Crusade quest",
       "source": "dotesports top-10 hardcore quests to avoid",
       "confidence": "medium"
     },
@@ -29,7 +29,7 @@
       "id": 746,
       "name": "Dwarven Digging",
       "action": "skip",
-      "reason": "hardcore: the forge is hard to reach without a group",
+      "reason": "HARDCORE: the forge is hard to reach without a group",
       "source": "joanasworld Tauren 1-12 Mulgore guide",
       "confidence": "medium"
     },
@@ -61,7 +61,7 @@
       "id": 898,
       "name": "Free From the Hold",
       "action": "skip",
-      "reason": "hardcore: escort quest (Gilthares); clear Northwatch's mobs first and two goblins spawn near the end",
+      "reason": "HARDCORE: escort quest (Gilthares); clear Northwatch's mobs first and two goblins spawn near the end",
       "source": "Classic Wow Archive Barrens questing guide (northern Barrens), found by the adversarial review",
       "confidence": "high"
     },
@@ -69,7 +69,7 @@
       "id": 863,
       "name": "The Escape",
       "action": "skip",
-      "reason": "hardcore: escort quest (Wizzlecrank's Shredder); two goblins spawn near the end",
+      "reason": "HARDCORE: escort quest (Wizzlecrank's Shredder); two goblins spawn near the end",
       "source": "Classic Wow Archive Barrens questing guide (northern Barrens), found by the adversarial review",
       "confidence": "high"
     },
@@ -77,7 +77,7 @@
       "id": 891,
       "name": "The Guns of Northwatch",
       "action": "skip",
-      "reason": "hardcore: kills Captain Fairmount and two cannoneers inside Northwatch Hold; the data carries no elite flag for them",
+      "reason": "HARDCORE: kills Captain Fairmount and two cannoneers inside Northwatch Hold; the data carries no elite flag for them",
       "source": "adversarial review of the Tauren Druid guide (the targets, not a community list)",
       "confidence": "medium"
     },
@@ -85,7 +85,7 @@
       "id": 851,
       "name": "Verog the Dervish",
       "action": "skip",
-      "reason": "hardcore: named Kolkar target with no position or elite flag in the data",
+      "reason": "HARDCORE: named Kolkar target with no position or elite flag in the data",
       "source": "adversarial review of the Tauren Druid guide",
       "confidence": "low"
     },
@@ -93,7 +93,7 @@
       "id": 852,
       "name": "Hezrul Bloodmark",
       "action": "skip",
-      "reason": "hardcore: named Burning Blade target with no elite flag in the data",
+      "reason": "HARDCORE: named Burning Blade target with no elite flag in the data",
       "source": "adversarial review of the Tauren Druid guide",
       "confidence": "low"
     },
@@ -101,7 +101,7 @@
       "id": 4021,
       "name": "Counterattack!",
       "action": "skip",
-      "reason": "hardcore: the banner is guarded by Warlord Krom'zar, an elite the data does not link to the quest",
+      "reason": "HARDCORE: the banner is guarded by Warlord Krom'zar, an elite the data does not link to the quest",
       "source": "the data pack (NPC 9456 is rank elite) and the adversarial review",
       "confidence": "medium"
     },

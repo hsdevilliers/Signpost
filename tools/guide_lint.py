@@ -25,15 +25,15 @@ Without the data pack (as in CI) the checks that need it are skipped, and a note
 from __future__ import annotations
 
 import argparse
-import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import guide_sim  # noqa: E402
 import guide_travel  # noqa: E402
-from signpost_tools import guidefile  # noqa: E402
+from signpost_tools import availability, guidefile  # noqa: E402
 from signpost_tools.guidefile import Directive, Problem, Route, RouteStep, Source, Step  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -327,43 +327,23 @@ def quest_flow(route: Route, pack: guide_travel.Pack) -> Found:
     return found
 
 
-def expected_level(route: Route, index: int, floor: int) -> float:
-    """The level the route expects at a step: its chapter's range spread evenly over the chapter's steps, never below
-    the floor (the chapter's minimum and every `.level N` so far)."""
-    chapter = route.chapters[route.steps[index].chapter]
-    low, high = chapter.levels
-    first = chapter.first if chapter.first is not None else index
-    last = chapter.last if chapter.last is not None else index
-    share = (index - first) / (last - first) if last > first else 0.0
-    return max(floor, low + (high - low) * share)
-
-
-def quest_levels(route: Route, pack: guide_travel.Pack) -> Found:
-    """Required quest levels (the pack's r) where the route accepts them: above what the chapter or a `.level` step
-    allows is an error, more than a level above the expected level a warning."""
-    found: Found = []
+def availability_checks(route: Route, pack: guide_travel.Pack, world: guide_travel.World, skill_lines: dict | None = None) -> Found:
+    """Every `.accept` against the rules the game applies (tools/signpost_tools/availability.py), at the level, the quest log
+    and the turned-in quests the walk has by then: required level, prerequisites and chains, quests that close each other,
+    quests of another race, class or faction. The level is tools/guide_sim.py's estimate; a `.level N` step is the guide's own
+    guarantee, and a quest above the last one asked for is flagged even where the estimate says the character has it."""
     quests = pack.table("quests")
     if not quests:
-        return found
-    floor = 0
-    for index, rs in enumerate(route.steps):
-        chapter = route.chapters[rs.chapter]
-        floor = max([floor, chapter.levels[0]] + [d.args["level"] for d in rs.directives if d.name == "level"])
-        ceiling = max(chapter.levels[1], floor)
-        expected = math.floor(expected_level(route, index, floor))
-        for d in rs.all_directives():
-            record = quests.get(d.args["quest"]) if d.name == "accept" else None
-            required = record.get("r") if isinstance(record, dict) else None
-            if not isinstance(required, int):
-                continue
-            where = f"(chapter {chapter.name} {chapter.levels[0]}-{chapter.levels[1]})"
-            name = _quest(pack, d.args["quest"])
-            if required > ceiling:
-                message = f"{name} needs level {required}; the route expects at most {ceiling} here {where}"
-                found.append((_problem("error", "quest-level", message, rs, d.line), [rs]))
-            elif required > expected + 1:
-                message = f"{name} needs level {required}; the route expects about {expected} here {where}"
-                found.append((_problem("warning", "quest-level", message, rs, d.line), [rs]))
+        return []
+    rules = availability.Rules(quests, guide_sim.character_of(route, skill_lines))
+    result = guide_sim.run(route, world, guide_sim.make_model(pack), rules=rules)
+    found: Found = []
+    for violation in result.violations:
+        reason = violation.reason
+        if reason.code == "unknown":
+            continue  # a quest the pack does not know is the unknown-id check's
+        message = f"{_quest(pack, violation.quest)}: {reason.text}"
+        found.append((_problem(reason.severity, f"quest-{reason.code}", message, violation.step, violation.line), [violation.step]))
     return found
 
 
@@ -434,8 +414,8 @@ def flight_node_names(route: Route, world: guide_travel.World) -> Found:
     return found
 
 
-def route_checks(route: Route, pack: guide_travel.Pack, world: guide_travel.World, skip=()) -> Found:
-    found = quest_flow(route, pack) + quest_levels(route, pack) + travel_checks(route, world)
+def route_checks(route: Route, pack: guide_travel.Pack, world: guide_travel.World, skip=(), skill_lines=None) -> Found:
+    found = quest_flow(route, pack) + availability_checks(route, pack, world, skill_lines) + travel_checks(route, world)
     return found if "node" in skip else found + flight_node_names(route, world)
 
 
@@ -520,6 +500,7 @@ def lint_guide(
         report.add(problem, guide.id)
     variants = guidefile.variants(project, guide, expansion)
     report.variants[guide.id] = len(variants)
+    skill_lines = {key: module.skill_line for key, module in project.professions.items() if module.skill_line}
     above = 0
     for variant in variants:
         label = variant.label()
@@ -531,7 +512,7 @@ def lint_guide(
             continue
         for problem in chapter_order(route):
             report.add(problem, guide.id, label)
-        for problem, _ in route_checks(route, pack, world, skip):
+        for problem, _ in route_checks(route, pack, world, skip, skill_lines):
             report.add(problem, guide.id, label)
         chains = class_chains(project, pack, variant.cls, variant.race)
         problems, chains_above = coverage(route, pack, chains, "class", "class-quest")
@@ -547,7 +528,7 @@ def lint_guide(
                 if kind == "zone" and not world.geo.maps:
                     message += " (without the data pack's map tree only the same map matches)"
                 report.add(track.problem("error", "unmatched-anchor", message, step.line), guide.id, label)
-            for problem, steps in route_checks(merged, pack, world, skip):
+            for problem, steps in route_checks(merged, pack, world, skip, skill_lines):
                 if any(rs.track == key for rs in steps):
                     report.add(problem, guide.id, label)
             chains = profession_chains(project, pack, key)

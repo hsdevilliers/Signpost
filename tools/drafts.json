@@ -1,5 +1,5 @@
 {
-  "about": "Manifest for tools/rebuild_drafts.py: the drafted guide chapters, rebuilt from the data pack. Chapter files are generated; change this file, tools/hardcore_rules.json or the tools, not the chapter text.",
+  "about": "Manifest for tools/rebuild_drafts.py: the drafted guide chapters, rebuilt from the data pack. Chapter files are generated; change this file, tools/hardcore_rules.json or the tools, not the chapter text. \"hardcore\" says which guides are HARDCORE routes (elite and sourced dangerous quests left out); the others are normal routes (group quests tagged optional).",
   "guides": [
     {
       "guide": "horde-tauren-druid",
@@ -37,13 +37,7 @@
           ],
           "levels": "10-12",
           "args": [
-            "--class-only",
-            "--done",
-            5926,
-            "--done",
-            5927,
-            "--done",
-            5928
+            "--class-only"
           ]
         },
         {
@@ -70,31 +64,7 @@
           ],
           "levels": "14-20",
           "args": [
-            "--class-only",
-            "--done",
-            5926,
-            "--done",
-            5927,
-            "--done",
-            5928,
-            "--done",
-            5922,
-            "--done",
-            5930,
-            "--done",
-            5932,
-            "--done",
-            6002,
-            "--done",
-            98340,
-            "--done",
-            98405,
-            "--done",
-            98342,
-            "--done",
-            98739,
-            "--done",
-            98362
+            "--class-only"
           ]
         },
         {
@@ -109,40 +79,6 @@
           "levels": "20-20",
           "args": [
             "--class-only",
-            "--done",
-            3094,
-            "--done",
-            5926,
-            "--done",
-            5927,
-            "--done",
-            5928,
-            "--done",
-            5922,
-            "--done",
-            5930,
-            "--done",
-            5932,
-            "--done",
-            6002,
-            "--done",
-            6126,
-            "--done",
-            6127,
-            "--done",
-            6128,
-            "--done",
-            6129,
-            "--done",
-            6130,
-            "--done",
-            26,
-            "--done",
-            28,
-            "--done",
-            30,
-            "--done",
-            31,
             "--chain",
             "98340,98405,98342,98739,98362"
           ]
@@ -157,7 +93,8 @@
           "match": "\\.todo \"travel from Moonglade to ([A-Za-z ]+): the travel graph has no route yet\"",
           "with": ".todo \"Return from Moonglade to \\1 (VERIFY(beta): hearthstone or flight path; the way back is not in the data)\""
         }
-      ]
+      ],
+      "hardcore": true
     },
     {
       "guide": "horde-troll-hunter",
@@ -192,7 +129,8 @@
           "args": []
         }
       ],
-      "rewrites": []
+      "rewrites": [],
+      "hardcore": false
     },
     {
       "guide": "horde-windshaper-druid",
@@ -213,27 +151,33 @@
           ]
         },
         {
-          "id": "windshaper-bear-form-10",
-          "name": "Windshaper Druid: Moonglade and Bear Form",
+          "id": "skyborne-arrival-12",
+          "name": "Skyborne: Mulgore, Thunder Bluff, Moonglade and Orgrimmar",
           "race": "Skyborne",
           "class": "DRUID",
           "zones": [
-            2521,
             1412,
             1456,
-            1450
+            1450,
+            1454,
+            1413
           ],
-          "levels": "10-12",
+          "levels": "10-13",
           "args": [
             "--race-bit",
             8589934592,
-            "--class-only",
-            "--done",
-            92485,
-            "--done",
-            94006,
-            "--done",
-            94638
+            "--only",
+            95350,
+            "--only",
+            94911,
+            "--only",
+            94913,
+            "--only",
+            93739,
+            "--only",
+            98024,
+            "--note",
+            "95350=Unverified: the route after Zephras Isle comes from the quest data (QuestieDB's Forever layers), not from play yet."
           ]
         },
         {
@@ -250,16 +194,6 @@
             "--race-bit",
             8589934592,
             "--class-only",
-            "--done",
-            92485,
-            "--done",
-            94911,
-            "--done",
-            94913,
-            "--done",
-            94006,
-            "--done",
-            94638,
             "--chain",
             "98340,98341,98404,98738,98362"
           ]
@@ -274,7 +208,8 @@
           "match": "\\.todo \"travel from Moonglade to ([A-Za-z' ]+): the travel graph has no route yet\"",
           "with": ".todo \"Return from Moonglade to \\1 (VERIFY(beta): hearthstone or flight path; the way back is not in the data)\""
         }
-      ]
+      ],
+      "hardcore": true
     }
   ]
 }

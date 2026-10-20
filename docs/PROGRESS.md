@@ -367,3 +367,29 @@ Acceptance
   written). Not done: reordering hubs and adding dungeons as variants.
 - `tools/guide_draft.py --xp-levels` (2026-10-20, opt-in): the drafter's level estimate comes from the simulator's XP model (reward + objective kills of the chapter's finished quests) instead of one level per N quests. Off by default so the shipped chapters do not move; use it when drafting levels 20-60.
 - Windshaper Cat Form (2026-10-20): the Windborne chain IS in the pack (98341, 98404, 98738; the earlier note said it was not). `windshaper-cat-form-20` added and the Windshaper guide now runs to 20 with one `.todo` for levels 12-20. `guide_draft.py` gained `--chain Q1,Q2,...` (the pack lacks links for new Forever chains; both Cat Form chapters were out of order before: the Tauren one accepted the Spirit's quests before turning in the first two) and class-only drafting now recognises class-sorted quests (`sort` 263 for the druid).
+
+## Quest availability and variants (user, 2026-10-20, after the first in-game look)
+
+The first look found step 1 of the Troll Hunter guide telling a level 1 character to accept the Burning Blade Medallion, which the
+game does not offer before Vile Familiars (level 2). The drafter had counted the Warlock's own Vile Familiars as a satisfied
+prerequisite, the lint did not model prerequisites, and its 20 or so level warnings had been dismissed as acceptable.
+- [x] `tools/signpost_tools/availability.py`: the rules the game applies (who, level, prerequisites, chains, exclusive quests,
+  parents, skills), tested against the Valley of Trials as the game offered it (`docs/AVAILABILITY.md`).
+- [x] `guide_sim.py --check` and `guide_lint.py` walk every route against them: on the guides as they were, 13 quests the game would
+  not offer at that point and about 200 level warnings; now none. The old chapter-range level check is gone.
+- [x] `guide_draft.py` plans with the same rules and the simulator's walk (`Progress`: level and XP from the quests turned in and
+  the kills made): a quest above the last `.level N` asked for gets a `.level N` line before its `.accept`, one step is one NPC,
+  a quest handed over by another waits for it, quests whose prerequisites are never done are not routed, group quests are
+  `.optional` in a normal guide and absent from a HARDCORE one. `--only` and `--note` for hand-picked chapters.
+- [x] `rebuild_drafts.py` walks a guide chapter after chapter (level, XP, quests done and `.level` gates carry over), drafts a
+  guide with `--hardcore` only if the manifest says so, and keeps adding travel steps until none is missing.
+- [x] Variants (user): Troll Hunter is a normal guide; Tauren Druid and Skyborne Druid are HARDCORE (the word in capitals in
+  names and skip reasons). The Skyborne route after Zephras Isle follows the data (Mulgore, Thunder Bluff, Orgrimmar, Crossroads) and
+  says it is unverified.
+- [x] `Core/Debug.lua` records the player's level and the quests turned in at each quest giver visit; `tools/validate_availability.py`
+  replays recorded visits against the rules. On the first session: 3 of 3 visits agree, including the chain rule.
+- [ ] Group quests as an additional line beside the current step until completed or 5 levels below the character (user): the
+  engine part, a `.group` modifier. The drafter emits `.optional` until then.
+- [ ] The route planner (PLAN Phase 9, user 2026-10-20): a weighted state graph searched with the simulator as the scorer; may skip
+  quests slower than grinding; any travel allowed. Version 1 of every guide stops at level 30.
+

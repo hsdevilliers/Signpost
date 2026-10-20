@@ -9,6 +9,7 @@ account folder present is used.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 TOOLS_DIR = Path(__file__).resolve().parent.parent
@@ -21,8 +22,26 @@ class ConfigError(RuntimeError):
     pass
 
 
+def default_config() -> Path:
+    """tools/dev.local.json of this checkout; in a git worktree (which has no copy of a gitignored file), the main checkout's."""
+    if DEFAULT_CONFIG.exists():
+        return DEFAULT_CONFIG
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return DEFAULT_CONFIG
+    shared = Path(common).parent / "tools" / "dev.local.json" if common else DEFAULT_CONFIG
+    return shared if shared.exists() else DEFAULT_CONFIG
+
+
 def load_config(path: Path | None = None) -> dict[str, str]:
-    path = path or DEFAULT_CONFIG
+    path = path or default_config()
     if not path.exists():
         raise ConfigError(f"{path} not found: copy tools/dev.local.example.json to it and fill in the paths")
     config = json.loads(path.read_text(encoding="utf-8"))

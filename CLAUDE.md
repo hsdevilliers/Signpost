@@ -15,11 +15,17 @@ Full plan: `docs/PLAN.md`. Client/API discoveries: `docs/FOREVER-API-NOTES.md`. 
 - **The user dictates their messages**, so names and terms can be mis-transcribed (e.g. "Torin" for Tauren, "dirator" for Durotar).
   When a name does not match anything in the docs or the data, say what you think it is and ask; do not build on a guess.
 - **Release 1 is a CurseForge download** (public addon zip only; the data pack stays private). Minimum scope: Horde Troll Hunter with all
-  professions, Tauren Druid and Horde Skyborne ("Windshaper") Druid, each as a **hardcore** route (PLAN §2, "Release 1").
+  professions as a **normal** route, and Tauren Druid and Horde Skyborne ("Windshaper") Druid as **HARDCORE** routes (user, 2026-10-20:
+  the Troll Hunter is the normal variant; the word HARDCORE is written in capitals wherever the player sees it: guide names, skip
+  reasons). Version 1 of every guide stops at **level 30** for now (the beta cap, the range that can be verified in play).
 - **There is no deadline tied to the beta or to launch day.** Do not push the user to do things "before the beta closes"; development
   continues after launch. The user can only play in short sessions: keep in-game requests short and say what each one is for.
 - **A friend will play a druid on hardcore and run the addon in the background for data collection.** The recorder must be safe to
   hand to someone else (no player names, no chat) and the import path must take his SavedVariables.
+- **A route is valid only if the game would offer every quest where the guide accepts it (user, 2026-10-20).** The rules (level,
+  prerequisites, chains, exclusive quests, race/class/faction) are `tools/signpost_tools/availability.py`; `tools/guide_sim.py --check`
+  and `guide_lint` walk every route against them. A drafted chapter is not done while they report anything, and a lint warning is
+  never "acceptable" until its cause is understood. docs/AVAILABILITY.md has the rules and what they cannot see.
 - **Forever is not Classic (user, 2026-10-20, standing).** WoW: Forever is its own game, built on top of Classic. It has things Classic
   does not: new class quests (adopted in the manner of Season of Discovery, e.g. a level 24 group quest for a rogue's poisons, a Cat Form
   quest chain for druids), new zones and a new race (Skyborne), reworked classes and abilities, different XP and dungeon tuning, a

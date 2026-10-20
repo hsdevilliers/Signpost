@@ -2,13 +2,13 @@ local ADDON_NAME, ns = ...
 
 ns.Guides:Register({
 	id = "horde-tauren-druid",
-	name = "Tauren Druid (hardcore)",
+	name = "Tauren Druid (HARDCORE)",
 	faction = "Horde",
 	races = { "Tauren" },
 	classes = { "DRUID" },
 	levels = { 1, 20 },
 	text = [[
-#guide Tauren Druid, hardcore route
+#guide Tauren Druid (HARDCORE)
 #include mulgore-1-12
 #include druid-bear-form-10
 #include barrens-10-20
