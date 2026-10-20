@@ -25,9 +25,13 @@ step
   .todo "Go to Moonglade: cast Teleport: Moonglade (VERIFY(beta): where a druid learns it; docs/CLASS-QUESTS.md), else the way is not in the data"
   .zone 1450 >> Go to Moonglade
 step
+  .goto 1450,56.21,30.64
+  .turnin 98340 .class DRUID -- The Great Cat Spirit
+  .accept 98405 .class DRUID -- The Great Cat Spirit
+step
   .goto 1450,58.39,73.52
+  .turnin 98405 .class DRUID -- The Great Cat Spirit
   .accept 98342 .class DRUID -- The Great Cat Spirit
-  .accept 98739 .class DRUID -- Blessings of the Great Cat Spirit
 step
   .goto 1450,72.4,66.0
   .complete 98342,1 .class DRUID -- The Great Cat Spirit
@@ -38,15 +42,11 @@ step
 step
   .goto 1450,58.39,73.52
   .turnin 98342 .class DRUID -- The Great Cat Spirit
+  .accept 98739 .class DRUID -- Blessings of the Great Cat Spirit
 step
   .goto 1450,56.21,30.64
-  .turnin 98340 .class DRUID -- The Great Cat Spirit
   .turnin 98739 .class DRUID -- Blessings of the Great Cat Spirit
   .accept 98362 .class DRUID -- To Thunder Bluff
-  .accept 98405 .class DRUID -- The Great Cat Spirit
-step
-  .goto 1450,58.39,73.52
-  .turnin 98405 .class DRUID -- The Great Cat Spirit
 step
   .todo "Return from Moonglade to Thunder Bluff (VERIFY(beta): hearthstone or flight path; the way back is not in the data)"
   .zone 1456 >> Go to Thunder Bluff

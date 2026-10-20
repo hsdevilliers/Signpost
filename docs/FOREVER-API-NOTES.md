@@ -200,7 +200,7 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
 - **Consequence (2026-10-20):** `Guides/HordeWindshaperDruid.lua` is drafted from these layers (Zephras Isle chapter `zephras-isle-1-12`, 90
   quests, race bit 8589934592) and the Windshaper's own druid chain is routed from the pack: A Student of Nature 92485, Child of Nature
   94911 (starts with Muln Earthfury in Mulgore, ends with Turak in Thunder Bluff), Moonglade 94913, The Great Ursera Spirit 94006,
-  Strength and Mercy 94638. Still not in the pack: the Windshaper's own Cat Form quests (only the shared 98340 and 98362 are), what
+  Strength and Mercy 94638. The Windshaper's Cat Form chain is in too (98340, 98341, 98404, 98738, 98362; `windshaper-cat-form-20`). Still not in the pack: what
   follows Zephras Isle after level 12, and objective counts and positions for several quests (the chapters carry `.todo` steps naming
   them). `Core/Learn.lua` remains the way to fill the gaps from play. Objective kill counts are not kept in the pack at all, so
   `tools/guide_sim.py` uses a parameter for them.
