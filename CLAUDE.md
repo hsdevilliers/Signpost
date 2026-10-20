@@ -11,6 +11,16 @@ and profession-agnostic: those five professions are only that guide's default pl
 primary and secondary professions, each profession being a module plus a route track (PLAN §3.8).
 Full plan: `docs/PLAN.md`. Client/API discoveries: `docs/FOREVER-API-NOTES.md`. Progress log: `docs/PROGRESS.md`.
 
+## The user and the release target (user, 2026-10-20)
+- **The user dictates their messages**, so names and terms can be mis-transcribed (e.g. "Torin" for Tauren, "dirator" for Durotar).
+  When a name does not match anything in the docs or the data, say what you think it is and ask; do not build on a guess.
+- **Release 1 is a CurseForge download** (public addon zip only; the data pack stays private). Minimum scope: Horde Troll Hunter with all
+  professions, Tauren Druid and Horde Skyborne ("Windshaper") Druid, each as a **hardcore** route (PLAN §2, "Release 1").
+- **There is no deadline tied to the beta or to launch day.** Do not push the user to do things "before the beta closes"; development
+  continues after launch. The user can only play in short sessions: keep in-game requests short and say what each one is for.
+- **A friend will play a druid on hardcore and run the addon in the background for data collection.** The recorder must be safe to
+  hand to someone else (no player names, no chat) and the import path must take his SavedVariables.
+
 Read `docs/PLAN.md` before doing anything. Work phase by phase; do not start a later phase until the current
 phase's acceptance criteria are checked off in `docs/PROGRESS.md`. Exception (user, 2026-10-17): Phases 1–3 are built in
 parallel tracks against the contracts in `docs/ENGINE.md` and `docs/GUIDE-FORMAT.md`; acceptance boxes are still ticked
@@ -68,7 +78,8 @@ stats or prices.
 game.
 - **QuestieDB**: used with its maintainers' permission (Questie Discord, 2026-10-17) as an input to the private pack only. Read its files
   as data (never execute them), keep only the facts above in our schema, never copy its code, formats, corrections or text, never put
-  any of it in the public repo.
+  its tables in the public repo. User decision (2026-10-20): the permission is taken to cover the quest IDs and coordinates that public
+  guides carry (the guides are the product); nothing else of it may be public. The data pack itself stays private.
 - **Wowhead is off-limits to Claude Code**: Wowhead's robots.txt disallows Anthropic's agents. Never fetch wowhead.com or
   nether.wowhead.com, never run `tools/wowhead_*.py` against the network, never read cached Wowhead pages. The user runs those tools;
   work from their structure-only diagnostics.

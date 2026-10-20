@@ -47,6 +47,10 @@ database fills in during the launch period.
 | Zone transitions | **Every change of zone between consecutive steps is covered by explicit travel steps** (run-to-border waypoints, boat, zeppelin, flight, hearth), each with its own pins. The linter fails a guide with an uncovered transition; `tools/guide_travel.py` proposes the steps from a travel graph (§3.6) | user |
 | Multiple characters | **One addon, one public repo, many guides.** Planned next: Orc Warlock, Tauren Shaman; **Alliance guides later.** Each is a guide file + a class module inside this addon; no per-class or per-faction addons, no cross-addon API. Per-class "lite" zips are an optional packaging script, not a design change | user (2026-10-17) |
 | Faction | Nothing in engine, UI, DSL, data schema or travel graph assumes Horde. Alliance support = run the exporters with `--faction alliance`, add Alliance transports/borders to the travel data, write guides. The addon name must be faction-neutral | user (2026-10-17) |
+| Release 1 | **First public release = a CurseForge download** (public addon zip only; `Signpost_Data` stays private). Minimum scope: Horde **Troll Hunter** with all professions, **Tauren Druid** and **Horde Skyborne (Windshaper) Druid** — every one a **hardcore** route. Everything else (Orc Warlock, Tauren Shaman, Alliance) comes after. No date is tied to the beta or to launch day | user (2026-10-20) |
+| Hardcore routes | The Release 1 guides are **hardcore guides**: no quest the community knows to be deadly for a hardcore character is routed (each is a `#skipquest` with a reason, as for class quests); group quests are optional and offered only when safe; the `.hc` gate (already in the parser) holds hardcore-only steps. The skip list is drafted from game knowledge, marked unverified, and corrected from the friend's and the user's play | user (2026-10-20) |
+| Druid first | The Druid guides (Tauren, Skyborne) come **before** the Hunter guide's polish; the engine, `guide_draft.py` and the lint are class-agnostic, so the hunter guide follows from the same tools | user (2026-10-20) |
+| Friend's data | A friend will play a hardcore druid and run the addon in the background; his SavedVariables arrive through `incoming/play-machine/` and `--merge-learned --also`. The learned layer **accumulates** across imports (decided 2026-10-20), so his data and the user's are never dropped | user (2026-10-20) |
 | Extensibility | **Engine, UI, DSL and data are class/race/faction-agnostic and profession-agnostic.** The Troll Hunter 1–60 route is the *first guide*, not a built-in assumption. Adding another class/race must require only a `Classes/<CLASS>.lua` module and guide files (§3.5); supporting another profession only a `Professions/<KEY>.lua` module and its track in `Guides/Professions/` (§3.8) | user |
 | Libraries | Minimal — LibStub, CallbackHandler-1.0, HereBeDragons-2.0 (pins/distance), LibDataBroker-1.1 + LibDBIcon-1.0 (minimap button). No Ace3. | default, uncontested |
 | TomTom/Questie | Coexist, never require. If TomTom is present, offer a "send step to TomTom" toggle (off). | default, uncontested |
@@ -725,7 +729,14 @@ Acceptance
 - [ ] Performance pass (no OnUpdate except `.goto` distance; measure with `/signpost perf`); memory < 10 MB with all Data loaded (else split Data by zone and load lazily — `## LoadOnDemand` sub-addons per continent).
 - [ ] Optional "Back to route" nudge (§3.6): in-game shortest path over the travel graph when the player is 2+ zones off the current step.
 - [ ] Optional `tools/package_lite.py --guide <id>` (§3.7) for single-guide zips; only if the user asks.
-- [ ] Localization table complete; README with screenshots, install steps, and "build your own data pack" instructions; tagged GitHub releases built by CI (public addon zip only). CurseForge/Wago are out of scope unless the user asks later.
+- [ ] Localization table complete; README with screenshots, install steps, and "build your own data pack" instructions; tagged GitHub releases built by CI (public addon zip only).
+- [ ] **CurseForge release (Release 1, user 2026-10-20).** The user creates the CurseForge project and an API token (stored as the
+  `CF_API_KEY` repository secret; Claude Code never sees it); Claude Code adds `## X-Curse-Project-ID` to both TOCs, finishes `.pkgmeta`,
+  and extends CI to build and upload the zip on a version tag with the BigWigs packager. First check that CurseForge offers a game
+  version for WoW: Forever (Interface 16001); if it does not, release on GitHub first. The zip carries no Wowhead- or QuestieDB-derived
+  tables (the existing CI guard), only the guides, which carry their own IDs and coordinates (the user covers them under QuestieDB's permission, 2026-10-20: PLAN §12).
+- [ ] **Release 1 scope gate:** Troll Hunter (all professions), Tauren Druid and Windshaper Druid hardcore guides each pass
+  `guide_lint --strict` for the levels they claim; the addon loads cleanly with the data pack absent; README with install steps.
 
 ## 8a. Bootstrapping — directories, repos, where Claude Code runs
 
@@ -814,7 +825,24 @@ If the beta closes before Phase 2 is done, keep building against the captured pr
   needs a talent/Legacy choice to make sense, that is a sign the step is wrong, not that the scope should grow.
 
 ## 12. Open questions for the user
-None at the moment. Repos live under `C:\Users\StephandeVilliers\Repos`; remotes go under `github.com/hsdevilliers` (Claude Code creates them with
+Answered 2026-10-20:
+1. **Races:** "Torin" = Tauren; "Skyborne" = the new Skyborne race, Horde variant "Windshaper". Both are Druid. Web guides (icy-veins,
+   talentsforever, mobalytics; unverified against the client) add that Skyborne needs the Skyborne Heroic Pack and starts on Zephras Isle
+   (levels 1-12). The client's race list is the authority; the user checks it in game.
+2. **Hardcore timing:** the user confirms hardcore exists **from launch day** (one web source said it comes after launch; the user's
+   word wins). The friend starts his druid on launch day.
+3. **Licensing:** the user considers QuestieDB's permission to cover quest IDs and coordinates in the public guides. The original wording
+   (Questie Discord, 2026-10-17, as relayed) was "an input to the private pack only"; this is the user's reading of it. Only IDs and
+   coordinates may ship: never its code, file formats, text, corrections or tables (CLAUDE.md "Data sources").
+   **Horde races in Forever** (web guides agree: Icy Veins, Warcraft Tavern, gamer-guides, lfcarry; the client's character-creation list is
+   the authority): Orc, Undead, Tauren, Troll and the Windshaper Skyborne. Druid is open to Tauren and Windshaper Skyborne only (Troll
+   Hunter is in; Troll Warlock, Orc Mage and Undead Paladin are among Forever's new combinations).
+4. **Data hand-over (user, 2026-10-20):** the friend shares his SavedVariables through a **shared folder**. So the helper script that
+   copies a clean `Signpost.lua` into the shared folder is the main path (no size limit); the in-game export block is the fallback.
+5. **CurseForge:** under the user's account; the user creates the project and the API token. Claude Code prepares the TOCs, `.pkgmeta` and
+   CI, and checks whether CurseForge lists a WoW: Forever game version before the first upload (else GitHub first).
+
+Open: none. New questions go below. Repos live under `C:\Users\StephandeVilliers\Repos`; remotes go under `github.com/hsdevilliers` (Claude Code creates them with
 `gh` after the user has run `gh auth login`). New questions go here as they arise; Claude Code stops and asks rather than guessing.
 
 Resolved: the addon name is **Signpost** (2026-10-17; web search found no WoW addon of that name — re-check CurseForge/Wago/WoWInterface
