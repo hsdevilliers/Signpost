@@ -51,14 +51,14 @@ ns.Classes:Register("DRUID", {
 			quests = { 98340, 98405, 98342, 98739, 98362 },
 			races = { "Tauren" },
 		},
-		-- The Windshaper starts and ends in the same two places (98340 and 98362 are shared); its quests in between
-		-- (the "Windborne" versions) are not in the pack yet: the lint wants a `.todo` naming the chain in the guide.
+		-- The Windshaper shares the first and last quests with the Tauren chain (98340, 98362); the Windborne ones in between
+		-- (The Great Windborne Cat Spirit x2, Blessings of the Great Windborne Cat Spirit) are its own, with the Avatar of
+		-- Saeyleenan.
 		{
 			id = "windshaper-cat-form",
 			name = "Cat Form (Windshaper)",
 			level = 20,
-			quests = {},
-			pending = true,
+			quests = { 98340, 98341, 98404, 98738, 98362 },
 			races = { "Skyborne" },
 		},
 		{ id = "torwa-pathfinder", name = "Torwa Pathfinder", level = 52, quests = { 9063, 9052, 9051, 9053 } },

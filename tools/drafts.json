@@ -142,7 +142,9 @@
             "--done",
             30,
             "--done",
-            31
+            31,
+            "--chain",
+            "98340,98405,98342,98739,98362"
           ]
         }
       ],
@@ -232,6 +234,34 @@
             94006,
             "--done",
             94638
+          ]
+        },
+        {
+          "id": "windshaper-cat-form-20",
+          "name": "Windshaper Druid: Cat Form",
+          "race": "Skyborne",
+          "class": "DRUID",
+          "zones": [
+            1456,
+            1450
+          ],
+          "levels": "20-20",
+          "args": [
+            "--race-bit",
+            8589934592,
+            "--class-only",
+            "--done",
+            92485,
+            "--done",
+            94911,
+            "--done",
+            94913,
+            "--done",
+            94006,
+            "--done",
+            94638,
+            "--chain",
+            "98340,98341,98404,98738,98362"
           ]
         }
       ],

@@ -6,14 +6,13 @@ ns.Guides:Register({
 	faction = "Horde",
 	races = { "Skyborne" },
 	classes = { "DRUID" },
-	levels = { 1, 12 },
+	levels = { 1, 20 },
 	text = [[
 #guide Windshaper Druid, hardcore route
 #include zephras-isle-1-12
 #include windshaper-bear-form-10
 step
-  .todo "Cat Form (Windshaper, level 20): the chain starts and ends as the Tauren one does (The Great Cat Spirit, To Thunder Bluff), but its quests in between are not in the data yet: docs/CLASS-QUESTS.md"
-step
-  .todo "After Zephras Isle: where a Windshaper goes next is not in the data yet; the route continues once it is recorded"
+  .todo "After Zephras Isle: where a Windshaper levels from 12 to 20 is not in the data yet; do the quests that suit your level, then go on at the Cat Form chain at 20"
+#include windshaper-cat-form-20
 ]],
 })

@@ -260,6 +260,12 @@ class PoolTest(DraftCase):
         self.assertNotIn(".complete 229,1", text.split("step" + chr(10))[1])
         self.assertLess(text.index(".level"), text.index(".complete 229,1"))
 
+    def test_a_chain_orders_quests_the_pack_does_not_link(self):
+        text, _ = self.draft("--chain", "203,201")  # 201 has no prerequisite in the pack; the chain makes it wait for 203
+        self.assertLess(text.index(".turnin 203"), text.index(".accept 201"))
+        plain, _ = self.draft()
+        self.assertLess(plain.index(".accept 201"), plain.index(".turnin 203"))  # without it the lowest ID goes first
+
 
 class OutputTest(DraftCase):
     def test_the_draft_is_a_chapter_the_linter_accepts(self):

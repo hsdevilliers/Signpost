@@ -39,6 +39,11 @@ RACE_BITS = {
 CLASS_BITS = {
     "WARRIOR": 1, "PALADIN": 2, "HUNTER": 4, "ROGUE": 8, "PRIEST": 16, "SHAMAN": 64, "MAGE": 128, "WARLOCK": 256, "DRUID": 1024
 }  # fmt: skip
+# A class quest the pack gives no class mask is filed under its class's quest sort (the client's quest categories with the
+# sign dropped); the Forever layers do this for new class chains (Windshaper Cat Form).
+CLASS_SORTS = {
+    61: "WARLOCK", 81: "WARRIOR", 82: "SHAMAN", 141: "PALADIN", 161: "MAGE", 162: "ROGUE", 261: "HUNTER", 262: "PRIEST", 263: "DRUID"
+}  # fmt: skip
 # The pack's `sort` values of seasonal and event quests (the client's quest categories with the sign dropped): Seasonal 22,
 # Special 284, Darkmoon Faire 364, Ahn'Qiraj War Effort 365, Lunar Festival 366, Invasion 368, Midsummer 369.
 EVENT_SORTS = {22, 284, 364, 365, 366, 368, 369}
@@ -172,6 +177,8 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
             dropped.setdefault(reason, []).append(qid)
 
         races, classes = record.get("races"), record.get("classes")
+        if not isinstance(classes, int) and record.get("sort") in CLASS_SORTS:
+            classes = CLASS_BITS[CLASS_SORTS[record["sort"]]]
         if not guide_travel.usable(guide_travel.side_of(record.get("side")), spec.faction):
             drop("other faction")
         elif isinstance(races, int) and not races & spec.race_bit:
@@ -305,6 +312,12 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
         result.dropped.setdefault("excluded by the author", []).append(qid)
     result.kept = len(pool)
     blocking = {qid for reason in BLOCKING for qid in result.dropped.get(reason, [])}
+
+    # a chain the pack lacks the links of (new Forever chains): each quest waits for the one before it
+    for chain in getattr(spec, "chain", None) or []:
+        for earlier, later in zip(chain, chain[1:]):
+            if later in pool and earlier not in pool[later].pre_all:
+                pool[later].pre_all.append(earlier)
 
     done: set[int] = set(spec.done)  # routed by an earlier chapter: not drafted again, and they satisfy prerequisites
     for qid in sorted(done & set(pool)):
@@ -541,6 +554,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--done", type=int, action="append", default=[], metavar="QUEST", help="a quest an earlier chapter already routes"
+    )
+    parser.add_argument(
+        "--chain",
+        action="append",
+        default=[],
+        type=lambda text: [int(item) for item in text.split(",")],
+        metavar="Q1,Q2,...",
+        help="quests of a chain in order, for chains whose links the pack lacks (repeatable)",
     )
     parser.add_argument("--no-gate-class", dest="gate_class", action="store_false", help="no .class gate on class quests")
     parser.add_argument("--pack", type=Path, help="the data pack folder (default ../Signpost_Data)")
