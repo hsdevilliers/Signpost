@@ -77,7 +77,7 @@ directive = { name = "accept", args = parsedArgs, text = "the >> text or nil", l
 target = {
 	map = 1411, x = 42.1, y = 68.7,
 	kind = "goto" | "accept" | "turnin" | "objective" | "waypoint" | "taxi" | "dock" | "inn" | "trainer" | "vendor"
-		| "fish" | "gather",
+		| "fish" | "gather", -- "objective" only in a step that is not a doing step (Conditions)
 	label = "text for the tooltip", radius = 10, -- yards, optional
 	npc = 3143, object = nil, questID = 787, quests = { 787, ... }, -- optional; quests lists every quest of a merged pin
 	objective = 2, -- the quest log objective an objective pin is for, when known
@@ -184,8 +184,10 @@ else the client's `isPrimaryProfession`, else the slot.
     being called again on the same state, and a state restored from SavedVariables must keep working without it
     (Progress does not repeat it after a reload);
   - `kind` — `"quest"`, `"travel"`, `"profession"`, `"misc"` (icon hint; Progress reads `"quest"` for dungeon chapters);
-  - `pin` — the target kind the step's first `.goto` pin takes when the directive has no position of its own;
-  - `progress(args, context, state)` → extra lines under the directive's line (objective progress);
+  - `pin` — the target kind the step's first `.goto` pin takes when the directive has no position of its own. Any kind but
+    `"objective"`, like `kind = "travel"`, makes the directive a *place directive* (Conditions "Step kinds");
+  - `progress(args, context, state)` → extra lines under the directive's line (`.train`'s class quest line; `.complete` has
+    none: the quest log shows the progress of a quest's objectives);
   - `locationOnly` — the line shows only when the step has no other line (`.goto`, `.fish`); `usage` — the syntax.
 - `context` is `ns.Context`; `state` is a per-step, per-directive table owned by `ns.Progress` (plain data: it is saved).
 - Registers every core directive of GUIDE-FORMAT. Travel directives come from `Engine/Travel.lua`, class and profession
@@ -206,9 +208,15 @@ else the client's `isPrimaryProfession`, else the slot.
   sticky directives is complete at once.
 - `:Targets(step, context, states)` → targets of the step's directives (sticky ones marked `sticky = true`), without
   those of satisfied directives (a `.goto` keeps its pin); an NPC/object pin within a `.goto`'s radius merges into it,
-  same-NPC pins merge, a directive with a `pin` kind and no position marks the first `.goto` pin.
+  same-NPC pins merge, a directive with a `pin` kind and no position marks the first `.goto` pin. A **doing step** has
+  none: its `.goto` and `.complete` are not asked for pins (a sticky place directive keeps its own).
+- `:IsDoingStep(step)` → boolean: the step has a `.complete` and no place directive (any directive but `.goto` and
+  `.complete` that is a travel directive, `def.kind == "travel"`, or whose def has a `pin` other than `"objective"`; only
+  the step's own directives count, not its sticky ones). GUIDE-FORMAT "Step kinds" has the rule and the directives.
 - `:Describe(step, context, states)` → `lines, info`: the step's own lines (each followed by its progress lines), then
-  the sticky ones; `info[i] = { directive = index, sticky = true|nil, progress = true|nil, done = bool }`.
+  the sticky ones; `info[i] = { directive = index, name = the directive's name, sticky = true|nil, progress = true|nil,
+  done = bool }`. A `.complete` line is the quest (`Complete "<quest>"`) with no objective lines; `done` is whether the
+  quest is complete, for the step frame's done mark.
 - `:StickyComplete(step, context, states)` → done, detail; `:Start(step, context, states)` → states (every `onStart`);
   `:Kind(step)` → icon-hint kind.
 - `states` is `ns.Progress:State(step.id)`: `states[i]` for `step.directives[i]`, `states.sticky[j]` for `step.sticky[j]`.
@@ -300,9 +308,11 @@ route touches.
 - React to `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED` (at once), `CONTEXT_CHANGED`, `TRANSPORT_STATE` (coalesced,
   0.2 s); read `ns.Progress:Current()`/`:Sticky()`/`:ActiveSticky()`/`:State()`, `ns.Conditions:Describe`/`:Targets`
   and `ns.Travel:TransportState`.
-- The step frame's body is Describe's non-sticky lines; every active sticky directive (the current step's too) is an
-  "Ongoing:" line; an in-transit line while boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out
-  of combat) uses the step's `.use` item (`args.itemID`).
+- The step frame's body is Describe's non-sticky lines, up to ten (a step lists all of its quests); a `.complete` line
+  starts with its done mark (`ns.UI.MARK`: `[x]` done, `[ ]` not yet, the Journal's own marks), never with objective
+  counters; every active sticky directive (the current step's too) is an "Ongoing:" line; an in-transit line while
+  boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out of combat) uses the step's `.use` item
+  (`args.itemID`).
 - Settings via `RegisterDefaults("account", "stepFrame", { shown, locked, scale, alpha, hideInCombat, hideWhenDead,
   hideWithJournal, pos })` and `("account", "pins", { minimap, worldMap, showNext, nextCount })`.
 - `/signpost show|hide|lock [on|off]|reset|scale <n>|alpha <n>`. Pins through HereBeDragons-Pins-2.0 (minimap + world
@@ -311,7 +321,8 @@ route touches.
   `SetShown/SetLocked/SetScale/SetAlpha/Reset`; `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`,
   `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`, `Collect()`, `IconFor(kind, override)`. Phase 4 hooks,
   no-ops until the journal exists: right-click → `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`,
-  `ns.Journal:IsShown()` for `hideWithJournal`.
+  `ns.Journal:IsShown()` for `hideWithJournal`. A step with no targets (a doing step) draws nothing, and the pins and edge
+  arrows of the step before are cleared.
 
 ### UI/Journal.lua — `ns.Journal`
 

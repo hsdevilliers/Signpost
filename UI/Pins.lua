@@ -2,7 +2,9 @@
 -- target gets a minimap pin that floats on the minimap edge (with an arrow towards it) and a world map pin; a .path
 -- shows only its next waypoint on the minimap, while the world map numbers every waypoint and joins them with lines on
 -- zone maps (not on continent maps). Pins are HereBeDragons-Pins-2.0 icons; targets come from ns.Conditions:Targets
--- (docs/ENGINE.md "Data shapes"). Missing coordinates or positions (instances, transports) just mean fewer pins.
+-- (docs/ENGINE.md "Data shapes"). Missing coordinates or positions (instances, transports) just mean fewer pins. A step
+-- with no targets draws nothing and clears the pins and the edge arrows of the one before: a doing step (Engine/
+-- Conditions.lua "Step kinds") is left to the quest log's own marks on the map and the minimap.
 local ADDON_NAME, ns = ...
 local L = ns.L
 local Util = ns.Util

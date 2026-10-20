@@ -155,9 +155,12 @@ describe("Wave 1 integration", function()
 		world.log = { quest(QUEST, { objectives = { objective("Boar slain", 0, 2) } }) }
 		event(world, mock, "QUEST_ACCEPTED", QUEST)
 		assert.are.equal("valley:2", current(ns))
-		local lines = ns.StepFrame.DescribeLines(ns.Progress:Current())
-		assert.are.equal('Complete "Quest 4641"', lines[1])
-		assert.are.equal("- Boar slain: 0/2", lines[2])
+		-- one line for the quest with its done mark: the objectives' progress is the quest log's
+		assert.are.same({ '[ ] Complete "Quest 4641"' }, ns.StepFrame.DescribeLines(ns.Progress:Current()))
+		world.log[1].objectives = { objective("Boar slain", 1, 2) }
+		event(world, mock, "QUEST_LOG_UPDATE")
+		assert.are.equal("valley:2", current(ns))
+		assert.are.same({ '[ ] Complete "Quest 4641"' }, ns.StepFrame.DescribeLines(ns.Progress:Current()))
 
 		world.log[1].objectives = { objective("Boar slain", 2, 2) }
 		event(world, mock, "QUEST_LOG_UPDATE")
@@ -280,7 +283,7 @@ step
 		}
 	end
 
-	it("pins quest givers and objectives from the data pack and shows only the stickies still active", function()
+	it("pins quest givers from the pack, nothing for a doing step, and only the stickies still active", function()
 		local ns, world, mock = start(function()
 			G.Signpost_Data = pack()
 		end, { chapters = { camp = CAMP }, guide = CAMP_GUIDE })
@@ -301,21 +304,98 @@ step
 		world.log = { quest(9001, { objectives = { objective("Test Boar slain", 0, 3) } }) }
 		event(world, mock, "QUEST_ACCEPTED", 9001)
 		assert.are.equal("camp:2", current(ns))
-		entries = ns.Pins:Collect()
-		assert.are.equal(2, #entries)
-		for _, entry in ipairs(entries) do
-			assert.are.same({ "objective", 9102, "Test Boar slain: 0/3" }, {
-				entry.target.kind,
-				entry.target.npc,
-				entry.target.label,
-			})
-		end
+		-- a doing step: the quest log marks the objectives (the pack knows two spawns of the boar), the guide draws none
+		assert.are.same({}, ns.Pins:Collect())
+		assert.are.same({ '[ ] Complete "Test Quest"' }, ns.StepFrame.DescribeLines(ns.Progress:Current()))
 		assert.are.same({ "Reach level 2", "Reach level 3" }, ns.StepFrame:StickyLines(ns.Progress:Current(), {}))
 
 		world.level = 2
 		event(world, mock, "PLAYER_LEVEL_UP", 2)
 		assert.are.same({ "Reach level 3" }, ns.StepFrame:StickyLines(ns.Progress:Current(), {}))
 		assert.are.equal(1, #ns.Progress:Sticky())
+	end)
+
+	-- Pick up two quests, do them in one step, hand them in: the step kinds as the user described them (2026-10-20).
+	local HUNT = [[
+#chapter 1-6 Hunt
+step
+  .goto 1411,30,30
+  .accept 9001
+  .accept 9002
+step
+  .goto 1411,50,50
+  .complete 9001
+  .complete 9002
+step
+  .goto 1411,30,30
+  .turnin 9001
+  .turnin 9002
+]]
+	local HUNT_GUIDE = { id = "test-hunt", name = "Hunt", levels = { 1, 10 }, text = "#include hunt\n" }
+
+	it("walks a doing step of two quests: no markers, a line each, done only when both are complete", function()
+		local ns, world, mock = start(function()
+			local data = pack()
+			data.quests[9002] = {
+				n = "Other Quest",
+				s = { npc = { 9101 } },
+				e = { npc = { 9101 } },
+				o = { { k = "kill", id = 9102 } },
+				src = "questie",
+			}
+			G.Signpost_Data = data
+		end, { chapters = { hunt = HUNT }, guide = HUNT_GUIDE })
+		local DONE = "|cff40d040[x]|r "
+
+		-- pick up: one pin at the quest giver, for both quests
+		assert.are.equal("hunt:1", current(ns))
+		local entries = ns.Pins:Collect()
+		assert.are.equal(1, #entries)
+		assert.are.same({ "accept", 9101, 9001, 9002 }, {
+			entries[1].target.kind,
+			entries[1].target.npc,
+			entries[1].target.quests[1],
+			entries[1].target.quests[2],
+		})
+		assert.are.same(
+			{ 'Accept "Test Quest" from Test Giver', 'Accept "Other Quest" from Test Giver' },
+			ns.StepFrame.DescribeLines(ns.Progress:Current())
+		)
+
+		-- do: nothing drawn, one line per quest with its mark, no objective counters
+		world.log = {
+			quest(9001, { objectives = { objective("Test Boar slain", 0, 3) } }),
+			quest(9002, { objectives = { objective("Test Boar slain", 0, 3) } }),
+		}
+		event(world, mock, "QUEST_ACCEPTED", 9002)
+		assert.are.equal("hunt:2", current(ns))
+		assert.are.same({}, ns.Pins:Collect())
+		assert.are.same(
+			{ '[ ] Complete "Test Quest"', '[ ] Complete "Other Quest"' },
+			ns.StepFrame.DescribeLines(ns.Progress:Current())
+		)
+
+		-- one quest complete is not enough: the step stays, its line is marked
+		world.log[1].objectives = { objective("Test Boar slain", 3, 3) }
+		event(world, mock, "QUEST_LOG_UPDATE")
+		assert.are.equal("hunt:2", current(ns))
+		assert.are.same(
+			{ DONE .. 'Complete "Test Quest"', '[ ] Complete "Other Quest"' },
+			ns.StepFrame.DescribeLines(ns.Progress:Current())
+		)
+		assert.are.same({}, ns.Pins:Collect())
+
+		-- both complete: on to the hand-in, which pins the quest giver again
+		world.log[2].objectives = { objective("Test Boar slain", 3, 3) }
+		event(world, mock, "QUEST_LOG_UPDATE")
+		assert.are.equal("hunt:3", current(ns))
+		entries = ns.Pins:Collect()
+		assert.are.equal(1, #entries)
+		assert.are.same({ "turnin", 9101 }, { entries[1].target.kind, entries[1].target.npc })
+		assert.are.same(
+			{ 'Turn in "Test Quest" to Test Giver', 'Turn in "Other Quest" to Test Giver' },
+			ns.StepFrame.DescribeLines(ns.Progress:Current())
+		)
 	end)
 
 	it("keeps counting a .craft step's casts after a reload (its state comes back from SavedVariables)", function()

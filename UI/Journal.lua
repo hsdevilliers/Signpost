@@ -135,7 +135,7 @@ end
 
 -- Route tab -------------------------------------------------------------------------------------------------------
 
-local MARK = { done = "|cff40d040[x]|r", skipped = "|cff909090[-]|r", current = "|cffffd100>|r", todo = "[ ]" }
+local MARK = { done = UI.MARK.done, skipped = "|cff909090[-]|r", current = "|cffffd100>|r", todo = UI.MARK.todo }
 
 local function stepMark(step, current)
 	local p = progress()

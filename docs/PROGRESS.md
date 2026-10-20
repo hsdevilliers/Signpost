@@ -302,6 +302,20 @@ Acceptance
   opens the Journal (unverified in the client: open probe). Fixed a layout overlap of the dungeon Skip box and the Current step button.
   10 specs in `tests/report_options_spec.lua`.
 
+## Doing steps (user, 2026-10-20)
+
+- [x] Doing steps draw no markers and show quest-level state only (branch `feat/step-ui`; backlog `markers-only-steer-to-a-place` and
+  `step-frame-shows-which-quests`). A step with a `.complete` and no *place directive* (a travel directive, or one whose def pins anything
+  but objectives: `.accept .turnin .train .trainprof .buy .collect .fish`, the eight travel directives, a module's by the same test) is a
+  doing step (`Conditions:IsDoingStep`). `Conditions:Targets` gives it no pins (its `.goto` and `.complete` are not asked for any), so the
+  map, the minimap and the edge arrow stay bare and the quest log's own marks do the work; its `.goto` stays in the text for the tools and
+  shows no line, as in any step with other lines. Every other step keeps its markers as before, old steps that mix a `.complete` with a
+  `.turnin` included. `.complete` has no objective progress lines in any step; the step frame starts each `.complete` line with a done
+  mark (`[x]` / `[ ]`, the Journal's, now shared as `UI.MARK`; the frame had none before) and holds up to ten lines instead of five, so
+  a step lists all of its quests. 22 new specs (708 in all), among them the whole directive registry classified as place or not
+  (a new directive fails until someone decides) and the shipped guides' doing steps drawing nothing (48, 79 and 95 of their steps).
+  GUIDE-FORMAT "Step kinds", ENGINE.md, PLAN §3.1. Unverified: the marks and ten lines in the real client (API notes, "Open probes").
+
 ## Notes
 
 - 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,

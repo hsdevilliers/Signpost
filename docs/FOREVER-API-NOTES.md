@@ -314,6 +314,11 @@ Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.
   `UIPanelButtonTemplate` buttons look right at 20 px; `GetStringHeight` right after `SetText` gives the wrapped height (no
   clipped last line at 5 lines); waypoint numbers readable on `TaxiNode_Neutral`; minimap pins above the minimap's layers;
   world-map lines (3 px gold) above the map art and below the pins.
+- [ ] **Doing steps** (a `.complete` and nothing that sends the player to a place; user, 2026-10-20): in the real client the guide draws
+  no pin, minimap pin or edge arrow for such a step while the quest log's own marks show the objectives (and the step before's pins
+  are gone); the step frame lists one line per quest with a green `[x]` or a plain `[ ]` (colour escapes in the body font string)
+  and no counters; up to ten lines (`MAX_BODY_LINES`) of `GameFontHighlight` at 260 px lay out without clipping a line or
+  covering more than the old five did.
 - [ ] The quest item button (`type = "item"`, `item = "item:<id>"`) uses the item by click and by `/click SignpostItemButton`,
   with `ActionButtonUseKeyDown` on and off; a step change in combat updates it after combat without `ADDON_ACTION_BLOCKED`.
 
