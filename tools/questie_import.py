@@ -354,6 +354,8 @@ class Importer:
         self.problems: dict[str, set[int]] = {}
         self.stats: dict[str, int] = {}
         self._positions: dict[tuple[str, int], list[list]] = {}
+        self._last_total = 0
+        self._totals: dict[tuple[str, int], int] = {}  # every spawn point of an entity (the kept positions are clusters)
 
     def problem(self, label: str, ident: int) -> None:
         self.problems.setdefault(label, set()).add(ident)
@@ -411,6 +413,7 @@ class Importer:
                     issues.append((f"{kind}s with coordinates outside 0-100", ident))
                     continue
                 by_map.setdefault(map_id, []).append((x, y))
+        self._last_total = sum(len(points) for points in by_map.values())
         ordered = sorted(by_map, key=lambda map_id: (-len(by_map[map_id]), map_id))
         found = [[map_id, x, y] for map_id in ordered for x, y in cluster(by_map[map_id], self.radius, self.clusters)]
         return found, issues
@@ -422,6 +425,7 @@ class Importer:
             record = self.q.data[kind].get(ident)
             spawns = self.q.get(kind, record, "spawns") if record is not None else None
             self._positions[key] = self.positions(spawns, kind, ident)
+            self._totals[key] = self._last_total
         return self._positions[key][0]
 
     def kept_positions(self, kind: str, ident: int) -> list[list]:
@@ -680,6 +684,10 @@ class Importer:
                 npc["n"] = name
             if positions:
                 npc["p"] = positions
+                # how many spawn points the creature has, for the route simulator's respawn model (PLAN Phase 9)
+                total = self._totals.get(("npc", ident), 0)
+                if total > 1:
+                    npc["sp"] = total
             # 1 elite, 2 rare elite, 3 boss (QuestieDB: 4 is a rare without the elite flag and 0 a normal creature: not kept)
             rank = scalar_id(self.q.get("npc", record, "rank"))
             if rank in (1, 2, 3):

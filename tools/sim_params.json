@@ -11,6 +11,7 @@
   "default_items": 6,
   "drop_rate": 0.4,
   "spawns_in_reach": 10,
+  "_spawns_note": "spawns_in_reach is the default and the cap: a creature the pack gives `sp` spawn points uses the smaller of the two",
   "respawn_seconds": {"normal": 120, "elite": 300, "rare": 900},
   "level_diff_slowdown": 0.15,
   "slowest_factor": 2.0,
