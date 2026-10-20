@@ -37,5 +37,5 @@ step's quests, or what differs is turned into items.
 
 ## Notes
 
-The feature itself is the item `track-the-quests-of-the-current-step`. The default (on or off for a player who has not chosen) is
+The feature itself is the item `the-guide-sets-the-quest-tracker`. The default (on or off for a player who has not chosen) is
 `Tracking.DEFAULT_ENABLED`, a user decision.

@@ -315,7 +315,7 @@ Acceptance
   a step lists all of its quests. 22 new specs (708 in all), among them the whole directive registry classified as place or not
   (a new directive fails until someone decides) and the shipped guides' doing steps drawing nothing (48, 79 and 95 of their steps).
   GUIDE-FORMAT "Step kinds", ENGINE.md, PLAN §3.1. Unverified: the marks and ten lines in the real client (API notes, "Open probes").
-- [x] Quest tracking follows the step (backlog `track-the-quests-of-the-current-step`; `Engine/Tracking.lua`, in both TOCs). When a step
+- [x] Quest tracking follows the step (backlog `the-guide-sets-the-quest-tracker`; `Engine/Tracking.lua`, in both TOCs). When a step
   becomes current, every tracked quest the step is not about is untracked and the quests of its `.complete` and `.turnin` directives that
   are in the quest log are tracked (the first unfinished one also super-tracked); a step naming no quest in the log (a pick-up, a trip)
   changes nothing. The log is looked at again when its set of quests changes (a quest accepted or removed), not when only progress does,
