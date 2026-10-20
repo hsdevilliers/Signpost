@@ -129,6 +129,15 @@ class EndToEndTest(RouteCase):
             self.assertEqual(data["lint_errors"], [])
             self.assertEqual(data["guide"], "test-guide")
 
+    def test_the_route_starts_where_the_guide_does_or_at_the_races_first_quest(self):
+        code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0")
+        self.assertIn("(the guide's first step)", text)
+        code, text = self.run_main(
+            "troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0", "--start", "999,50,50"
+        )
+        self.assertEqual(code, 0, text)  # no hub on that map: the race's first quest decides
+        self.assertIn("(the race's first quest)", text)
+
     def test_hardcore_is_taken_from_the_guide_and_can_be_overridden(self):
         code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0")
         self.assertIn("[HARDCORE route]", text)

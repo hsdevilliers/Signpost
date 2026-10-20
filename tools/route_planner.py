@@ -366,13 +366,22 @@ def planner_for(job: Job, out: Out, overrides: dict | None = None, quiet: bool =
     return pl
 
 
+def start_hub(job: Job, pl: engine.Planner) -> tuple[int | None, str]:
+    """Where the route starts: the hub of the guide's first step, else where the race's first quest is given."""
+    if job.start is not None:
+        found = pl.hub_near(job.start)
+        if found is not None:
+            return found, "the guide's first step"
+    return engine.start_hub_for(pl), "the race's first quest"
+
+
 def run_preset(job: Job, preset: str, options, out: Out, base: engine.Planner | None = None) -> tuple[engine.Planner, Outcome]:
     overrides = dict(PRESET_SETTINGS[preset])
     for name in ("width", "branch", "horizon"):
         if getattr(options, name) is not None:
             overrides[name] = getattr(options, name)
     pl = planner_for(job, out, overrides, quiet=base is not None)
-    start = pl.hub_near(job.start) if job.start is not None else engine.start_hub_for(pl)
+    start, _ = start_hub(job, pl)
     if start is None:
         raise SystemExit("no quest to start from")
     started = time.perf_counter()
@@ -442,9 +451,9 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         f"{sum(1 for q in pl.quests.values() if q.kept)} kept for the planner")
     reasons = sorted(pl.dropped.items(), key=lambda kv: -len(kv[1]))
     out("              left out: " + "; ".join(f"{len(ids)} {reason}" for reason, ids in reasons[:7]))
-    begin = pl.hub_near(job.start) if job.start is not None else engine.start_hub_for(pl)
+    begin, why = start_hub(job, pl)
     out(f"hubs          {len(pl.hubs)} of about {s.hub_radius:.0f} yards; {len(pl.gateways)} continent gateways; the route starts at "
-        f"{pl.hubs[begin].label} ({'the guide\'s first step' if job.start is not None else 'the race\'s first quest'})")
+        f"{pl.hubs[begin].label if begin is not None else 'nowhere (no quest can be routed)'} ({why})")
     rules = [
         "a quest is accepted only where the game would offer it (level, prerequisites, chains, exclusive quests)",
         f"a change of zone costs {s.zone_friction / 60:.0f} min on top of the travel; a trip between continents is the walk to "

@@ -330,7 +330,7 @@ class Planner:
         # unless it is where the character begins
         geo = self.world.geo
         reachable = {geo.instance(m) for m in self.s.gateways} - {None}
-        if self.home is not None:
+        if self.home is not None and geo.instance(self.home.map) is not None:
             reachable.add(geo.instance(self.home.map))
         if reachable:
             for qid in [qid for qid, q in self.quests.items() if geo.instance(q.start_places[0].map) not in reachable and not q.mandatory]:
@@ -1112,7 +1112,8 @@ class Planner:
             elif a.kind == "turnin":
                 lines.append(f"  .turnin {q.id}{gate} -- {name}")
             else:
-                if not q.objectives[a.index - 1].spots:
+                objective = next((o for o in q.objectives if o.index == a.index), None)
+                if objective is None or not objective.spots:
                     lines.append(f'  .todo "{name}: objective {a.index} has no position in the pack"')
                 lines.append(f"  .complete {q.id},{a.index}{gate} -- {name}")
             if q.optional:
