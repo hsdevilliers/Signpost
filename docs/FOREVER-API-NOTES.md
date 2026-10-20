@@ -286,7 +286,14 @@ The user's run, from the Signpost checkout (each step re-runs with `--offline` a
 `--stages class --class HUNTER` → `--stages professions` → `--stages travel --max-level 60` → `--stages travel --max-level
 60 --offline --transport zeppelin:<npcID>,<npcID>` per route (IDs from data-gaps.md) → paste data-gaps.md's "Problems
 reported by the wowhead source" → commit in `../Signpost_Data` with the export date.
-- Base path: `TODO` (candidate `https://www.wowhead.com/forever/`).
+- Base path: `https://www.wowhead.com/forever/` (the user's `wowhead_env.py` run, 2026-10-20: the landing page answers 200).
+- **Reachability (same run, 23 requests, user agent `SignpostDataExporter/0.1`):** HTTP 200 for the landing page, the class quest
+  listing (`quests=4.-261`: 1000 rows with `xp`, `reqclass`, `reqlevel`, `level`, `side`, `category`, no giver/ender), the item XML
+  (`item=2516&xml`) and Wowhead's *Classic* quest pages (`/classic/quest=4641`). **HTTP 403** for every other Forever page tried: the
+  zone list and zone pages, zone quest listings (`quests=1.14`), quest, NPC and object pages, skill and recipe listings, class and ability
+  pages. The exporter identifies itself honestly and a 403 is treated as "not available": it is not retried and no workaround is built.
+  Consequences: the pack's names, positions and links come from QuestieDB and in-game learning; Wowhead can still add quest XP from
+  class quest listings and item facts from the item XML. Whether the 403s are permanent, rate-based or per path is unknown.
 - `dataEnv` id for `nether.wowhead.com/tooltip/...`: `TODO`.
 - `?xml` endpoint availability: `TODO`.
 - Zone ID ↔ uiMapID join table: the data pack's `Maps.lua` (generated from the client dump; Wowhead zone IDs joined in Phase 1),
