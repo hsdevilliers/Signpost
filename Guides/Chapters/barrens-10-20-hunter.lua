@@ -363,5 +363,8 @@ step
 step
   .goto 1413,51.62,30.9
   .turnin 876 -- Serena Bloodfeather
+step
+  .todo "border The Barrens/Stonetalon Mountains: no crossing coordinates yet (record them in game or in Borders.lua)"
+  .zone 1442 >> Go into Stonetalon Mountains
 ]]
 )

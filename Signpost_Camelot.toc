@@ -76,6 +76,7 @@ Guides\Chapters\zephras-isle-1-12.lua
 Guides\Chapters\windshaper-bear-form-10.lua
 Guides\Chapters\windshaper-cat-form-20.lua
 Guides\Chapters\barrens-10-20-hunter.lua
+Guides\Chapters\stonetalon-ashenvale-20-30.lua
 Guides\HordeTaurenDruid.lua
 Guides\HordeTrollHunter.lua
 Guides\HordeWindshaperDruid.lua

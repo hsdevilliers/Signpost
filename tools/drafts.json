@@ -190,6 +190,27 @@
           ],
           "levels": "10-20",
           "args": []
+        },
+        {
+          "id": "stonetalon-ashenvale-20-30",
+          "name": "Stonetalon, Ashenvale and Thousand Needles",
+          "race": "Troll",
+          "class": "HUNTER",
+          "zones": [
+            1442,
+            1440,
+            1441
+          ],
+          "levels": "20-30",
+          "args": [
+            "--xp-levels",
+            "--exclude",
+            6504,
+            "--exclude",
+            6621,
+            "--exclude-reason",
+            "an objective item has no known source in the data"
+          ]
         }
       ],
       "rewrites": []

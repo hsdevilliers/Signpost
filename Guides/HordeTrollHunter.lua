@@ -6,10 +6,11 @@ ns.Guides:Register({
 	faction = "Horde",
 	races = { "Troll" },
 	classes = { "HUNTER" },
-	levels = { 1, 20 },
+	levels = { 1, 30 },
 	text = [[
 #guide Troll Hunter, hardcore route
 #include durotar-1-12
 #include barrens-10-20-hunter
+#include stonetalon-ashenvale-20-30
 ]],
 })

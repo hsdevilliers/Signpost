@@ -77,7 +77,12 @@ def rebuild(guide: dict, pack: Path) -> bool:
             return False
         path = chapter_path(chapter["id"])
         path.write_text(DRAFT_TRAVEL.sub("", path.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
-    inserted = insert_proposals(proposals(guide["guide"], pack))
+    inserted = 0
+    for _ in range(4):  # a travel step can open the next gap (Stonetalon -> Barrens -> Ashenvale): until none is left
+        found = proposals(guide["guide"], pack)
+        if not found:
+            break
+        inserted += insert_proposals(found)
     for rewrite in guide.get("rewrites", []):
         for chapter in guide["chapters"]:
             path = chapter_path(chapter["id"])
