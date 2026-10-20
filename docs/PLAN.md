@@ -738,7 +738,7 @@ Acceptance
 - [ ] **Release 1 scope gate:** Troll Hunter (all professions), Tauren Druid and Windshaper Druid hardcore guides each pass
   `guide_lint --strict` for the levels they claim; the addon loads cleanly with the data pack absent; README with install steps.
 
-### Phase 9 — Route simulator (proposed by the user, 2026-10-20; discussed, not started)
+### Phase 9 — Route simulator (proposed by the user, 2026-10-20; stages 1-2 built as `tools/guide_sim.py`, see PROGRESS)
 
 A per-guide simulation to estimate how good a route is and to compare variants, with assumptions that can be relaxed and tuned. What exists
 already: `tools/guide_travel.py --simulate` (zone, flight paths, hearth, a travel clock from walking speed, flight cost, boat waits and

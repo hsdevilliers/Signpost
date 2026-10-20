@@ -348,3 +348,11 @@ Acceptance
 - Local toolchain (2026-10-17, approved by the user): WinLibs GCC (winget `BrechtSanders.WinLibs.POSIX.UCRT`), Lua 5.1.5 +
   LuaRocks 3.8.0 built with hererocks into the gitignored `.venv/lua51`, then busted 2.3.0 and luacheck 1.2.0 — the same
   versions as CI. Setup steps in README "Development". The earlier lupa-based stand-in runner is gone.
+- Route simulator, stages 1-2 (2026-10-20): `tools/guide_sim.py` + `tools/sim_params.json`. Walks a route as `guide_travel.py --simulate`
+  does, then adds per-step time (interaction, kill/loot/collect/object time scaled by quest level against the character's, respawn waits
+  per creature kind with no crowding factor), quest and kill XP with the level table, and stalls at level gates (grinding for the missing
+  XP). Reports time to each level, per chapter (travel share, waits, grinding), stalls, over- and under-levelled quests; `--param`
+  overrides; `--sensitivity` scales each parameter by 0.5 and 2 and flags ranking flips between routes. Every number is an assumption
+  (Classic XP table; quest XP from QuestieDB's Classic seed when the private cache has it). Not done: stage 3 (passive `/played`
+  calibration), stage 4 (variants, risk score), kill counts and spawn counts (the pack keeps neither: parameters stand in), replacing
+  the drafter's placeholder pacing with the simulator.
