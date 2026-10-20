@@ -137,7 +137,8 @@ positions learned in game.
   weapon-upgrade chains) must be routed or explicitly `#skipquest`-ed with a reason; the lint enforces it against `Classes/<CLASS>.lua:classQuests`.
 - Coordinates are stored as `uiMapID, x, y` with x/y in 0–100 percent of that map. Convert to yards with HereBeDragons when needed.
 - All user-facing strings go through `ns.L[...]` (enUS table) so localization is possible later.
-- Default every automation feature to **off** except: auto-advance steps, pins, step frame. Holding **Shift** while
+- Default every automation feature to **off** except: auto-advance steps, pins, step frame, and the quest tracker following the current step
+  (user, 2026-10-20: on by default, a setting turns it off). Holding **Shift** while
   talking to an NPC bypasses all automation (ForeverAutoQuest convention).
 - Run `luacheck .` (config in `.luacheckrc`, WoW globals std) and `busted` before declaring a task done. Format with `stylua`.
 

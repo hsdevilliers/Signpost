@@ -51,10 +51,10 @@ QUESTS = {
 
 
 class DraftCase(TempProject):
-    def draft(self, *extra, quests=None, expect=0):
+    def draft(self, *extra, quests=None, npcs=None, expect=0):
         write_pack(
             self.pack_dir,
-            {"maps": MAPS, "quests": quests or QUESTS, "npcs": NPCS, "travel": TRAVEL, "items": {9999: {"n": "Thing"}, 9998: {"n": "Elite Drop", "drops": [3002]}, 9997: {"n": "Stone", "drops": [3002], "objDrops": [1]}}},
+            {"maps": MAPS, "quests": quests or QUESTS, "npcs": npcs or NPCS, "travel": TRAVEL, "items": {9999: {"n": "Thing"}, 9998: {"n": "Elite Drop", "drops": [3002]}, 9997: {"n": "Stone", "drops": [3002], "objDrops": [1]}}},
         )
         args = ["--race", "Orc", "--class", "HUNTER", "--zone", "10", "--levels", "1-6", "--id", "test-chapter"]
         args += ["--name", "Test", "--pack", str(self.pack_dir), *extra]
@@ -106,7 +106,7 @@ class PoolTest(DraftCase):
     def test_objectives_are_pinned_and_unplaced_ones_become_a_todo(self):
         text, report = self.draft()
         self.assertIn(".goto 10,60.0,20.0", text)
-        self.assertIn(".complete 203,1", text)
+        self.assertIn(".complete 203 -- Boars", text)  # one objective, all in this step: the quest-level form
         self.assertIn('.todo "Item Hunt: objective 1 (item 9999) has no position in the pack"', text)
         self.assertIn("quest 216 (Item Hunt) objective 1", report)
 
@@ -304,8 +304,8 @@ class PoolTest(DraftCase):
         text, _ = self.draft(quests=quests)
         self.assertLess(text.index(".turnin 243"), text.index(".accept 244"))
 
-    def test_a_step_is_one_npc(self):
-        text, _ = self.draft()
+    def test_without_grouping_a_step_is_one_place(self):
+        text, _ = self.draft("--group-yards", "0")
         for step in text.split("step\n")[1:]:
             places = {line.split("--")[0].strip() for line in step.splitlines() if line.strip().startswith(".goto")}
             self.assertLessEqual(len(places), 1, step)  # a .todo step (no position) has none
@@ -314,8 +314,8 @@ class PoolTest(DraftCase):
         accept_201 = next(step for step in steps if ".accept 201" in step)
         self.assertNotIn(".turnin 202", accept_201)
 
-    def test_kills_and_collecting_are_steps_of_their_own(self):
-        text, _ = self.draft()
+    def test_without_grouping_kills_and_collecting_are_steps_of_their_own(self):
+        text, _ = self.draft("--group-yards", "0")
         for step in text.split("step\n")[1:]:
             has_npc = ".accept" in step or ".turnin" in step
             has_work = ".complete" in step
@@ -325,6 +325,69 @@ class PoolTest(DraftCase):
                 self.assertEqual(len(coords), 1, step)
         accept_203 = next(step for step in text.split("step\n") if ".accept 203" in step)
         self.assertNotIn(".complete 203,1", accept_203)  # the boars are not at Gornek
+
+    NEIGHBOURS = {
+        1004: {"n": "Neighbour", "p": [[10, 41, 40]], "side": "Horde"},
+        3005: {"n": "Second Boar", "p": [[10, 61, 20]], "side": "none"},
+    }
+
+    def neighbour_quests(self):
+        return {
+            **QUESTS,
+            260: {"n": "Next Door", "r": 1, "l": 1, "s": {"npc": [1004]}, "e": {"npc": [1004]}, "side": "Horde", "races": 178},
+            262: {"n": "More Boars", "r": 1, "l": 2, "o": [{"id": 3005, "k": "kill"}], **HOME},
+            263: {"n": "Two Places", "r": 1, "l": 2, "o": [{"id": 3001, "k": "kill"}, {"id": 3003, "k": "kill"}], **HOME},
+        }
+
+    def draft_with_neighbours(self, *extra):
+        return self.draft(*extra, quests=self.neighbour_quests(), npcs={**NPCS, **self.NEIGHBOURS})
+
+    def test_quest_givers_next_to_each_other_are_one_pick_up_step(self):
+        only = ("--only", "201", "--only", "260")  # nothing else in between
+        steps = self.draft_with_neighbours(*only)[0].split("step\n")
+        together = next(s for s in steps if ".accept 260" in s)
+        self.assertIn(".accept 201", together)  # the NPC next door and the one at the hub are one area
+        gotos = [line.strip().split("--")[0].strip() for line in together.splitlines() if line.strip().startswith(".goto")]
+        self.assertEqual(sorted(gotos), [".goto 10,40.0,40.0", ".goto 10,41.0,40.0"])  # each NPC keeps its own position: the pins without the pack
+        apart = self.draft_with_neighbours(*only, "--group-yards", "0")[0].split("step\n")
+        self.assertNotIn(".accept 201", next(s for s in apart if ".accept 260" in s))
+
+    def test_a_cave_and_its_zone_are_two_places_however_near_they_lie(self):
+        # Westland (10) and the cave inside it (11): the cave's (50, 50) is Westland's (47.5, 45), no yards apart, but two maps (and a
+        # joined step would hold gotos in two zones, which the travel check calls a zone jump)
+        npcs = {
+            **NPCS,
+            1010: {"n": "On The Hill", "p": [[10, 47.5, 45]], "side": "Horde"},
+            1011: {"n": "In The Cave", "p": [[11, 50, 50]], "side": "Horde"},
+        }
+        quests = {
+            **QUESTS,
+            270: {"n": "Hill Errand", "r": 1, "l": 1, "s": {"npc": [1010]}, "e": {"npc": [1010]}, "side": "Horde", "races": 178},
+            271: {"n": "Cave Errand", "r": 1, "l": 1, "s": {"npc": [1011]}, "e": {"npc": [1011]}, "side": "Horde", "races": 178},
+        }
+        text = self.draft("--only", "270", "--only", "271", quests=quests, npcs=npcs)[0]
+        steps = text.split("step\n")
+        hill = next(s for s in steps if ".accept 270" in s)
+        self.assertIn(".goto 10,47.5,45.0", hill)
+        self.assertNotIn(".accept 271", hill)  # not joined with the cave's giver
+        self.assertIn(".goto 11,50.0,50.0", next(s for s in steps if ".accept 271" in s))
+
+    def test_objectives_close_to_each_other_are_one_doing_step_and_a_far_one_is_not(self):
+        steps = self.draft_with_neighbours()[0].split("step\n")
+        doing = next(s for s in steps if ".complete 203" in s)
+        self.assertIn(".complete 262", doing)  # two boar camps 20 units apart
+        self.assertNotIn(".accept", doing)
+        self.assertNotIn(".turnin", doing)
+        far = next((s for s in steps if ".complete 229" in s), None)
+        self.assertIsNotNone(far)  # the hub rats are routed, about 450 yards from the boars...
+        self.assertNotIn(".complete 229", doing)  # ...and are a doing step of their own
+
+    def test_a_quest_finished_in_one_step_is_one_complete_line_and_a_split_quest_keeps_its_objectives(self):
+        text = self.draft_with_neighbours()[0]
+        self.assertIn(".complete 263,1", text)  # the boar camp and the hub rats are two steps: each says its objective
+        self.assertIn(".complete 263,2", text)
+        self.assertNotRegex(text, r"\.complete 263 ")
+        self.assertIn(".complete 203 -- Boars", text)
 
     def test_group_quests_are_optional_in_a_normal_guide_and_left_out_of_a_hardcore_one(self):
         text, _ = self.draft()

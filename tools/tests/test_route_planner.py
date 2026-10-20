@@ -4,7 +4,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import planner as engine
+import route_install
 import route_planner as rp
 from signpost_tools import guidefile
 from tests.guide_fixtures import BORDERS_LUA, MAPS, TRAVEL, TempProject, guide_lua, write_pack
@@ -138,11 +141,198 @@ class EndToEndTest(RouteCase):
         self.assertEqual(code, 0, text)  # no hub on that map: the race's first quest decides
         self.assertIn("(the race's first quest)", text)
 
+    def test_the_zones_that_are_not_leveling_content_come_from_the_rules_file(self):
+        rules = self.root / "tools" / "hardcore_rules.json"
+        rules.parent.mkdir(exist_ok=True)
+        reason = "battleground (PvP) quest, not leveling content"
+        rules.write_text(json.dumps({"rules": [], "skip_zones": [{"zone": 20, "reason": reason}]}), encoding="utf-8")
+        args = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        code, text = self.run_main(*args)
+        self.assertEqual(code, 0, text)
+        self.assertIn(reason, text)  # the quest of that zone is left out, and the report says why
+        rules.unlink()
+        self.assertNotIn(reason, self.run_main(*args)[1])
+
     def test_hardcore_is_taken_from_the_guide_and_can_be_overridden(self):
         code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0")
         self.assertIn("[HARDCORE route]", text)
         code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0", "--mode", "normal")
         self.assertIn("[normal route]", text)
+
+
+class SearchReportTest(unittest.TestCase):
+    def report(self, **stats):
+        plan = engine.Plan(complete=True, seconds=900.0, stats=stats, alternatives=[object()])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rp.report_search(rp.Out(), mock.Mock(s=engine.Settings(), quests={}), rp.Outcome("beam", plan, 1.0))
+        return out.getvalue()
+
+    def test_a_beam_that_finished_nothing_says_so(self):
+        text = self.report(finals=0, baseline_seconds=1000.0, chosen="greedy")
+        self.assertIn("NO route of its own", text)
+        self.assertNotIn("none faster", text)
+
+    def test_a_beam_that_beat_nothing_says_the_route_is_the_greedy_one(self):
+        text = self.report(finals=12, baseline_seconds=800.0, chosen="greedy")
+        self.assertIn("none faster than the greedy one once tidied", text)
+        self.assertNotIn("NO route of its own", text)
+
+    def test_a_beam_that_won_says_how_many_routes_it_finished_and_how_much_faster(self):
+        text = self.report(finals=12, baseline_seconds=1000.0, chosen="beam")
+        self.assertIn("12 complete routes reached the cap", text)
+        self.assertIn("the best 2 with different orders of zones", text)
+        self.assertIn("10.0% faster", text)  # the route takes 900 s against the greedy route's 1000 s
+        self.assertNotIn("this is the greedy route", text)
+
+
+class Fake:
+    """An outcome as the install choice sees it."""
+
+    def __init__(self, ok=True, level=6, total=1.0, wins=None, name="greedy"):
+        self.evaluation = mock.Mock(lint_errors=[] if ok else ["error"], sim=mock.Mock(violations=[], level=level))
+        self.plan = mock.Mock(complete=True, total=total)
+        self.preset, self.monte = name, ({} if wins is None else {"wins": wins})
+
+
+class ChoiceTest(unittest.TestCase):
+    def test_a_route_must_pass_every_check_to_be_installed(self):
+        self.assertTrue(rp.passes(Fake(), 6))
+        self.assertFalse(rp.passes(Fake(ok=False), 6))
+        self.assertFalse(rp.passes(Fake(level=5), 6))  # the full simulation stops short of the cap
+        incomplete = Fake()
+        incomplete.plan.complete = False
+        self.assertFalse(rp.passes(incomplete, 6))
+        error = Fake()
+        error.evaluation.sim.violations = [mock.Mock(reason=mock.Mock(severity="error"))]
+        self.assertFalse(rp.passes(error, 6))
+
+    def test_without_a_monte_carlo_the_lowest_total_that_passes_wins(self):
+        slow, fast, bad = Fake(total=3.0, name="slow"), Fake(total=2.0, name="fast"), Fake(ok=False, total=1.0, name="bad")
+        self.assertIs(rp.choose([slow, bad, fast], [], 6), fast)
+        self.assertIsNone(rp.choose([bad], [], 6))
+
+    def test_with_a_monte_carlo_the_shortest_median_wins_whatever_the_totals_and_the_wins(self):
+        def measured(name, median, p90, total, wins):
+            o = Fake(total=total, wins=wins, name=name)
+            o.monte.update(p50={6: median}, p90={6: p90})
+            return o
+
+        beam = measured("beam", 100.0, 130.0, 2.0, 0.01)
+        lucky = measured("thorough alt 1", 110.0, 120.0, 3.0, 0.46)  # fastest in most runs, a slower typical time
+        broken = measured("thorough alt 2", 50.0, 60.0, 1.0, 0.9)
+        broken.evaluation.lint_errors = ["error"]  # fails its checks: never chosen, however fast
+        self.assertIs(rp.choose([beam], [beam, lucky, broken], 6), beam)
+        tie = measured("tie", 100.0, 125.0, 9.0, 0.0)
+        self.assertIs(rp.choose([beam], [beam, tie], 6), tie)  # equal medians: the shorter 90th percentile
+        same = measured("same", 100.0, 130.0, 1.5, 0.0)
+        self.assertIs(rp.choose([beam], [beam, same], 6), same)  # then the lower planner total
+
+    def test_a_run_that_never_gets_to_the_cap_counts_as_infinitely_slow(self):
+        def runs(reached):  # results of a Monte Carlo: `reached` of the 10 runs got to level 6, at 100 + i seconds
+            return [mock.Mock(levels={6: (100.0 + i, "c")} if i < reached else {}) for i in range(10)]
+
+        steady = rp.monte_summary(runs(10), [6], 3, 10)
+        fragile = rp.monte_summary(runs(6), [6], 7, 10)  # four runs never got there
+        self.assertEqual(steady["reached"], {6: 1.0})
+        self.assertEqual(fragile["reached"], {6: 0.6})
+        self.assertEqual(fragile["p10"][6], 100.9)  # the lucky runs are still the quick ones
+        self.assertEqual(fragile["p50"][6], 104.5)  # the median of all ten runs, the four that failed counted as the slowest
+        self.assertEqual(fragile["p90"][6], float("inf"))
+        broken = rp.monte_summary(runs(4), [6], 0, 10)
+        self.assertEqual(broken["p50"][6], float("inf"))  # fails more than half the runs: no median at all
+        a, b = Fake(total=2.0, name="steady"), Fake(total=1.0, name="fragile")
+        a.monte, b.monte = steady, fragile
+        self.assertEqual(steady["p50"][6], fragile["p50"][6])  # the same typical time...
+        self.assertIs(rp.choose([b, a], [], 6), a)  # ...and the one that never fails has the shorter 90th percentile, whatever the totals
+        c = Fake(total=0.5, name="broken")
+        c.monte = broken
+        self.assertIs(rp.choose([c, a], [], 6), a)  # never the route with no median, however low its total
+        self.assertEqual(rp.hms(float("inf")), "never")
+
+    def test_the_report_says_when_a_route_does_not_reach_the_cap_in_every_run(self):
+        o = Fake(name="beam")
+        o.monte = rp.monte_summary([mock.Mock(levels={6: (100.0, "c")}), mock.Mock(levels={})], [6], 1, 2)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rp.report_monte(rp.Out(), [o])
+        text = out.getvalue()
+        self.assertIn("REACHED THE CAP IN ONLY 50% OF RUNS", text)
+        self.assertIn("never", text)  # the 90th percentile of the runs
+        self.assertNotIn("shortest median to level 6", text)  # the median is infinite: no route is named for it
+
+    def test_the_planner_of_an_outcome_and_the_command_line_that_made_it(self):
+        planners = {"thorough": "T", "beam": "B"}
+        self.assertEqual(rp.planner_of(planners, Fake(name="thorough alt 2")), "T")
+        self.assertEqual(rp.planner_of(planners, Fake(name="beam")), "B")
+        self.assertEqual(rp.command_of(["troll", "--root", "C:/x", "--preset", "all", "--pack", "C:/y", "--install"]), "troll --preset all --install")
+
+
+class InstallTest(RouteCase):
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(route_install, "find_stylua", lambda root: None)  # never format files of a temporary project
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def install(self, *extra):
+        return self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--install", "--steps", "0", "--decisions", "0", *extra)
+
+    def chapters(self):
+        folder = self.root / "Guides" / "Chapters"
+        return sorted(folder.glob("test-guide-*.lua")) if folder.exists() else []
+
+    def test_the_best_route_that_passes_its_checks_becomes_the_guides_chapters(self):
+        code, text = self.install("--force")  # the fixture guide covers more levels than a route to 6
+        self.assertEqual(code, 0, text)
+        self.assertIn("INSTALLED", text)
+        chapters = self.chapters()
+        self.assertTrue(chapters)
+        guide = (self.root / "Guides" / "Test.lua").read_text(encoding="utf-8")
+        self.assertIn(f"#include {chapters[0].stem}", guide)
+        self.assertIn("levels = { 1, 6 }", guide)
+        self.assertIn("-- PLANNED: the greedy route for", chapters[0].read_text(encoding="utf-8"))
+        self.assertIn("test-guide", guidefile.load_project(self.root).guides)  # the project still loads
+
+    def test_nothing_is_installed_without_asking(self):
+        self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        self.assertEqual(self.chapters(), [])
+
+    def test_a_route_that_would_shorten_the_guide_is_refused_unless_forced(self):
+        code, text = self.install()
+        self.assertEqual(code, 2, text)
+        self.assertIn("would shorten it", text)
+        self.assertEqual(self.chapters(), [])
+
+    def test_install_needs_a_guide_the_checks_and_the_guides_own_mode(self):
+        with self.assertRaises(SystemExit):
+            self.run_main("--install")
+        with self.assertRaises(SystemExit):
+            self.run_main("troll", "--install", "--no-check")
+        with self.assertRaises(SystemExit):
+            self.run_main("troll", "--install", "--mode", "hardcore")
+
+    def test_the_guide_stays_as_it_was_when_the_install_is_refused(self):
+        before = (self.root / "Guides" / "Test.lua").read_text(encoding="utf-8")
+        text = (self.root / "Guides" / "Test.lua").read_text(encoding="utf-8").replace("text = [[", "text = [==[").replace("]],", "]==],")
+        (self.root / "Guides" / "Test.lua").write_text(text, encoding="utf-8")
+        code, out = self.install("--force")
+        self.assertEqual(code, 1, out)
+        self.assertIn("not installed", out)
+        self.assertEqual((self.root / "Guides" / "Test.lua").read_text(encoding="utf-8"), text)
+        self.assertNotEqual(before, text)
+        self.assertEqual(self.chapters(), [])
+
+    def test_the_quests_a_guides_chapters_leave_out_on_purpose_are_left_out_with_their_reason(self):
+        (self.root / "tools").mkdir(exist_ok=True)
+        manifest = {"guides": [{"guide": "test-guide", "chapters": [
+            {"id": "a", "args": ["--exclude", 5, "--exclude-reason", "no known source", "--exclude", "6", "--chain", "1,2"]},
+            {"id": "b", "args": ["--exclude", 7]}]}]}
+        (self.root / "tools" / "drafts.json").write_text(json.dumps(manifest), encoding="utf-8")
+        found = rp.manifest_excludes(self.root, "test-guide")
+        self.assertEqual(found, {5: "no known source", 6: "no known source", 7: "HARDCORE: not routed"})
+        self.assertEqual(rp.manifest_chains(self.root, "test-guide"), [[1, 2]])
+        self.assertEqual(rp.manifest_excludes(self.root, "nobody"), {})
 
 
 if __name__ == "__main__":

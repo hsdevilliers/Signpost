@@ -12,6 +12,8 @@ and apply the manifest's text rewrites. A guide is drafted with --hardcore only 
 a HARDCORE guide leaves out elite quests and the sourced dangerous ones, a normal guide tags group quests `.optional`.
 Chapters are GENERATED: a hand edit to one is lost at the next rebuild, so changes go into the manifest (arguments, rewrites),
 the HARDCORE rules or the tools, or into the guide file (Guides/<Guide>.lua), which this script never touches.
+A guide the manifest marks "planned" was installed from the Route Planner (tools/route_planner.py --install): it is skipped here, and its
+chapter entries stay because the planner reads their --chain and --exclude hints.
 
 The manifest, per guide: { "guide": id, "faction", "hardcore": true|false, "chapters": [ { "id", "name", "race", "class",
 "zones": [uiMapID, ...], "levels": "N-M", "args": [extra guide_draft.py arguments] } ], "rewrites": [ { "match": regex,
@@ -87,6 +89,9 @@ def insert_proposals(found: list[tuple[str, int, str]], root: Path = ROOT) -> in
 
 
 def rebuild(guide: dict, pack: Path) -> bool:
+    if guide.get("planned"):
+        print(f"rebuild_drafts: {guide['guide']}: planned, not drafted ({guide['planned']}); tools/route_planner.py --install replaces it")
+        return True
     ids = [chapter["id"] for chapter in guide["chapters"]]
     included = guide_includes(guide["guide"])
     if included is not None and [i for i in included if i in ids] != ids:

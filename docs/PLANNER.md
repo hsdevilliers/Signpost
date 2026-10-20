@@ -2,7 +2,7 @@
 
 `tools/route_planner.py` plans a leveling route for a guide's character, level 1 to the cap (30 for Version 1), searches for the
 fastest one under the simulator's assumptions, writes it as guide chapters and says in detail what it did. It is one tool: the report
-is part of it. It never changes the guides; a route is a candidate to read, compare and install on purpose (PLAN Phase 9).
+is part of it. It changes a guide only when asked to (`--install`, below); otherwise a route is a candidate to read and compare (PLAN Phase 9).
 
 ```
 python tools/route_planner.py                          the guides, and what the tool can do
@@ -10,6 +10,7 @@ python tools/route_planner.py troll                    plan the Troll Hunter wit
 python tools/route_planner.py tauren --preset all      every technique, with a comparison
 python tools/route_planner.py skyborne --preset thorough
 python tools/route_planner.py troll --cap 20 --friction 5 --steps 60 --decisions 20
+python tools/route_planner.py troll --preset all --install    plan, compare, and make the best route that passes its checks the guide
 ```
 
 The guide is named by any words of its id, name, race or class. `--help` lists every setting. It needs the private data pack
@@ -22,9 +23,18 @@ The guide is named by any words of its id, name, race or class. `--help` lists e
 | --- | --- | --- |
 | `greedy` | nearest hub with something to do, a zone finished before the next (how the guides are drafted) | seconds |
 | `lookahead` | each choice is tried by playing the next 12 visits on greedily; the best is kept | seconds |
-| `beam` (default) | keeps the 60 best partial routes at every step (8 hubs tried from each), drops a route when another reaches the same situation sooner | 20-30 s |
-| `thorough` | a beam 300 wide, then the finalists walked hundreds of times with uncertain assumptions (Monte Carlo: pace, kills, drops, respawns) | minutes |
+| `beam` (default) | compares routes by **how far they have got** (the level and half of the next one): keeps the 30 best of each half level (8 hubs tried from each), drops a route when another reaches the same situation sooner | about a minute |
+| `thorough` | the beam once for each grain of progress (2, 4 and 8 parts to a level; 40 routes wide, 10 hubs from each; each grain on its own, none prunes another), the best finished routes of all of them, then the finalists walked hundreds of times with uncertain assumptions (Monte Carlo: pace, kills, drops, respawns) | minutes |
 | `all` | every technique above and a comparison | the sum |
+
+Why the beam compares by progress and not by the number of visits: a beam that keeps the best routes after each visit ranks a route that has
+dawdled (small visits, a low level) against one that has levelled, and the estimate of what is left (the experience at the greedy walk's pace, the
+class quests' charges) was kinder to the first: on the Skyborne, at the hundredth visit the beam's best route was at level 12 with a lower estimate
+than the greedy walk's at level 17. The beam filled with dawdlers and the good routes were gone by the time it mattered (a review found it finishing
+no route at all on the druids, and routes 10 to 40% slower than the ones now found). Wider is not always better and the search is rough: the width and the
+grain change the result by a few hours, which is why `thorough` runs several grains and keeps the best. A route is written out *tidied*: the quests the
+search left in the log at the cap are taken out and the same hubs walked again, which can cost a route a lot (it is the search's free experience), so the
+beam compares its best finished routes as they would be written, and against the greedy route written the same way; the result is never slower than that.
 
 ## What the planner models
 
@@ -36,8 +46,17 @@ The guide is named by any words of its id, name, race or class. `--help` lists e
 - **Where the character begins** is the first place the guide as it stands sends them to (`--start MAP,X,Y` overrides it).
 - **Availability** is the game's rule (docs/AVAILABILITY.md): a quest is accepted only where the game would offer it (level,
   prerequisites, chains, exclusive quests, race, class, faction). Quests of a chain the data does not link come from the hints in
-  `tools/drafts.json` (`--chain`). A normal route accepts quests up to 5 levels above the character and works on them up to 3; a
-  HARDCORE route 1 and 1, leaves out the elite and boss objectives and the skips of `tools/hardcore_rules.json`.
+  `tools/drafts.json` (`--chain`), and the quests the guide's chapters exclude there (`--exclude` with its reason) are left out too. A
+  normal route accepts quests up to 5 levels above the character and works on them up to 3; a HARDCORE route 1 and 1, leaves out the elite
+  and boss objectives and the skips of `tools/hardcore_rules.json`. Every quest left out on purpose is named in a `#skipquest` line with its
+  reason, as the drafted chapters name theirs.
+- **Data it does not trust** (found by an independent review of the first installed guide): the planner leaves out a quest that has no
+  start position, no turn-in position (a class quest stays, its step carries a `.todo`), no objective and is accepted and handed in at one NPC
+  (free experience; a quest another needs, a chain link and a class quest stay; `--instant-quests` keeps them all), an objective that exists
+  only where the route does not go (another continent, a zone nobody quests in), a class that is not the character's (a quest with no mask whose
+  giver has a same-named quest limited to another class, or whose giver's other quests all are), and every quest of a battleground zone
+  (`skip_zones` in `tools/hardcore_rules.json`). An explore objective is an area to reach, with positions of its own. A class quest with no
+  objective in the pack is given 5 minutes and a `.todo`. The setup says how many quests each rule left out.
 - **Profitability**: a quest slower than grinding at the level it is done at is left out (`--threshold`, `--no-skip`), except class
   quests, the quests a kept quest needs, and quests the pack has no experience for.
 - **Grinding** is an edge too: forced when nothing can be done until a level opens something, voluntary (one level) when nothing pays
@@ -49,6 +68,18 @@ The guide is named by any words of its id, name, race or class. `--help` lists e
   hop between zones for a few experience points. It steers the search; it is not play time and is reported apart.
 - **Class quests are mandatory** (the chains of `Classes/<CLASS>.lua`, up to the cap): each is done or accounted for with a
   `#skipquest` reason (an alternative the route did not take). At the cap only they, and what they need, are still worth the walk.
+  There is no deadline (user, 2026-10-20): a class quest costs the route `--class-push` minutes (default 20) for every level past the one it
+  opens at when it is handed in, up to `--class-grace` + 6 levels, so the route picks one up when it passes the giver and makes the trip for a far one
+  (Moonglade) soon after it opens. While a quest is undone the search ranks a route by what it will probably cost: the level the character will
+  have when it gets there (its own, plus the levels the trip takes at the pace of the greedy walk), so a quest that has not opened costs nothing
+  and levelling is never what a route is charged for. This estimate ranks routes and does not prune them (see `hopeless`: a route is dropped
+  only when it cannot beat the best finished one even with the class quests free). The search always tries the nearest few hubs (up to 4) where a
+  class quest that is past its level can be got on with.
+- **Steps are activity steps** (user, 2026-10-20; `signpost_tools/steps.py`, docs/GUIDE-FORMAT.md "Step kinds"): the route is written one
+  place at a time and neighbouring steps of one kind within `--group-yards` (250) are joined: one pick-up and hand-in step per area (a hand-in
+  and the next pick-up at one NPC are one step; the step keeps the `.goto` of every place in it, the player's pins when there is no data pack), one doing
+  step for quests whose objectives are close to each other (the addon draws no marker for it; it keeps its first `.goto` for the tools). A quest whose
+  objectives all fall in one doing step is `.complete <quest>`, otherwise `.complete <quest>,<objective>`. A step with a gate or a `.hub` line of its own is never joined.
 - **No quest is left in the log**: a route that accepted something it never finished has it taken out and the same hubs are walked
   again (the grinds too), more than once if that leaves others unfinished.
 
@@ -62,6 +93,25 @@ zone and the best route held in other zones at that step) - `CHECKED BY THE SAME
 steps with the travel steps added, walked by `guide_sim` and `guide_lint`: availability errors, lint errors, `.todo` steps, and how
 far the full simulation is from the planner's estimate) - the first steps of the route as the simulator walks them.
 
+## Installing a route (`--install`)
+
+Installing is the step you take on purpose, and it refuses what looks like a mistake: no guide named, `--no-check`, a `--mode` other than the
+guide's own, a route that stops below the guide's current top level and uncommitted changes in the guide files (`--force` overrides the last
+two). The route to install is chosen among the routes that pass every check (it reaches the cap in the planner and in the full simulation, the
+game would offer every quest where the route accepts it, no lint error): when `thorough` ran, every technique's route and thorough's finalists
+are walked many times with varied assumptions and the one with the shortest median time to the cap wins (a run that never reached the cap counts as
+infinitely slow, so a route that fails often has no median and the report says how often; ties: the shorter 90th percentile, then the lower planner
+total), otherwise the lowest total wins. ("Fastest in most runs" is printed too but not used: finalists a few minutes apart
+win it by luck.) The report then describes that route.
+
+`tools/route_install.py` reads and checks everything first and writes nothing if anything is wrong. Then it writes the chapters as
+`Guides/Chapters/<guide>-NN-<zone>.lua` (header `PLANNED` with the command that made it; the next install replaces them, do not edit them),
+replaces the `#include` and `#skipquest` lines of the guide text and leaves every other line (`#professions`, notes, hand-written steps), sets
+`levels`, deletes the chapters the guide used before unless another guide or chapter includes them, keeps both TOCs in step, marks the guide
+`planned` in `tools/drafts.json` (its chapters, with their `--chain` and `--exclude` hints, stay: the planner reads them, and `rebuild_drafts.py`
+skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` and, with the data pack, `guide_lint.py --strict` and
+`guide_sim.py --check`, then commit. Nothing is published.
+
 ## What it cannot see (read these before trusting a number)
 
 - **Every number is an assumption** (`tools/sim_params.json`): Classic's XP table, quest XP from QuestieDB's Classic seed (10% of
@@ -71,13 +121,16 @@ far the full simulation is from the planner's estimate) - the first steps of the
 - **The planner and the simulator price travel differently.** The simulator charges a flat few minutes for a border that is not
   learned yet; the planner prices it by distance. The full simulation of a written route runs 10-20% below the planner's estimate
   (backlog: `price-travel-differently`).
-- **Nothing says when a class quest is due**: the planner does them when that is cheapest, which in the druid routes is level 30 for
-  quests that open at 10, 14, 16 and 20 (the report names how many are late). The guide drafts do them when they open. This is a
-  question for the user (backlog: `when-is-a-class-quest-due`); until it is answered, planner routes are not installed in the guides.
+- **Class quests are pushed, not scheduled**: a chain whose quests are far apart (the Cat Form chain's items) can still come several levels
+  after it opens; the report lists the class quests more than 5 levels late and the level each was done at. A character that starts on an island
+  (the Skyborne's) cannot reach the other continents' class quests before it leaves, however hard they are pushed.
+- **The search is rough**: two settings that look alike (a width of 30 or 60, 4 or 8 parts to a level) can differ by hours on a guide with many class
+  quests (the druids), and a wider beam is not always better. `thorough` runs several and keeps the best; read the baseline line of the report, which
+  says how much faster the result is than the greedy route, and distrust a route that is not clearly faster.
 - **The quest log is not limited** (25 in Classic); the route may hold more at a moment than the game allows (backlog: `limit-the-quest-log`).
 - **Data holes become `.todo` steps**: an objective with no position in the pack is worked where its quest starts, and the step
   says so; a border with no route yet gets a travel step the lint reports.
 - **Group quests** in a normal route are tagged `.optional`, not yet shown as a line beside the step.
-- **Steps are written one NPC each**, kills and collecting as steps of their own (the rule of 2026-10-20). The user has since asked for
-  steps that group by activity (pick up, do, hand in) and for markers only where a place is to be reached; the emission follows when the
-  engine does (backlog: `steps-group-by`, `follow-the-activity`).
+- **Walking inside a doing step is not priced**: the planner adds a few seconds for each place of a hub; once the objective areas are joined into one
+  doing step the simulator charges only the walk between steps (the step keeps one position). A pick-up and hand-in step keeps the position of
+  each NPC, and the simulator walks them in order.

@@ -1,5 +1,5 @@
 {
-  "about": "Hardcore route rules for tools/guide_draft.py --hardcore (docs/HARDCORE.md). Quest IDs are from the data pack; every rule names where it comes from and how sure that source is. A skip becomes '#skipquest <id> >> <reason>'; a note becomes a '.note' after the quest's '.accept'. Corrected from play (the contributors' deaths) over time.",
+  "about": "Hardcore route rules for tools/guide_draft.py --hardcore (docs/HARDCORE.md). Quest IDs are from the data pack; every rule names where it comes from and how sure that source is. A skip becomes '#skipquest <id> >> <reason>'; a note becomes a '.note' after the quest's '.accept'. Corrected from play (the contributors' deaths) over time. skip_zones: every quest of such a zone is left out of every route (a battleground is not leveling content): the Route Planner reads it; the drafter drafts zones by name and never meets them.",
   "rules": [
     {
       "id": 827,
@@ -112,6 +112,29 @@
       "text": "VERIFY(beta): the real quest has you meet the Great Bear Spirit in Moonglade (west of Nighthaven); the pack has no objective for it.",
       "source": "adversarial review (Wowpedia/Icy Veins as it cites them); not confirmed for Forever",
       "confidence": "low"
+    }
+  ],
+  "skip_zones": [
+    {
+      "zone": 1459,
+      "name": "Alterac Valley",
+      "reason": "battleground (PvP) quest, not leveling content",
+      "source": "own knowledge of the game: the zone is the Alterac Valley battleground (the pack's map 1459)",
+      "confidence": "high"
+    },
+    {
+      "zone": 1460,
+      "name": "Warsong Gulch",
+      "reason": "battleground (PvP) quest, not leveling content",
+      "source": "own knowledge of the game: the zone is the Warsong Gulch battleground (the pack's map 1460)",
+      "confidence": "high"
+    },
+    {
+      "zone": 1461,
+      "name": "Arathi Basin",
+      "reason": "battleground (PvP) quest, not leveling content",
+      "source": "own knowledge of the game: the zone is the Arathi Basin battleground (the pack's map 1461)",
+      "confidence": "high"
     }
   ]
 }

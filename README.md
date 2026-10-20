@@ -23,6 +23,8 @@ travel steps in between, and every step has a pin on the map.
 - A small step frame with the current step (move it, lock it, scale it, hide it in combat).
 - Pins on the world map and the minimap for the current target.
 - A journal window (`/signpost journal`) with every chapter and step, the Skip toggle for dungeon chapters, and manual moves.
+- The quest tracker follows your step: only the quests of the current step are tracked, so the quest log's own marks show where to go
+  (on by default; Journal > Settings turns it off).
 - Optional automation (quest accept and turn-in, gossip, taxi, trainer, vendor), **all off by default**. Hold **Shift** while talking to
   an NPC to bypass it.
 - "Report this step" for steps that are wrong or stuck; reports stay in your saved variables until you share them.

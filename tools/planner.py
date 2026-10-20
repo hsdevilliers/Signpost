@@ -8,8 +8,8 @@ the legality of every edge: a quest is accepted only where the game would offer 
 
   greedy     the nearest hub with something to do, a zone finished before the next (what the guides are drafted with)
   lookahead  greedy, but each choice is tried by playing the rest out greedily for a while and the best is kept
-  beam       keeps the best few partial routes at every step and drops one when another is both faster and further along
-  thorough   a wide beam; tools/route_planner.py then polishes and checks the finalists under uncertain assumptions
+  beam       keeps the best few partial routes for each part of a level, comparing only routes that have got equally far
+  thorough   the beam at several grains of progress; tools/route_planner.py then polishes and checks the finalists under uncertain assumptions
 
 Every number is the simulator's (tools/guide_sim.py, tools/sim_params.json): this is the best route under those assumptions.
 """
@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import guide_draft  # noqa: E402
 import guide_sim  # noqa: E402
 import guide_travel  # noqa: E402
-from signpost_tools import availability  # noqa: E402
+from signpost_tools import availability, steps  # noqa: E402
 from signpost_tools.guidefile import Coord  # noqa: E402
 
 GRIND = "grind"
@@ -51,11 +51,18 @@ class Settings:
     ferry_seconds: float = 420.0  # the boat or zeppelin between continents, waiting included (the walks to and from it extra)
     gateways: tuple = (1454, 1458)  # the capitals whose hubs a trip between continents leaves and arrives by (Horde)
     branch: int = 8  # hubs tried from each node
-    width: int = 60  # partial routes kept per step by the beam
+    width: int = 30  # partial routes kept per bucket of progress by the beam
+    parts: tuple = (2,)  # buckets of progress to a level, one beam run for each entry (a different grain finds different routes)
     horizon: int = 12  # visits a lookahead plays out
     prune: float = 1.05  # a partial route estimated this much slower than the best finished one is dropped
     alternatives: int = 5  # other finished routes the beam keeps for the thorough preset to compare
     max_depth: int = 900  # visits in a route, a guard against a search that does not end
+    class_push: float = 1200.0  # seconds charged for each class quest still undone, for each level past the one it opens at
+    class_grace: int = 0  # levels past the one it opens at before the charge starts
+    class_levels: int = 6  # levels past that the charge keeps growing for: a quest this late is not worth bending the route for
+    group_yards: float = steps.GROUP_YARDS  # neighbouring steps of one kind this near each other are written as one
+    unknown_work: float = 300.0  # seconds given to a class quest whose objectives the pack does not have (taming, an escort...)
+    instant_quests: bool = False  # keep quests with no objective that are handed in at the NPC that gave them: the pack probably lacks them
 
 
 @dataclass
@@ -65,6 +72,7 @@ class PObjective:
     ident: int
     spots: list
     hubs: tuple = ()
+    elsewhere: bool = False  # the pack has positions for it, but none where this route goes
 
 
 @dataclass
@@ -91,6 +99,8 @@ class PQuest:
     why: str = ""  # why it is not kept
     needed: bool = False  # a kept quest has it as a prerequisite: never left out for being slow
     unknown_xp: bool = False  # the data has no experience for it (a quest new to Forever): never left out for being slow
+    end_unknown: bool = False  # a class quest whose ender has no position in the pack: handed in at its start, and the step says so
+    unknown_work: bool = False  # a class quest with no objective in the pack, accepted and handed in at one NPC: what it asks is not known
 
 
 @dataclass
@@ -133,7 +143,7 @@ class Visit:
 class PState:
     """A situation. States are shared along a path through `parent` and never changed once made."""
 
-    __slots__ = ("hub", "zone", "level", "xp", "clock", "penalty", "gated", "done", "active", "gone", "parent", "visit", "depth", "ground")
+    __slots__ = ("hub", "zone", "level", "xp", "clock", "penalty", "late", "gated", "done", "active", "gone", "parent", "visit", "depth", "ground")
 
     def __init__(self) -> None:
         self.hub: int | None = None
@@ -141,7 +151,8 @@ class PState:
         self.level = 1
         self.xp = 0.0
         self.clock = 0.0
-        self.penalty = 0.0
+        self.penalty = 0.0  # what zone changes cost the planner besides the play time
+        self.late = 0.0  # what class quests turned in after the level they open at cost it (Settings.class_push)
         self.gated = 0
         self.done: frozenset = frozenset()
         self.active: dict = {}
@@ -150,6 +161,11 @@ class PState:
         self.visit: Visit | None = None
         self.depth = 0
         self.ground = 0.0
+
+    @property
+    def total(self) -> float:
+        """The play time and everything the planner charges on top: what the search ranks routes by."""
+        return self.clock + self.penalty + self.late
 
     def key(self) -> tuple:
         return (self.hub, self.done, tuple(sorted((q, tuple(sorted(o))) for q, o in self.active.items())))
@@ -164,11 +180,17 @@ class Plan:
     final: PState | None = None
     seconds: float = 0.0
     penalty: float = 0.0
+    late: float = 0.0
     complete: bool = False  # reached the cap with every class quest done or accounted for
     stats: dict = field(default_factory=dict)
-    trace: list = field(default_factory=list)  # (depth, routes kept, best estimated total seconds)
+    trace: list = field(default_factory=list)  # (level reached, routes kept, best estimated total seconds) for each bucket of progress
     alternatives: list = field(default_factory=list)  # other finished routes with a different order of zones, best first
     decisions: list = field(default_factory=list)  # at each change of zone: what the search chose and what else it held
+
+    @property
+    def total(self) -> float:
+        """The play time plus everything the planner charged on top (zone changes, class quests done late)."""
+        return self.seconds + self.penalty + self.late
 
     def levels_done(self) -> dict[int, int]:
         """The level the character had after the visit that turned each quest in."""
@@ -178,6 +200,18 @@ class Plan:
                 if a.kind == "turnin":
                     found[a.quest] = v.level
         return found
+
+
+@dataclass
+class BeamRun:
+    """What one run of the beam found."""
+
+    parts: int  # buckets to a level
+    finals: int = 0  # routes it finished
+    finished: list = field(default_factory=list)
+    pruned: int = 0
+    trace: list = field(default_factory=list)  # (level, routes kept, best estimated total seconds) for each bucket worked
+    log: dict = field(default_factory=dict)  # bucket -> the best routes held in it: (estimate, zone, level, clock)
 
 
 class Planner:
@@ -205,6 +239,9 @@ class Planner:
         self._rates: dict[tuple, bool] = {}
         self._order: dict[tuple, list] = {}
         self.nodes_made = 0
+        self.skip_zones: dict[int, str] = {}  # map -> why no quest of it is routed (a battleground)
+        self._giver_index: dict[int, list] = {}  # start NPC -> (quest, name, class mask) of every quest of the pack
+        self._required: set[int] = set()  # quests that another quest needs first
         self.home: Coord | None = None  # where the character begins
         self.core: set[int] = set()  # the class quests and the quests they need: all that is done once the cap is reached
         self.forbidden: set[int] = set()  # quests a tidied route no longer accepts (it never turned them in)
@@ -227,6 +264,7 @@ class Planner:
         mandatory: tuple = (),
         chains: tuple = (),
         home: Coord | None = None,
+        skip_zones: dict | None = None,
         log: Callable[[str], None] | None = None,
     ) -> "Planner":
         say = log or (lambda text: None)
@@ -237,6 +275,12 @@ class Planner:
         planner.skip_reasons = dict(exclude or {})
         planner.mandatory = set(mandatory)
         planner.home = home
+        planner.skip_zones = dict(skip_zones or {})
+        planner._giver_index = planner._index_givers(quests)
+        planner._required = {
+            p for record in quests.values() if isinstance(record, dict)
+            for p in guide_draft._ids(record.get("preGroup")) + guide_draft._ids(record.get("preSingle"))
+        }
         started = time.perf_counter()
         for qid, record in sorted(quests.items()):
             if isinstance(record, dict):
@@ -259,6 +303,29 @@ class Planner:
     def _drop(self, reason: str, qid: int) -> None:
         self.dropped.setdefault(reason, []).append(qid)
 
+    def _index_givers(self, quests: dict) -> dict[int, list]:
+        found: dict[int, list] = {}
+        for qid, record in quests.items():
+            if isinstance(record, dict):
+                mask = self.rules.class_mask(record)
+                for npc in guide_draft._ids((record.get("s") or {}).get("npc")):
+                    found.setdefault(npc, []).append((qid, str(record.get("n") or ""), mask))
+        return found
+
+    def _inferred_class(self, qid: int, record: dict) -> int | None:
+        """The class a quest with no class mask probably belongs to: the mask of a quest of the same name from the same giver (the
+        Forever copy of a class quest), else the one class all of that giver's other quests are limited to (a class trainer's NPC)."""
+        name = str(record.get("n") or "")
+        for npc in guide_draft._ids((record.get("s") or {}).get("npc")):
+            others = [(n, m) for q, n, m in self._giver_index.get(npc, ()) if q != qid]
+            same = [m for n, m in others if m and n == name]
+            if same:
+                return same[0]
+            masks = [m for n, m in others]
+            if len(masks) >= 3 and all(masks) and len(set(masks)) == 1:
+                return masks[0]
+        return None
+
     def _consider(self, qid: int, record: dict) -> None:
         s, world, pack = self.s, self.world, self.pack
         block = self.rules.mask_block(qid)
@@ -276,18 +343,40 @@ class Planner:
             return self._drop("a prerequisite is closed to this character", qid)
         if qid in self.skip_reasons:
             return self._drop("excluded", qid)
+        if record.get("zone") in self.skip_zones:
+            return self._drop(self.skip_zones[record["zone"]], qid)
+        mine = self.rules.me.class_bit
+        if self.rules.class_mask(record) is None and mine:
+            inferred = self._inferred_class(qid, record)
+            if inferred and not inferred & mine:
+                return self._drop("probably another class's quest (the quests of its giver are)", qid)
         starts = _unique(world.quest_coords(qid, "s"))
         if not starts:
             return self._drop("no start position in the data", qid)
-        ends = _unique(world.quest_coords(qid, "e")) or list(starts)
+        ends = _unique(world.quest_coords(qid, "e"))
+        end_unknown = not ends
+        if end_unknown:
+            if qid not in self.mandatory:
+                return self._drop("no turn-in position in the data", qid)
+            ends = list(starts)  # a class quest is routed all the same, and its step says that the turn-in has no position
         objectives: list[PObjective] = []
         elite = False
         for number, objective in enumerate(record.get("o") or [], 1):
-            if isinstance(objective, dict) and isinstance(objective.get("id"), int):
-                kind = str(objective.get("k"))
+            if not isinstance(objective, dict):
+                continue
+            kind = str(objective.get("k"))
+            if isinstance(objective.get("id"), int):
                 spots = guide_draft._objective_spots(pack, world, None, kind, objective["id"])
                 objectives.append(PObjective(number, kind, objective["id"], spots))
                 elite = elite or guide_draft._elite_objective(pack, kind, objective["id"])
+            elif kind == "explore":  # an area to reach: positions of its own, no creature or object
+                objectives.append(PObjective(number, kind, 0, _unique(guide_travel.coords_of(objective.get("p")))))
+        one_npc = bool(
+            set(guide_draft._ids((record.get("s") or {}).get("npc"))) & set(guide_draft._ids((record.get("e") or {}).get("npc")))
+        )
+        unknown_work = not objectives and one_npc
+        if unknown_work and not s.instant_quests and qid not in self.mandatory and qid not in self._required and not record.get("next"):
+            return self._drop("no objective in the data (accepted and handed in at one NPC)", qid)
         if s.hardcore and elite:
             return self._drop("HARDCORE: needs an elite or boss kill", qid)
         if (record.get("l") or 0) > s.cap + 5:
@@ -310,6 +399,8 @@ class Planner:
             class_mask=classes if isinstance(classes, int) else None,
             optional=elite and not s.hardcore,
             mandatory=qid in self.mandatory,
+            end_unknown=end_unknown,
+            unknown_work=unknown_work and qid in self.mandatory,
         )
 
     def _prune_territory(self, faction: str) -> None:
@@ -342,7 +433,12 @@ class Planner:
             for o in q.objectives:
                 spots = [c for c in o.spots if zone_of(c.map) in friendly]
                 near = [c for c in spots if geo.instance(c.map) == home]
+                o.elsewhere = bool(o.spots) and not (near or spots)
                 o.spots = near or spots
+        # a quest whose objective exists only where the route does not go cannot be done by it (a class quest stays, with a .todo)
+        for qid in [qid for qid, q in self.quests.items() if not q.mandatory and any(o.elsewhere for o in q.objectives)]:
+            del self.quests[qid]
+            self._drop("an objective only where the route does not go", qid)
 
     def _prune_unreachable(self) -> None:
         """A quest whose prerequisites the planner cannot route (data missing, a HARDCORE exclusion) is out with them."""
@@ -644,7 +740,7 @@ class Planner:
         gated = st.gated
         actions: list[Action] = []
         interact_s = p["interact_seconds"]
-        interact = objective = longest_wait = gained = 0.0
+        interact = objective = longest_wait = gained = owed = 0.0
         sweeps = 0
         progressed = True
         while progressed and sweeps < 8:
@@ -657,6 +753,7 @@ class Planner:
                     for q in self.ends_by_place.get(key, ()):
                         if q.id in active and not active[q.id]:
                             gained += progress.gain(self.reward(q.id, progress.level))
+                            owed += self.lateness(q, progress.level)
                             interact += interact_s
                             actions.append(Action("turnin", q.id, None, place))
                             del active[q.id]
@@ -669,6 +766,8 @@ class Planner:
                         if not self.offered(q, progress.level, done, active, gone):
                             continue
                         gated = max(gated, q.req) if q.req > 1 else gated
+                        if q.unknown_work:
+                            objective += s.unknown_work
                         interact += interact_s
                         actions.append(Action("accept", q.id, None, place))
                         active[q.id] = {o.index for o in q.objectives}
@@ -697,6 +796,7 @@ class Planner:
         zone_change = new.zone != st.zone
         new.clock = st.clock + seconds
         new.penalty = st.penalty + (s.zone_friction if zone_change else 0.0)
+        new.late = st.late + owed
         new.gated, new.done, new.gone = gated, frozenset(done), frozenset(gone)
         new.active = {q: frozenset(o) for q, o in active.items()}
         new.parent, new.depth, new.ground = st, st.depth + 1, st.ground
@@ -735,7 +835,7 @@ class Planner:
             return None
         new = PState()
         new.hub, new.zone, new.level, new.xp = st.hub, st.zone, progress.level, progress.xp
-        new.clock, new.penalty = st.clock + seconds, st.penalty
+        new.clock, new.penalty, new.late = st.clock + seconds, st.penalty, st.late
         new.gated, new.done, new.gone, new.active = max(st.gated, target), st.done, st.gone, st.active
         new.parent, new.depth, new.ground = st, st.depth + 1, st.ground + progress.ground_xp
         new.visit = Visit(None, [Action(GRIND, None, target, None)], seconds, progress.ground_xp, False, progress.level, grind_seconds=seconds)
@@ -743,6 +843,13 @@ class Planner:
         return new
 
     # the goal and the estimate ---------------------------------------------------------------------------------------
+
+    def lateness(self, q: PQuest, level: int) -> float:
+        """What a class quest costs the route for being undone at this level: a push to do it early, not a deadline. The route
+        picks it up when it passes the giver, and makes the trip for a far one soon after it opens."""
+        if not q.mandatory:
+            return 0.0
+        return min(max(0, level - q.req - self.s.class_grace), self.s.class_levels) * self.s.class_push
 
     def pending_mandatory(self, st: PState) -> list[int]:
         """Class quests still to do that the route can do: not done, not closed by a quest it did."""
@@ -771,8 +878,46 @@ class Planner:
             left += 2 * model.p["interact_seconds"] + sum(self.objective(qid, o.index, level)[0] for o in q.objectives)
         return left
 
+    def _pace(self, level: int) -> float:
+        """Levels gained per second at a level, by the pace of the greedy walk (the cost-to-go's)."""
+        if level >= self.s.cap:
+            return 0.0
+        rate = self.rate_curve.get(level) or self.model.grind_xp_per_second(level)
+        return rate / max(1.0, self.model.to_next(level))
+
+    def _next_hubs(self, q: PQuest, st: PState) -> tuple:
+        """Where a class quest is next worked on: its giver, the open objectives, its ender."""
+        open_ = st.active.get(q.id)
+        if open_ is None:
+            return q.start_hubs
+        if open_:
+            return tuple(h for o in q.objectives if o.index in open_ for h in o.hubs)
+        return q.end_hubs
+
+    def pending_charge(self, st: PState) -> float:
+        """What the class quests still undone are expected to cost the route: each at the level the character will have when it
+        gets there (the level it opens at, if that is above the character's, and the levels gained on the way to where it is next
+        worked on). A quest that opens later costs the same at every level before it opens, so levelling is never what a route is
+        charged for, and one that is far away costs for the levels the trip takes."""
+        s, pace, total = self.s, self._pace(st.level), 0.0
+        for qid in self.pending_mandatory(st):
+            q = self.quests[qid]
+            hubs = self._next_hubs(q, st)
+            trip = 0.0 if st.hub in hubs else min((self.travel(st.hub, h) for h in hubs), default=0.0)
+            late = st.level + trip * pace - q.req - s.class_grace
+            total += min(max(0.0, late), s.class_levels) * s.class_push
+        return total
+
     def score(self, st: PState) -> float:
-        return st.clock + st.penalty + self.to_go(st)
+        """What the searches rank partial routes by: the time so far, what class quests undone are costing, the time to go."""
+        return st.total + self.pending_charge(st) + self.to_go(st)
+
+    def hopeless(self, st: PState, best_time: float) -> bool:
+        """A partial route that cannot beat the best finished one (by more than the `prune` margin) even if the class quests still
+        undone were free. The charge for them is left out on purpose: it is a ranking, not a cost (a route that lets them wait has
+        not paid it yet), and set against a finished route's real charges it made every partial route look worse than the greedy one,
+        so the beam finished nothing."""
+        return st.total + self.to_go(st) >= best_time * self.s.prune
 
     # the searches ---------------------------------------------------------------------------------------------------
 
@@ -788,9 +933,36 @@ class Planner:
                 break
         return chosen
 
+    def overdue_hubs(self, st: PState, most: int = 4) -> list[int]:
+        """The nearest hubs where a class quest past the level it opens at can be got on with (its giver, an open objective, its
+        ender), so the search always considers the trip: a far hub never makes the best-ranked few on experience for the walk."""
+        found: dict[int, float] = {}
+        for qid in self.pending_mandatory(st):
+            q = self.quests[qid]
+            if st.level <= q.req + self.s.class_grace:
+                continue
+            if qid in st.active:
+                open_ = st.active[qid]
+                if not open_:
+                    hubs = q.end_hubs
+                elif self.soon(q, st.level):
+                    hubs = tuple(h for o in q.objectives if o.index in open_ for h in o.hubs)
+                else:
+                    continue
+            elif self.offered(q, st.level, st.done, st.active, st.gone):
+                hubs = q.start_hubs
+            else:
+                continue
+            for h in hubs:
+                if h != st.hub:
+                    found[h] = min(found.get(h, float("inf")), self.travel(st.hub, h))
+        return sorted(found, key=found.get)[:most]
+
     def children(self, st: PState, limit: int) -> list[PState]:
         out = []
-        for h in self.rank(st, self.options(st), limit):
+        hubs = self.rank(st, self.options(st), limit)
+        hubs += [h for h in self.overdue_hubs(st) if h not in hubs]
+        for h in hubs:
             child = self.visit(st, h)
             if child is not None:
                 out.append(child)
@@ -865,11 +1037,11 @@ class Planner:
         self.forbidden = set()
         plan.stats, plan.trace, plan.preset = stats, trace, preset
         plan.alternatives, plan.decisions = alternatives, decisions
-        plan.stats["removed"] = sorted(removed)
+        plan.stats["removed"] = sorted(removed | set(stats.get("removed", ())))  # a plan tidied twice still says what was taken out
         return plan
 
     def _finish(self, final: PState) -> Plan:
-        plan = Plan(final=final, seconds=final.clock, penalty=final.penalty)
+        plan = Plan(final=final, seconds=final.clock, penalty=final.penalty, late=final.late)
         path, st = [], final
         while st is not None and st.visit is not None:
             path.append(st.visit)
@@ -932,64 +1104,102 @@ class Planner:
         plan.decisions = decisions
         return plan
 
+    def _bucket(self, st: PState, parts: int) -> int:
+        """How far a route has got: the level and the part of the next one (`parts` to a level), one bucket from the cap on."""
+        if st.level >= self.s.cap:
+            return self.s.cap * parts
+        return st.level * parts + int(min(st.xp / max(1.0, self.model.to_next(st.level)), 0.999) * parts)
+
     def _beam(self, start_hub: int, progress) -> Plan:
+        """A beam over how far the routes have got. Partial routes are compared with others that have got as far (the same level and
+        part of the next), never with a route that has made as many visits: a route that dawdles is not ahead of one that has levelled,
+        and the one that has levelled is not penalised for it. One run per entry of `Settings.parts` (a different grain of progress
+        each, every one independent: what an earlier grain found never prunes a later one). The runs' best finished routes are then
+        compared as they would be written, tidied (a guide may not leave quests in the log, and taking them out can cost a route much),
+        with the greedy route tidied too: the result is never slower than that."""
         s = self.s
         base = self._finish(self.rollout(self.start(start_hub)))
         self.calibrate(base)
-        frontier = [self.start(start_hub)]
-        best_final = base.final if base.complete else None
-        best_time = (best_final.clock + best_final.penalty) if best_final else float("inf")
-        finals = 0
-        finished: list[PState] = []
-        trace: list = []
-        frontier_log: dict[int, list] = {}
-        pruned = 0
-        depth = 0
-        while frontier and depth < s.max_depth:
-            depth += 1
-            seen: dict[tuple, PState] = {}
-            scores: dict[tuple, float] = {}
-            for st in frontier:
-                for child in self.children(st, s.branch):
-                    if self.terminal(child):
-                        finals += 1
-                        finished.append(child)
-                        if child.clock + child.penalty < best_time:
-                            best_final, best_time = child, child.clock + child.penalty
-                        continue
-                    value = self.score(child)
-                    if value >= best_time * s.prune:
-                        pruned += 1
-                        continue
-                    key = child.key()
-                    if key in seen:
-                        pruned += 1  # the same situation, reached by another way: only the better one lives on
-                        if value >= scores[key]:
-                            continue
-                    seen[key], scores[key] = child, value
-            ranked = sorted(seen, key=lambda k: scores[k])
-            pruned += max(0, len(ranked) - s.width)
-            frontier = [seen[k] for k in ranked[: s.width]]
-            if frontier:
-                trace.append((depth, len(frontier), scores[ranked[0]]))
-                frontier_log[depth] = [(scores[k], seen[k].zone, seen[k].level, seen[k].clock) for k in ranked[:24]]
-                if progress and depth % 50 == 0:
-                    progress(f"  beam depth {depth}: {len(frontier)} routes kept, best estimate {scores[ranked[0]] / 3600:.2f} h")
-        plan = self._finish(best_final if best_final is not None else base.final)
-        plan.decisions = self._beam_decisions(plan.final, frontier_log)
-        plan.trace = trace
-        plan.stats.update(pruned=pruned, finals=finals, baseline_seconds=base.seconds + base.penalty)
-        seen = {self.signature(plan.final)}
-        for final in sorted(finished, key=lambda f: f.clock + f.penalty):
+        known = base.final.total if base.complete else float("inf")
+        runs = [self._layers(start_hub, max(1, parts), known, progress) for parts in s.parts or (2,)]
+        reference = self.tidy(base, start_hub)
+        origin: dict[int, BeamRun] = {}
+        tidied: list[Plan] = []
+        seen: set = set()
+        for final, run in sorted(((f, r) for r in runs for f in r.finished), key=lambda pair: pair[0].total):
             sig = self.signature(final)
-            if sig not in seen and len(plan.alternatives) < self.s.alternatives:
-                seen.add(sig)
-                plan.alternatives.append(self.tidy(self._finish(final), start_hub))
+            if sig in seen:
+                continue
+            seen.add(sig)
+            candidate = self.tidy(self._finish(final), start_hub)
+            origin[id(candidate)] = run
+            tidied.append(candidate)
+            if len(tidied) >= s.alternatives + 8:
+                break
+        pool = sorted((c for c in tidied if c.complete), key=lambda c: c.total)
+        plan = pool[0] if pool and (not reference.complete or pool[0].total < reference.total) else reference
+        winner = origin.get(id(plan), runs[0])
+        plan.decisions = self._beam_decisions(plan.final, winner) if plan is not reference else []
+        plan.trace = winner.trace
+        plan.alternatives = [c for c in pool if c is not plan][: s.alternatives]
+        plan.stats.update(
+            pruned=sum(r.pruned for r in runs),
+            finals=sum(r.finals for r in runs),
+            baseline_seconds=reference.total,
+            runs=len(runs),
+            chosen="greedy" if plan is reference else "beam",
+        )
         return plan
 
-    def _beam_decisions(self, final: PState, frontier_log: dict) -> list:
+    def _layers(self, start_hub: int, parts: int, best_time: float, progress) -> "BeamRun":
+        """One beam run: the buckets of progress are taken in order, each keeps its `width` best routes (by the estimate of the whole
+        route), and every one of them is tried at `branch` hubs. A route that lands in the bucket being worked is worked on with it
+        again, so the routes in a bucket are always compared with each other, never with ones that have not got there yet.
+        `best_time` is the total of the route to beat (the greedy one's); a route that finishes lowers it for the rest of this run."""
+        s = self.s
+        run = BeamRun(parts)
+        start = self.start(start_hub)
+        layers: dict[int, dict] = {self._bucket(start, parts): {start.key(): (self.score(start), start)}}
+        last_level = 0
+        while layers:
+            b = min(layers)
+            ranked = sorted(layers.pop(b).values(), key=lambda pair: pair[0])
+            width = max(1, s.width)
+            run.pruned += max(0, len(ranked) - width)
+            ranked = ranked[:width]
+            held = run.log.setdefault(b, [])
+            held.extend((value, st.zone, st.level, st.clock) for value, st in ranked[:24])
+            held.sort(key=lambda item: item[0])
+            del held[24:]
+            run.trace.append((b / parts, len(ranked), ranked[0][0]))
+            if progress and b // parts > last_level:
+                last_level = b // parts
+                progress(f"  beam ({parts} to a level), level {last_level}: {len(ranked)} routes kept, best estimate {ranked[0][0] / 3600:.2f} h")
+            for _, st in ranked:
+                for child in self.children(st, s.branch):
+                    if child.depth >= s.max_depth:
+                        continue
+                    if self.terminal(child):
+                        run.finals += 1
+                        run.finished.append(child)
+                        best_time = min(best_time, child.total)  # the bound of this run only
+                        continue
+                    if self.hopeless(child, best_time):
+                        run.pruned += 1
+                        continue
+                    value = self.score(child)
+                    key = child.key()
+                    slot = layers.setdefault(self._bucket(child, parts), {})
+                    if key in slot:
+                        run.pruned += 1  # the same situation, reached by another way, and as far on: only the better one lives on
+                        if slot[key][0] <= value:
+                            continue
+                    slot[key] = (value, child)
+        return run
+
+    def _beam_decisions(self, final: PState, run: "BeamRun") -> list:
         """At each change of zone on the route the search chose: the estimate of the route it chose and of the best route in each
-        other zone the beam held at that step (the same estimator it ranked them with)."""
+        other zone the beam held in that bucket of progress (the same estimator it ranked them with)."""
         path, st = [], final
         while st is not None:
             path.append(st)
@@ -1002,7 +1212,7 @@ class Planner:
                 continue
             chosen = self.score(after)
             best: dict = {}
-            for score, zone, level, clock in frontier_log.get(after.depth, ()):
+            for score, zone, level, clock in run.log.get(self._bucket(after, run.parts), ()):
                 if zone != after.zone and (zone not in best or score < best[zone][0]):
                     best[zone] = (score, zone, level, clock)
             decisions.append(
@@ -1046,6 +1256,9 @@ class Planner:
             else:
                 chosen = next((x for x in self.quests[qid].excl if x in done), None)
                 skips[qid] = f"alternative to quest {chosen}, which is routed" if chosen else "not reached by this route"
+        for qid in self.dropped.get("excluded", ()):
+            if qid in self.skip_reasons and qid not in skips:
+                skips[qid] = self.skip_reasons[qid]
         for qid in done:
             for other in self.quests[qid].excl:
                 if other not in done and other in self.quests and other not in skips:
@@ -1064,9 +1277,11 @@ class Planner:
         return self.hubs[hub].label if hub is not None else "(grinding)"
 
     def emit(self, plan: Plan, class_token: str, split_after: int = 10) -> list:
-        """The route as chapters of guide steps: one step per NPC, a `.level` line before a quest above the last level asked
-        for, a `.level` step for a grind, `.optional` on group quests and `.note` where the rules have one. A chapter ends
-        where the zone changes (once it has `split_after` steps)."""
+        """The route as chapters of guide steps: written one place at a time, then neighbouring steps of one kind joined
+        (signpost_tools/steps.py: a pick-up and hand-in step per area, a doing step per group of quests whose objectives are
+        near each other), a `.level` line before a quest above the last level asked for, a `.level` step for a grind,
+        `.optional` on group quests and `.note` where the rules have one. A chapter ends where the zone changes (once it has
+        `split_after` steps)."""
         chapters: list[ChapterText] = []
         current: ChapterText | None = None
         gated = 0
@@ -1092,6 +1307,15 @@ class Planner:
                     group.append(a)
             level = v.level
             current.level_out = level
+
+        def near(a: Coord, b: Coord) -> bool:
+            return a.map == b.map and self._yards(a, b) <= self.s.group_yards
+
+        def objectives(qid: int) -> list[int] | None:
+            return [o.index for o in self.quests[qid].objectives] if qid in self.quests else None
+
+        for chapter in chapters:
+            chapter.steps = steps.group(chapter.steps, near, objectives)
         return chapters
 
     def _step(self, chapter: "ChapterText", group: list, class_token: str, gated: int) -> int:
@@ -1107,14 +1331,19 @@ class Planner:
                     lines.append(f"  .level {q.req}")
                     gated = q.req
                 lines.append(f"  .accept {q.id}{gate} -- {name}")
+                if q.unknown_work:
+                    lines.append(f'  .todo "{name}: the pack has no objective for it; read what it asks in the quest log"')
                 if q.id in self.notes:
                     lines.append(f"  .note {guide_draft._clean(self.notes[q.id])}")
             elif a.kind == "turnin":
+                if q.end_unknown:
+                    lines.append(f'  .todo "{name}: the turn-in has no position in the pack"')
                 lines.append(f"  .turnin {q.id}{gate} -- {name}")
             else:
                 objective = next((o for o in q.objectives if o.index == a.index), None)
                 if objective is None or not objective.spots:
-                    lines.append(f'  .todo "{name}: objective {a.index} has no position in the pack"')
+                    why = "is only in places this guide does not go" if objective is not None and objective.elsewhere else "has no position in the pack"
+                    lines.append(f'  .todo "{name}: objective {a.index} {why}"')
                 lines.append(f"  .complete {q.id},{a.index}{gate} -- {name}")
             if q.optional:
                 optional[q.id] = name

@@ -1,12 +1,14 @@
 ---
 title: Steps group by what the player does: pick up, do, hand in (replaces one NPC per step)
 kind: feature
-status: open
+status: done
 priority: normal
 area: engine, ui, guides
 source: user
 raised: 2026-10-20
 raised_in: the user, 2026-10-20, dictated while the Route Planner was being merged
+closed: 2026-10-21
+resolution: Done: the engine in PR #39 (doing steps, the quest-level state, no markers for a doing step), the tools in PR #38 (tools/signpost_tools/steps.py: the drafter and the planner write pick-up, doing and hand-in steps; the simulator and the lint read them; the three guides were rebuilt). docs/GUIDE-FORMAT.md 'Step kinds' has the rules. Verification in the game stays with the doing-steps and quest-tracking verify items.
 ---
 
 ## What
@@ -55,4 +57,7 @@ Added by Claude, to settle with the user before building:
   what a skipped or abandoned quest does to its step.
 - The group-quest line (an extra line beside the current step until the quest is done or the character is 5 levels above it; PROGRESS) is
   a second line next to the step and has to fit the new steps.
+- Decided with the user (2026-10-20): the step kind is inferred from the directives (no new syntax); "hand in" and "pick up" at one place is one
+  step; a doing step shows neither a marker nor words about where, only its quests with a done mark (the quest log marks the objectives, and the
+  guide sets the quest tracker to them: see the tracker item); neighbouring steps of one kind within 250 yards of the first become one.
 - Until this is built the drafter and the planner keep writing one NPC per step, with kills and collecting as steps of their own.

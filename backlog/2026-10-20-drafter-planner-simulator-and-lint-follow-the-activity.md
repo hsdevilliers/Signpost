@@ -1,12 +1,14 @@
 ---
 title: Drafter, planner, simulator and lint follow the activity steps; the guides are rebuilt
 kind: task
-status: open
+status: done
 priority: normal
 area: drafter, planner, simulator, guides
 source: user
 raised: 2026-10-20
 raised_in: the user, 2026-10-20, dictated while the Route Planner was being merged
+closed: 2026-10-21
+resolution: Done in PR #38: the drafter and the planner write activity steps (pick-up steps keep the position of every NPC, doing steps one), the simulator and the lint read them, the Troll Hunter guide is the planner's route and the druid chapters were rebuilt. The three guides pass guide_lint --strict (0 errors, 0 warnings) and guide_sim --check (no availability findings); the Troll Hunter simulates at 17h31 to level 30.
 ---
 
 ## What

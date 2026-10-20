@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import guide_sim  # noqa: E402
 import guide_travel  # noqa: E402
-from signpost_tools import availability, guidefile  # noqa: E402
+from signpost_tools import availability, guidefile, steps  # noqa: E402
 from signpost_tools.availability import CLASS_BITS, CLASS_SORTS, EVENT_SORTS, RACE_BITS  # noqa: E402
 from signpost_tools.guidefile import Coord  # noqa: E402
 
@@ -215,12 +215,19 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
             objectives = []
             outside = False
             for number, objective in enumerate(record.get("o") or [], 1):
-                if isinstance(objective, dict) and isinstance(objective.get("id"), int):
-                    kind = str(objective.get("k"))
+                if not isinstance(objective, dict):
+                    continue
+                kind = str(objective.get("k"))
+                if isinstance(objective.get("id"), int):
                     spots = _objective_spots(pack, world, zones, kind, objective["id"])
                     if not spots and _objective_spots(pack, world, None, kind, objective["id"]):
                         outside = True  # it exists, but only in another zone
                     objectives.append(Objective(number, kind, objective["id"], spots))
+                elif kind == "explore":  # an area to reach: positions of its own
+                    area = guide_travel.coords_of(objective.get("p"))
+                    spots = _spots(area, world, zones)
+                    outside = outside or (bool(area) and not spots)
+                    objectives.append(Objective(number, kind, 0, spots))
             if outside:
                 drop("objective lies outside the zones (route by hand)")
                 continue
@@ -498,6 +505,17 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
             step.append(f"  .optional {qid} -- group quest: {_clean(name)}")
         pos = place
         result.steps.append(step)
+    yards = getattr(spec, "group_yards", 0.0) or 0.0
+    if yards > 0:  # activity steps (signpost_tools/steps.py): pick up and hand in per area, doing steps per group of objectives
+
+        def close_by(a: Coord, b: Coord) -> bool:  # on one map: two maps (a cave and its zone) are two places however near they lie
+            gap = world.geo.distance(a, b) if a.map == b.map else None
+            return gap is not None and gap <= yards
+
+        def objectives(qid: int) -> list[int] | None:
+            return [o.index for o in pool[qid].objectives] if qid in pool else None
+
+        result.steps = steps.group(result.steps, close_by, objectives)
     result.unreachable = sorted(q.id for q in pool.values() if q.id not in done and q.id not in active and q.id not in gone)
     for qid in sorted(active):
         result.notes.append(f"quest {qid} ({pool[qid].name}) was accepted but never finished: check its objectives")
@@ -604,6 +622,13 @@ def main(argv: list[str] | None = None, carry: dict | None = None) -> int:
         metavar="QUEST=TEXT",
         help="a `.note` after the quest's `.accept` (repeatable), e.g. to mark a route unverified",
     )
+    parser.add_argument(
+        "--group-yards",
+        type=float,
+        default=steps.GROUP_YARDS,
+        help=f"neighbouring steps of one kind this near each other are written as one: a pick-up and hand-in step per area, a "
+        f"doing step per group of quests whose objectives are close (default {steps.GROUP_YARDS:.0f}; 0: one step per place)",
+    )
     parser.add_argument("--no-gate-class", dest="gate_class", action="store_false", help="no .class gate on class quests")
     parser.add_argument("--pack", type=Path, help="the data pack folder (default ../Signpost_Data)")
     parser.add_argument("--out", type=Path, help="write the chapter file here (default: print)")
@@ -617,18 +642,21 @@ def main(argv: list[str] | None = None, carry: dict | None = None) -> int:
         spec.start_level = spec.start_level or carry.get("level")
         spec.start_xp = spec.start_xp or carry.get("xp", 0.0)
         spec.gated = max(spec.gated, carry.get("gated", 0))
-    if spec.hardcore:
-        try:
-            rules = json.loads(Path(spec.hardcore).read_text(encoding="utf-8")).get("rules", [])
-        except (OSError, ValueError) as exc:
+    rules = []
+    try:
+        rules = json.loads(Path(spec.hardcore or Path(__file__).resolve().parent / "hardcore_rules.json").read_text(encoding="utf-8")).get("rules", [])
+    except (OSError, ValueError) as exc:
+        if spec.hardcore:
             parser.error(f"--hardcore: {exc}")
-        for rule in rules:
-            if not isinstance(rule, dict) or not isinstance(rule.get("id"), int):
-                continue
-            if rule.get("action") == "skip":
-                spec.skip_reasons.setdefault(rule["id"], str(rule.get("reason") or HARDCORE_NOTE))
-            elif rule.get("action") == "note" and rule.get("text"):
-                spec.notes[rule["id"]] = str(rule["text"])
+    for rule in rules:
+        if not isinstance(rule, dict) or not isinstance(rule.get("id"), int):
+            continue
+        reason = str(rule.get("reason") or HARDCORE_NOTE)
+        # a skip whose reason is not about HARDCORE (a battleground quest is not leveling content) holds for every guide
+        if rule.get("action") == "skip" and (spec.hardcore or not reason.startswith("HARDCORE")):
+            spec.skip_reasons.setdefault(rule["id"], reason)
+        elif rule.get("action") == "note" and rule.get("text") and spec.hardcore:
+            spec.notes[rule["id"]] = str(rule["text"])
 
     for item in spec.note:
         qid, _, text = item.partition("=")

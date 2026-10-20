@@ -22,6 +22,22 @@ def model(overrides=None, quests=None, quest_xp=None):
     return Model(params, QUESTS if quests is None else quests, NPCS, {}, quest_xp)
 
 
+class PercentileTest(unittest.TestCase):
+    def test_interpolated_and_empty(self):
+        self.assertEqual(guide_sim.percentile([1.0, 3.0], 50), 2.0)
+        self.assertEqual(guide_sim.percentile([3.0, 1.0, 2.0], 0), 1.0)
+        self.assertEqual(guide_sim.percentile([], 50), 0.0)
+
+    def test_a_run_that_never_got_there_is_infinity_and_never_nan(self):
+        inf = float("inf")
+        values = [100.0, 101.0, 102.0, inf, inf]
+        self.assertEqual(guide_sim.percentile(values, 0), 100.0)
+        self.assertEqual(guide_sim.percentile(values, 50), 102.0)  # exactly the third of five
+        self.assertEqual(guide_sim.percentile(values, 60), inf)  # between 102 and a run that never got there
+        self.assertEqual(guide_sim.percentile(values, 75), inf)  # exactly the fourth
+        self.assertEqual(guide_sim.percentile([inf, inf], 50), inf)  # infinity minus infinity is not asked for
+
+
 class ParamsTest(unittest.TestCase):
     def test_overrides_and_unknown_names(self):
         params = guide_sim.load_params(overrides=["kill_seconds=30", "respawn_seconds.normal=60"])
@@ -135,6 +151,20 @@ class RunTest(TempProject):
         self.assertEqual(result.level, 5)
         slower = self.run_text(text, ["kill_seconds=60"])
         self.assertGreater(slower.stall, result.stall)
+
+    def test_a_level_gate_after_a_hand_in_in_the_same_step_waits_for_its_experience(self):
+        # a joined step: the hand-in's experience is credited before the gate that stands after it, so nothing is ground for
+        steps = "step\n  .goto 10,40,40\n  .accept 1\nstep\n  .goto 10,40,40\n  .complete 1,1\n"
+        quest_xp = {1: 900}
+        before_turnin = self.run_text("#chapter 1-5 One\n" + steps, quest_xp=quest_xp).level
+        reached = self.run_text("#chapter 1-5 One\n" + steps + "step\n  .goto 10,40,40\n  .turnin 1\n", quest_xp=quest_xp).level
+        self.assertGreater(reached, before_turnin)  # the hand-in is what gets the character to the level the gate asks for
+        gate = f"  .level {reached}\n"
+        after = self.run_text("#chapter 1-5 One\n" + steps + "step\n  .goto 10,40,40\n  .turnin 1\n" + gate, quest_xp=quest_xp)
+        self.assertEqual((after.level, after.stall), (reached, 0))
+        first = self.run_text("#chapter 1-5 One\n" + steps + "step\n  .goto 10,40,40\n" + gate + "  .turnin 1\n", quest_xp=quest_xp)
+        self.assertGreater(first.stall, 0)  # the gate first: the character grinds the level, and the hand-in comes on top of it
+        self.assertEqual(first.stalls[0].needs, reached)
 
     def test_risk_marks_elite_objectives_and_quests_above_the_character(self):
         text = "#chapter 1-5 One" + NL + "step" + NL + "  .goto 10,40,40" + NL + "  .accept 3" + NL + "  .accept 2" + NL
