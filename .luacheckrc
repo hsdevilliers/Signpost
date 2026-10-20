@@ -191,6 +191,13 @@ read_globals = {
 	"SelectActiveQuest",
 	"SelectAvailableQuest",
 	"SettingsPanel",
+	-- added for Engine/Tracking.lua (the quest watch list; the Classic shape is the fallback)
+	"AddQuestWatch",
+	"C_SuperTrack",
+	"GetNumQuestWatches",
+	"GetQuestIndexForWatch",
+	"IsQuestWatched",
+	"RemoveQuestWatch",
 }
 
 -- Specs and the mock define the WoW globals they need.

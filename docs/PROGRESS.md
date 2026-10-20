@@ -302,6 +302,41 @@ Acceptance
   opens the Journal (unverified in the client: open probe). Fixed a layout overlap of the dungeon Skip box and the Current step button.
   10 specs in `tests/report_options_spec.lua`.
 
+## Doing steps (user, 2026-10-20)
+
+- [x] Doing steps draw no markers and show quest-level state only (branch `feat/step-ui`; backlog `markers-only-steer-to-a-place` and
+  `step-frame-shows-which-quests`). A step with a `.complete` and no *place directive* (a travel directive, or one whose def pins anything
+  but objectives: `.accept .turnin .train .trainprof .buy .collect .fish`, the eight travel directives, a module's by the same test) is a
+  doing step (`Conditions:IsDoingStep`). `Conditions:Targets` gives it no pins (its `.goto` and `.complete` are not asked for any), so the
+  map, the minimap and the edge arrow stay bare and the quest log's own marks do the work; its `.goto` stays in the text for the tools and
+  shows no line, as in any step with other lines. Every other step keeps its markers as before, old steps that mix a `.complete` with a
+  `.turnin` included. `.complete` has no objective progress lines in any step; the step frame starts each `.complete` line with a done
+  mark (`[x]` / `[ ]`, the Journal's, now shared as `UI.MARK`; the frame had none before) and holds up to ten lines instead of five, so
+  a step lists all of its quests. 22 new specs (708 in all), among them the whole directive registry classified as place or not
+  (a new directive fails until someone decides) and the shipped guides' doing steps drawing nothing (48, 79 and 95 of their steps).
+  GUIDE-FORMAT "Step kinds", ENGINE.md, PLAN §3.1. Unverified: the marks and ten lines in the real client (API notes, "Open probes").
+- [x] Quest tracking follows the step (backlog `track-the-quests-of-the-current-step`; `Engine/Tracking.lua`, in both TOCs). When a step
+  becomes current, every tracked quest the step is not about is untracked and the quests of its `.complete` and `.turnin` directives that
+  are in the quest log are tracked (the first unfinished one also super-tracked); a step naming no quest in the log (a pick-up, a trip)
+  changes nothing. The log is looked at again when its set of quests changes (a quest accepted or removed), not when only progress does,
+  and not once the player has tracked or untracked a quest by hand during the step. The player's earlier tracking is not restored (v1).
+  Setting `SignpostDB.settings.trackStepQuests` (Journal > Settings > Quest tracker, only the player's choice is saved); the default is
+  `Tracking.DEFAULT_ENABLED` in one place. Every client call goes through `Util.Call`; retail shape first (`C_QuestLog.AddQuestWatch`,
+  `RemoveQuestWatch`, `GetQuestWatchType`, `GetNumQuestWatches`, `GetQuestIDForQuestWatchIndex`, `C_SuperTrack`), the Classic functions on
+  quest log numbers as the fallback. 24 new specs (`tests/tracking_spec.lua` on the watch list in `tests/mocks/context.lua`, and the
+  Journal's check box; the walk of `tests/integration_spec.lua` follows the tracker too); 732 in all. Unverified in the client: every one
+  of those functions (API notes, "Open probes"; `/signpost probe` lists them).
+- [x] Review fixes for both (independent review of PR #39, 2026-10-20). Tracking does nothing at all while the step card is hidden (the saved
+  `stepFrame.shown`; the card's own hides in combat, when dead or with the Journal open do not count) and shows in the docs the real
+  conditions (setting on, a guide, the card shown). It tracks the step's quests first and untracks the others only once the client tracks
+  at least one (a raising or refusing `AddQuestWatch`, a full tracker included, leaves the player's tracker as it was: one error-log
+  entry, then stopped until the setting is toggled). A step quest under a collapsed quest log header is in the log (`Context:QuestInLog`)
+  and collapsing or expanding a header sets nothing again. The same step announced again (a re-parse) keeps the hands-off decision and
+  otherwise re-applies without the focus; the tracker is pointed once per step, not when it already points at a quest of the step. Specs:
+  43 in `tests/tracking_spec.lua` (was 23), two re-parse walks in `tests/integration_spec.lua`, the check box's anchors and header in
+  `tests/journal_spec.lua`; the scripted client has `GetLogIndexForQuestID`, `GetQuestIDForLogIndex`, `GetSuperTrackedQuestID` and
+  watch types; 755 in all; 21 mutations of `Engine/Tracking.lua` are each caught by a spec.
+
 ## Notes
 
 - 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,

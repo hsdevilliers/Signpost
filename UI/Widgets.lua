@@ -5,6 +5,10 @@ local ADDON_NAME, ns = ...
 local UI = {}
 ns.UI = UI
 
+-- The marks of a list of things to do, plain text (no texture to depend on): the Journal's route list and the step
+-- frame's quest lines use the same ones, so a done step and a done quest read alike.
+UI.MARK = { done = "|cff40d040[x]|r", todo = "[ ]" }
+
 local function hasTemplate(template)
 	local getInfo = C_XMLUtil and C_XMLUtil.GetTemplateInfo
 	if not getInfo then

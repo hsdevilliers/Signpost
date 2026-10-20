@@ -42,6 +42,7 @@ Engine\Professions.lua
 Engine\Conditions.lua
 Engine\Travel.lua
 Engine\Progress.lua
+Engine\Tracking.lua
 
 Classes\DRUID.lua
 Classes\HUNTER.lua

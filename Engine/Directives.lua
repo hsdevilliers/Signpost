@@ -4,8 +4,11 @@
 -- A def (docs/ENGINE.md) is { parse, isSatisfied, targets, describe, onStart, kind, completable }. describe also gets
 -- the directive's state as a third argument. Optional fields Engine/Conditions.lua reads:
 --   pin           the target kind of the directive's pins; when the data pack gives it none, the step's first .goto
---                 pin takes this kind instead (a quest giver is pinned at the step's .goto without the pack);
---   progress      fn(args, context, state) -> { line, ... }, shown under the directive's line (objective progress);
+--                 pin takes this kind instead (a quest giver is pinned at the step's .goto without the pack). Any kind
+--                 but "objective" (and kind = "travel") makes the directive a place directive: a step that has one is
+--                 not a doing step and keeps its markers (Engine/Conditions.lua "Step kinds");
+--   progress      fn(args, context, state) -> { line, ... }, shown under the directive's line (.train's class quest
+--                 line). .complete has none: the quest log shows the progress of its objectives;
 --   locationOnly  the line is shown only when the step has no other line (a bare .goto reads "Go to ...");
 --   usage         the syntax, for messages.
 local ADDON_NAME, ns = ...
@@ -738,6 +741,9 @@ local function objectivePins(objective, context, label, index)
 	return pins
 end
 
+-- A quest's objectives are the quest log's to show: the line says which quest (and, in the per-objective form, which
+-- objective number), the step frame marks it done, and no objective counters are repeated ("Mottled Boar slain: 3/10").
+-- The objective pins below are drawn only for a step that is not a doing step (Engine/Conditions.lua "Step kinds").
 Directives:Register("complete", {
 	kind = "quest",
 	pin = "objective",
@@ -817,16 +823,6 @@ Directives:Register("complete", {
 			return string.format(L['Complete objective %d of "%s"'], args.objective, Label.Quest(args.questID))
 		end
 		return string.format(L['Complete "%s"'], Label.Quest(args.questID))
-	end,
-	-- the quest log's objective lines ("- Mottled Boar slain: 3/10")
-	progress = function(args, context)
-		local lines = {}
-		for index, objective in ipairs(objectiveList(context, args.questID)) do
-			if type(objective) == "table" and (not args.objective or args.objective == index) then
-				lines[#lines + 1] = "- " .. objectiveText(objective)
-			end
-		end
-		return lines
 	end,
 })
 

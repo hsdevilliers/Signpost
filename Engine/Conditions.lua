@@ -1,5 +1,6 @@
 -- ns.Conditions: a step's completion, pins and display lines, computed from its directives' defs
--- (Engine/Directives.lua; docs/GUIDE-FORMAT.md "Directives" has the rules).
+-- (Engine/Directives.lua; docs/GUIDE-FORMAT.md "Directives" has the rules), and whether it is a doing step, which draws
+-- no pins ("Step kinds" below).
 --
 -- Every call into a def runs under ns.SafeCall: a broken directive (a class module's, say) loses only its own result
 -- and its error goes to the error log. `states` is ns.Progress:State(step.id): states[i] belongs to step.directives[i]
@@ -269,6 +270,49 @@ function Conditions:Kind(step)
 	return fallback or "misc"
 end
 
+-- Step kinds ----------------------------------------------------------------------------------------------------------
+-- A step's kind is inferred from its directives (docs/GUIDE-FORMAT.md "Step kinds"); the engine acts on one of them.
+-- A *doing step* has a `.complete` and no place directive: it is about doing quests, and the quest log already marks
+-- their objectives on the map and the minimap. The guide's markers steer the player to a place instead (where to pick
+-- up, where to hand in, travel), so a doing step draws none: its `.complete` and its `.goto` produce no pins. The
+-- `.goto` stays in the data (the authoring tools read it as the step's position) and, as in every step that has other
+-- lines, shows no line: the step lists its quests, and the player opens the map to see where the quest log marks them.
+--
+-- A place directive is any directive but `.goto` and `.complete` that sends the player somewhere: a travel directive
+-- (def.kind "travel": .path, .zone, .fp, .fly, .boat, .zeppelin, .hs, .home) or one whose def pins something other
+-- than quest objectives (def.pin: .accept, .turnin, .train, .trainprof, .buy, .collect, .fish, and a class or
+-- profession module's directive by the same test). The rest is not positional: .use, .skill, .craft, .level, .todo,
+-- .note, .text, .link, .hub, .reward, .optional. Only the step's own directives decide: a .sticky directive is ongoing
+-- beside later steps and not what the step is for.
+
+local function isPlace(entry)
+	local def, name = entry.def, entry.directive.name
+	if not def or name == "goto" or name == "complete" then
+		return false
+	end
+	return def.kind == "travel" or (def.pin ~= nil and def.pin ~= "objective")
+end
+
+-- Whether the entries of a step (entries()) make it a doing step.
+local function isDoing(list)
+	local complete = false
+	for _, entry in ipairs(list) do
+		if not entry.sticky then
+			if entry.directive.name == "complete" then
+				complete = true
+			elseif isPlace(entry) then
+				return false
+			end
+		end
+	end
+	return complete
+end
+
+-- Whether the step is a doing step: it has a `.complete` and no place directive (see above). Targets gives it no pins.
+function Conditions:IsDoingStep(step)
+	return type(step) == "table" and isDoing(entries(step))
+end
+
 -- Pins ----------------------------------------------------------------------------------------------------------------
 
 local function priority(kind)
@@ -413,17 +457,22 @@ end
 -- of satisfied directives (a .goto always keeps its pin). A directive with a `pin` kind that has no position (no data
 -- pack, say) marks the step's first .goto pin with its kind and label instead; an NPC or object pin within a .goto's
 -- radius merges into the .goto's; pins for the same NPC or object at the same spot merge. Every pin with a quest lists
--- its quests in `quests` (several after a merge).
+-- its quests in `quests` (several after a merge). A doing step (see "Step kinds") draws none: its `.goto` and
+-- `.complete` are not asked for pins at all (no other core directive of such a step has any; a sticky place directive
+-- keeps its own).
 function Conditions:Targets(step, context, states)
 	if type(step) ~= "table" then
 		return {}
 	end
 	context = context or ns.Context
 	local pins, gotoPins, gotoSet, claims = {}, {}, {}, {}
-	for _, entry in ipairs(entries(step, states)) do
+	local list = entries(step, states)
+	local doing = isDoing(list)
+	for _, entry in ipairs(list) do
 		local def, directive = entry.def, entry.directive
 		local isGoto = directive.name == "goto"
-		if def and not (isCompletable(def) and not isGoto and satisfied(entry, context)) then
+		local quiet = doing and (isGoto or directive.name == "complete")
+		if def and not quiet and not (isCompletable(def) and not isGoto and satisfied(entry, context)) then
 			local label = lineOf(entry, context)
 			local _, produced = call(def.targets, directive.args, context, entry.state)
 			local count = 0
@@ -466,11 +515,14 @@ end
 
 -- Display -------------------------------------------------------------------------------------------------------------
 
--- lines, info: the step's display lines and, per line, { directive = index in its list, sticky = true|nil,
--- progress = true|nil (objective progress and similar), done = satisfied (completable directives only) }.
+-- lines, info: the step's display lines and, per line, { directive = index in its list, name = the directive's name,
+-- sticky = true|nil, progress = true|nil (extra lines such as the class quest line), done = satisfied (completable
+-- directives only) }.
 -- Order: the step's own lines, each followed by its progress lines, then the sticky ones. A ">>" override replaces a
--- line's description; a .goto or .fish line without one shows only when the step has no other line.
--- `states` is optional (a .craft count shows 0 without it).
+-- line's description; a .goto or .fish line without one shows only when the step has no other line (so a doing step,
+-- which has its quests, never shows its .goto: the player opens the map and looks where the quest log marks). A
+-- `.complete` line names the quest and nothing else (the quest log has the objectives); `done` says whether that quest
+-- is complete. `states` is optional (a .craft count shows 0 without it).
 function Conditions:Describe(step, context, states)
 	local lines, info = {}, {}
 	if type(step) ~= "table" then
@@ -483,7 +535,10 @@ function Conditions:Describe(step, context, states)
 		local into = entry.sticky and sticky or own
 		local line = lineOf(entry, context)
 		if line then
-			local item = { text = line, meta = { directive = entry.index, sticky = entry.sticky or nil } }
+			local item = {
+				text = line,
+				meta = { directive = entry.index, name = entry.directive.name, sticky = entry.sticky or nil },
+			}
 			if isCompletable(def) then
 				item.meta.done = satisfied(entry, context)
 			end

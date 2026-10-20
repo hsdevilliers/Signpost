@@ -68,6 +68,16 @@ describe("the shipped guides", function()
 				local best = ns.Guides:Best(player)
 				assert.are.equal(def.id, best and best.id)
 			end)
+
+			-- A doing step (a .complete and no place directive) is left to the quest log's own marks: nothing of it
+			-- is drawn, whatever the quests and the data pack, and its lines are its quests.
+			it("draws no markers for its doing steps", function()
+				for _, step in ipairs(guide.steps) do
+					if ns.Conditions:IsDoingStep(step) then
+						assert.are.same({}, ns.Conditions:Targets(step, ns.Context, {}), step.id)
+					end
+				end
+			end)
 		end)
 	end
 end)
