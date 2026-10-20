@@ -362,12 +362,53 @@ class LintTest(LintCase):
             ],
         )
 
-    def test_quest_levels_against_the_chapter(self):
+    def test_a_quest_above_the_walk_needs_a_level_step(self):
         text = "#chapter 1-10 West\nstep\n  .goto 10,50,50\n  .accept 103\nstep\n  .goto 10,50,50\n  .accept 102\n  .accept 101\n"
         report = self.lint({"Guides/Test.lua": guide_lua(text)}, pack=True)
-        self.assertEqual(self.found(report, "warning"), [("quest-level", "Guides/Test.lua", guide_line(4))])
-        errors = [key for key in report.entries if key[0] == "error" and key[1] == "quest-level"]
-        self.assertEqual([(key[4], "Too Early" in key[2]) for key in errors], [(guide_line(7), True)])
+        errors = sorted((key[4], "Bit Early" in key[2] or "Too Early" in key[2]) for key in report.entries if key[0] == "error" and key[1] == "quest-level")
+        self.assertEqual(errors, [(guide_line(4), True), (guide_line(7), True)])
+        gated = "#chapter 1-10 West\nstep\n  .goto 10,50,50\n  .level 9\n  .accept 103\nstep\n  .goto 10,50,50\n  .turnin 103\n"
+        report = self.lint({"Guides/Test.lua": guide_lua(gated)}, pack=True)
+        self.assertEqual([key for key in report.entries if key[1].startswith("quest-")], [])  # the guide asks for level 9 itself
+
+    def test_a_quest_the_walk_has_the_level_for_still_wants_a_level_line(self):
+        # the walk's estimate is not a promise: without a `.level` the guide does not guarantee the level, and says so
+        quests = {**QUESTS, 111: {"n": "Needs Two", "r": 2, "l": 2, "s": {"npc": [1001]}, "e": {"npc": [1001]}}}
+        text = (
+            "#chapter 1-10 West\nstep\n  .goto 10,50,50\n  .level 5\n  .accept 101\nstep\n  .goto 10,50,50\n  .turnin 101\n"
+            "step\n  .goto 10,50,50\n  .accept 111\nstep\n  .goto 10,50,50\n  .turnin 111\n"
+        )
+        report = self.lint({"Guides/Test.lua": guide_lua(text)}, pack=True, tables={"maps": MAPS, "quests": quests, "npcs": NPCS, "travel": TRAVEL})
+        self.assertEqual(self.codes(report), [])  # `.level 5` asked for earlier covers a level 2 quest
+        text = text.replace("  .level 5\n", "")
+        report = self.lint({"Guides/Test.lua": guide_lua(text)}, pack=True, tables={"maps": MAPS, "quests": quests, "npcs": NPCS, "travel": TRAVEL})
+        self.assertEqual(self.codes(report), ["quest-level"])  # the walk is level 1 there: it cannot have it
+
+    def test_prerequisites_chains_and_other_races_are_checked(self):
+        quests = {
+            **QUESTS,
+            120: {"n": "Lead In", "r": 1, "next": 121, "side": "Horde", "s": {"npc": [1001]}, "e": {"npc": [1001]}},
+            121: {"n": "Handed Over", "r": 1, "side": "Horde", "s": {"npc": [1001]}, "e": {"npc": [1001]}},
+            122: {"n": "Second Part", "r": 1, "preSingle": [120], "side": "Horde", "s": {"npc": [1001]}, "e": {"npc": [1001]}},
+            123: {"n": "Orc Only", "r": 1, "races": 2, "side": "Horde", "s": {"npc": [1001]}, "e": {"npc": [1001]}},
+        }
+        tables = {"maps": MAPS, "quests": quests, "npcs": NPCS, "travel": TRAVEL}
+        text = (
+            "step\n  .goto 10,50,50\n  .accept 122\n  .accept 120\n  .accept 121\n  .accept 123\n"
+            "step\n  .goto 10,50,50\n  .turnin 120\n  .turnin 121\n  .turnin 122\n  .turnin 123\n"
+        )
+        report = self.lint({"Guides/Test.lua": guide_lua(text, races=("Troll",))}, pack=True, tables=tables)
+        found = sorted((key[1], key[4]) for key in report.entries if key[0] == "error")
+        self.assertEqual(
+            found,
+            [("quest-chain", guide_line(5)), ("quest-prerequisite", guide_line(3)), ("quest-race", guide_line(6))],
+        )
+        ordered = (
+            "step\n  .goto 10,50,50\n  .accept 120\nstep\n  .goto 10,50,50\n  .turnin 120\n  .accept 121\n  .accept 122\n"
+            "step\n  .goto 10,50,50\n  .turnin 121\n  .turnin 122\n"
+        )
+        report = self.lint({"Guides/Test.lua": guide_lua(ordered, races=("Troll",))}, pack=True, tables=tables)
+        self.assertEqual(self.codes(report), [])
 
     def test_chapter_order(self):
         text = "#chapter 5-10 B\nstep\n  .goto 10,50,50\n#chapter 1-5 A\nstep\n  .goto 10,50,50\n#chapter 30 C\nstep\n  .goto 10,1,1\n"
@@ -451,6 +492,7 @@ class LintTest(LintCase):
         self.assertIn("quest 6062", next(key[2] for key in report.entries if key[1] == "class-quest"))
         # the pack's class chains count too
         classes = {"HUNTER": {"quests": [{"id": "p", "n": "Pack", "l": 5, "quests": [6063]}]}}
+        routed = routed.replace("  .accept 6061", "  .level 10\n  .accept 6061")  # the pack knows 6061 needs level 10
         files["Guides/Test.lua"] = guide_lua(routed + "#skipquest 6062 >> x\n")
         report = self.lint(files, pack=True, classes=classes)
         self.assertEqual(self.codes(report), ["class-quest"])

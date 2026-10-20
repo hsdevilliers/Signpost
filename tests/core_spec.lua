@@ -377,6 +377,43 @@ describe("debug log", function()
 		assert.are.same({ n = 2, 1, "Boar slain: 2/10" }, log[3].a)
 	end)
 
+	it("records the player's level and the quests turned in with each quest giver visit", function()
+		local ns, mock = addon.load({
+			before = function()
+				G.UnitLevel = function()
+					return 7
+				end
+				G.C_QuestLog = {
+					GetAllCompletedQuestIDs = function()
+						return { 4641, 788 }
+					end,
+				}
+			end,
+		})
+		SlashCmdList.SIGNPOST("debug on")
+		mock.fire("GOSSIP_SHOW")
+		mock.fire("QUEST_GREETING")
+		mock.fire("QUEST_DETAIL")
+		local log = ns.db.eventLog
+		for _, entry in ipairs({ log[#log - 2], log[#log - 1], log[#log] }) do
+			assert.are.equal(7, entry.s.standing.level)
+			assert.are.same({ 4641, 788 }, entry.s.standing.completed)
+		end
+		G.C_QuestLog = {
+			GetAllCompletedQuestIDs = function()
+				local many = {}
+				for i = 1, 601 do
+					many[i] = i
+				end
+				return many
+			end,
+		}
+		mock.fire("GOSSIP_SHOW")
+		assert.is_nil(ns.db.eventLog[#ns.db.eventLog].s.standing.completed) -- too long to keep
+		assert.are.equal(7, ns.db.eventLog[#ns.db.eventLog].s.standing.level)
+		G.UnitLevel, G.C_QuestLog = nil, nil
+	end)
+
 	it("never stores a player's name or GUID from the npc unit (a quest a party member shares)", function()
 		local guid = "Player-1465-0A1B2C3D"
 		local ns, mock = addon.load({

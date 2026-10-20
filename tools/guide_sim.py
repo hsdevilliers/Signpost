@@ -33,7 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import guide_travel  # noqa: E402
-from signpost_tools import guidefile  # noqa: E402
+from signpost_tools import availability, guidefile  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PARAMS_FILE = REPO_ROOT / "tools" / "sim_params.json"
@@ -96,6 +96,17 @@ def read_quest_xp(pack_dir: Path | None) -> dict[int, int]:
     if not path.is_file():
         return {}
     return {int(quest): int(xp) for quest, _level, xp in _XP_ROW.findall(path.read_text(encoding="utf-8", errors="replace"))}
+
+
+def make_model(pack: guide_travel.Pack, params: dict | None = None, quest_xp: dict | None = None) -> "Model":
+    """The model over a data pack: its parameters (tools/sim_params.json) and quest XP (QuestieDB's Classic seed if the pack has it)."""
+    return Model(
+        params or load_params(),
+        pack.table("quests"),
+        pack.table("npcs"),
+        pack.table("items"),
+        read_quest_xp(pack.path) if quest_xp is None else quest_xp,
+    )
 
 
 # The model ------------------------------------------------------------------------------------------------------------
@@ -214,6 +225,18 @@ class Stall:
     reason: str
     needs: int
     seconds: float
+    kind: str = "gate"  # gate: a `.level N` the guide tells the player to reach; quest: an accept nothing in the guide gates
+
+
+@dataclass
+class Violation:
+    """A step the game would not let the character do: an accept the availability rules say is not offered at that point."""
+
+    step: guidefile.RouteStep
+    line: int | None
+    quest: int
+    reason: availability.Unmet
+    name: str = ""
 
 
 @dataclass
@@ -245,6 +268,47 @@ class Result:
     todo: int = 0
     risk: list[tuple[str, int, int, int]] = field(default_factory=list)  # (reason, quest, quest level, character level)
     skipped: int = 0
+    violations: list[Violation] = field(default_factory=list)
+
+
+class Progress:
+    """The character's level and experience while the route is walked (the drafter walks with the same one)."""
+
+    def __init__(self, model: Model, level: int = 1, xp: float = 0.0) -> None:
+        self.model, self.level, self.xp = model, level, xp
+        self.reached: list[int] = []  # the levels gained since the list was last emptied
+
+    def _level_up(self) -> None:
+        top = max(self.model.p["xp_to_level"]) + 1
+        while self.xp >= self.model.to_next(self.level) and self.level < top:
+            self.xp -= self.model.to_next(self.level)
+            self.level += 1
+            self.reached.append(self.level)
+
+    def gain(self, amount: float) -> None:
+        self.xp += amount * (1 + self.model.p["rested_fraction"])
+        self._level_up()
+
+    def grind_to(self, target: int) -> float:
+        """Seconds of killing at the character's level for the experience still missing to reach `target` (0 if there)."""
+        if target <= self.level:
+            return 0.0
+        missing = sum(self.model.to_next(n) for n in range(self.level, target)) - self.xp
+        if missing <= 0:
+            return 0.0
+        seconds = missing / self.model.grind_xp_per_second(self.level)
+        self.xp += missing
+        self._level_up()
+        return seconds
+
+
+def character_of(route: guidefile.Route, skill_lines: dict | None = None) -> availability.Character:
+    """Who the route's variant is, for the availability rules (a race or class the guide leaves open is not checked)."""
+    variant = route.variant
+    race = None if variant.race == guidefile.OTHER else variant.race
+    cls = None if variant.cls == guidefile.OTHER else variant.cls
+    skills = frozenset(skill_lines[key] for key in variant.plan if skill_lines and skill_lines.get(key))
+    return availability.Character(variant.faction, availability.race_bit(race, variant.faction), availability.class_bit(cls), skills)
 
 
 def run(
@@ -253,14 +317,18 @@ def run(
     model: Model,
     start_level: int | None = None,
     skip: frozenset = frozenset(),
+    rules: availability.Rules | None = None,
 ) -> Result:
-    """Walk the route; `skip` is a what-if: the quests whose accept, objectives and turn-in are left out."""
+    """Walk the route. `skip` is a what-if: the quests whose accept, objectives and turn-in are left out. With `rules` every
+    accept is checked against the availability rules at that point of the walk (level, quests turned in, quest log)."""
     travel = guide_travel.simulate(route, world)
     p = model.p
     first = route.chapters[0].levels[0] if route.chapters else 1
-    level = start_level or max(1, first)
-    xp = 0.0
+    progress = Progress(model, start_level or max(1, first))
     clock = 0.0
+    done: set[int] = set()  # quests turned in
+    active: set[int] = set()  # quests in the log
+    gated = 0  # the highest `.level N` the route has asked for so far: the one level the guide itself guarantees
     result = Result(route.guide.id, route.variant.label())
     chapters: dict[int, ChapterTime] = {}
     previous = 0.0
@@ -269,76 +337,77 @@ def run(
         chapter = chapters.get(rs.chapter)
         if chapter is None:
             source = route.chapters[rs.chapter]
-            chapter = chapters[rs.chapter] = ChapterTime(source.name, source.levels, level_in=level, level_out=level)
+            chapter = chapters[rs.chapter] = ChapterTime(source.name, source.levels, level_in=progress.level, level_out=progress.level)
         walk = max(0.0, state.clock - previous - guide_travel.STEP_SECONDS)
         previous = state.clock
         spent = walk
-        waited = 0.0
-        gained = 0.0
-        needs = 0
+        stalled = 0.0
+        longest_wait = 0.0  # a step is done together: its objectives run side by side, so the longest wait counts once
         todo = False
+        # `.level N` is the guide's own gate: the player gets there first, which costs grinding and is not a fault
+        gate = max((d.args["level"] for d in rs.directives if d.name == "level"), default=0)
+        gated = max(gated, gate)
+        if gate > progress.level:
+            seconds = progress.grind_to(gate)
+            stalled += seconds
+            result.stalls.append(Stall(rs, f"needs level {gate}", gate, seconds))
         for d in rs.directives:
-            if d.args.get("quest") in skip and d.name in ("accept", "turnin", "complete"):
+            quest = d.args.get("quest")
+            if quest in skip and d.name in ("accept", "turnin", "complete"):
+                result.skipped += 1
                 continue
             if d.name == "todo":
                 todo = True
-            elif d.name == "level":
-                needs = max(needs, d.args["level"])
             elif d.name == "accept":
-                record = model.quests.get(d.args["quest"]) or {}
-                needs = max(needs, record.get("r") or 0)
-        # a step is done together: its objectives run side by side in one area, so the longest wait counts once
-        longest_wait = 0.0
-        for d in rs.directives:
-            if d.args.get("quest") in skip and d.name in ("accept", "turnin", "complete"):
-                result.skipped += 1
-                continue
-            if d.name == "accept":
-                model.note_risk(result, d.args["quest"], level)
-            if d.name in ("accept", "turnin"):
+                need = (model.quests.get(quest) or {}).get("r") or 0
+                if rules is not None:
+                    name = (model.quests.get(quest) or {}).get("n") or ""
+                    for reason in rules.unmet(quest, progress.level, done, active):
+                        result.violations.append(Violation(rs, d.line, quest, reason, name))
+                    if 1 < need > gated and need <= progress.level:
+                        text = f"it needs level {need} and nothing in the guide asks for it (add .level {need}); the walk only estimates level {progress.level}"
+                        result.violations.append(Violation(rs, d.line, quest, availability.Unmet("level-ungated", text), name))
+                model.note_risk(result, quest, progress.level)
+                if need > progress.level:  # the guide never said so: the walk grinds, and the rules flag it
+                    seconds = progress.grind_to(need)
+                    stalled += seconds
+                    result.stalls.append(Stall(rs, f"needs level {need}", need, seconds, "quest"))
+                active.add(quest)
                 spent += p["interact_seconds"]
-                if d.name == "turnin":
-                    gained += model.reward_xp(d.args["quest"], level)
-                    record = model.quests.get(d.args["quest"]) or {}
-                    if record.get("l"):
-                        gap = record["l"] - level
-                        if gap >= p["over_levelled_gap"]:
-                            result.gaps.append(("over", d.args["quest"], record["l"], level))
-                        elif -gap >= p["under_levelled_gap"]:
-                            result.gaps.append(("under", d.args["quest"], record["l"], level))
+            elif d.name == "turnin":
+                spent += p["interact_seconds"]
+                record = model.quests.get(quest) or {}
+                if record.get("l"):
+                    gap = record["l"] - progress.level
+                    if gap >= p["over_levelled_gap"]:
+                        result.gaps.append(("over", quest, record["l"], progress.level))
+                    elif -gap >= p["under_levelled_gap"]:
+                        result.gaps.append(("under", quest, record["l"], progress.level))
+                progress.gain(model.reward_xp(quest, progress.level))
+                active.discard(quest)
+                done.add(quest)
             elif d.name == "complete":
-                seconds, wait, objective_xp = model.objective(d.args["quest"], d.args["objective"], level)
+                seconds, wait, objective_xp = model.objective(quest, d.args["objective"], progress.level)
                 spent += seconds - wait
                 longest_wait = max(longest_wait, wait)
-                gained += objective_xp
+                progress.gain(objective_xp)
         spent += longest_wait
-        waited += longest_wait
         if todo:
             result.todo += 1
-        stalled = 0.0
-        if needs > level:
-            missing = sum(model.to_next(n) for n in range(level, needs)) - xp
-            if missing > 0:
-                rate = model.grind_xp_per_second(level)
-                stalled = missing / rate
-                result.stalls.append(Stall(rs, f"needs level {needs}", needs, stalled))
-                xp += missing
-        xp += gained * (1 + p["rested_fraction"])
         clock += spent + stalled
-        while xp >= model.to_next(level) and level < max(p["xp_to_level"]) + 1:
-            xp -= model.to_next(level)
-            level += 1
+        for level in progress.reached:
             result.levels[level] = (clock, chapter.name)
+        progress.reached.clear()
         chapter.seconds += spent + stalled
         chapter.travel += walk
-        chapter.wait += waited
+        chapter.wait += longest_wait
         chapter.stall += stalled
-        chapter.level_out = level
+        chapter.level_out = progress.level
         result.travel += walk
-        result.wait += waited
+        result.wait += longest_wait
         result.stall += stalled
-        result.steps.append((rs.id, spent + stalled, clock, level))
-    result.seconds, result.level = clock, level
+        result.steps.append((rs.id, spent + stalled, clock, progress.level))
+    result.seconds, result.level = clock, progress.level
     result.chapters = [chapters[key] for key in sorted(chapters)]
     return result
 
@@ -365,6 +434,7 @@ def report(result: Result, with_steps: bool = False) -> list[str]:
             f"     {chapter.name:<44} {hours(chapter.seconds):>7}  L{chapter.level_in}->{chapter.level_out}  "
             f"travel {hours(chapter.travel)} wait {hours(chapter.wait)} grind {hours(chapter.stall)}"
         )
+    out += violation_lines(result)
     if result.stalls:
         out.append(f"   level gates that stalled the route ({len(result.stalls)}):")
         for stall in sorted(result.stalls, key=lambda item: -item.seconds)[:8]:
@@ -385,6 +455,21 @@ def report(result: Result, with_steps: bool = False) -> list[str]:
         out.append(f"   {'step':<36} {'minutes':>8} {'clock':>8} level")
         for step_id, seconds, clock, level in result.steps:
             out.append(f"   {step_id:<36} {seconds / 60:>8.1f} {hours(clock):>8} {level:>5}")
+    return out
+
+
+def violation_lines(result: Result, limit: int = 15) -> list[str]:
+    """The accepts the availability rules say the game would not offer, errors first."""
+    errors = [v for v in result.violations if v.reason.severity == "error"]
+    warnings = [v for v in result.violations if v.reason.severity != "error"]
+    if not (errors or warnings):
+        return []
+    out = [f"   availability: {len(errors)} error(s), {len(warnings)} warning(s) (the game would not offer these quests there):"]
+    for v in (errors + warnings)[:limit]:
+        label = f' "{v.name}"' if v.name else ""
+        out.append(f"     {v.step.id} [{v.reason.severity}] quest {v.quest}{label}: {v.reason.text}")
+    if len(errors) + len(warnings) > limit:
+        out.append(f"     ... and {len(errors) + len(warnings) - limit} more")
     return out
 
 
@@ -477,8 +562,8 @@ def calibration_report(result: Result, owner: str, played: dict[int, float]) -> 
 # Command line ---------------------------------------------------------------------------------------------------------
 
 
-def run_one(route, world, quests, npcs, items, quest_xp, params, skip=frozenset()) -> Result:
-    return run(route, world, Model(params, quests, npcs, items, quest_xp), skip=skip)
+def run_one(route, world, quests, npcs, items, quest_xp, params, skip=frozenset(), rules=None) -> Result:
+    return run(route, world, Model(params, quests, npcs, items, quest_xp), skip=skip, rules=rules)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -496,6 +581,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-xp-file", action="store_true", help="ignore QuestieDB's quest XP seed")
     parser.add_argument("--skip-quest", type=int, action="append", default=[], help="what-if: leave this quest out (repeatable)")
     parser.add_argument("--steps", action="store_true", help="list every step's time")
+    parser.add_argument("--check", action="store_true", help="print only the availability findings; exit 1 if there is an error")
     parser.add_argument(
         "--pace",
         nargs="?",
@@ -540,9 +626,22 @@ def main(argv: list[str] | None = None) -> int:
     if options.sensitivity:
         print("\n".join(sensitivity(jobs, params)))
         return 0
-    results = [run_one(*job, params) for job in jobs]
+    skill_lines = {key: module.skill_line for key, module in project.professions.items() if module.skill_line}
+
+    def rules_for(route):
+        return availability.Rules(quests, character_of(route, skill_lines))
+
+    results = [run_one(*job, params, rules=rules_for(job[0])) for job in jobs]
+    if options.check:
+        errors = 0
+        for result in results:
+            lines = violation_lines(result, limit=10**6)
+            errors += sum(1 for v in result.violations if v.reason.severity == "error")
+            print(f"== {result.guide} [{result.variant}]: " + ("no availability findings" if not lines else ""))
+            print(chr(10).join(lines))
+        return 1 if errors else 0
     skip = frozenset(options.skip_quest)
-    variants = [run_one(*job, params, skip) for job in jobs] if skip else []
+    variants = [run_one(*job, params, skip, rules_for(job[0])) for job in jobs] if skip else []
     if options.json:
         print(json.dumps([{"guide": r.guide, "variant": r.variant, "seconds": r.seconds, "travel": r.travel, "wait": r.wait,
                            "stall": r.stall, "level": r.level, "levels": {str(k): v[0] for k, v in r.levels.items()}} for r in results], indent=2))

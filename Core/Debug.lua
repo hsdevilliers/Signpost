@@ -111,10 +111,25 @@ local function itemIDFromLink(link)
 	return type(link) == "string" and tonumber(link:match("item:(%d+)")) or nil
 end
 
+-- What tools/validate_availability.py needs to compare the quests the game offered here with the availability rules
+-- (tools/signpost_tools/availability.py): the player's level and every quest turned in so far (IDs only; not stored
+-- when the list is longer than MAX_COMPLETED, so a long-played character does not bloat the file).
+local MAX_COMPLETED = 600
+
+local function standing()
+	local questLog = C_QuestLog or {}
+	local completed = call(questLog.GetAllCompletedQuestIDs)
+	if type(completed) ~= "table" or #completed > MAX_COMPLETED then
+		completed = nil
+	end
+	return { level = call(UnitLevel, "player"), completed = completed }
+end
+
 local snapshots = {}
 
 snapshots.QUEST_DETAIL = function()
 	return {
+		standing = standing(),
 		npc = npc(),
 		questID = call(GetQuestID),
 		title = call(GetTitleText),
@@ -126,7 +141,7 @@ snapshots.QUEST_DETAIL = function()
 end
 
 snapshots.QUEST_GREETING = function()
-	local result = { npc = npc(), available = {}, active = {} }
+	local result = { standing = standing(), npc = npc(), available = {}, active = {} }
 	for i = 1, call(GetNumAvailableQuests) or 0 do
 		result.available[i] = {
 			title = call(GetAvailableTitle, i),
@@ -142,6 +157,7 @@ end
 snapshots.GOSSIP_SHOW = function()
 	local gossip = C_GossipInfo or {}
 	return {
+		standing = standing(),
 		npc = npc(),
 		options = call(gossip.GetOptions),
 		available = call(gossip.GetAvailableQuests),

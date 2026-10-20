@@ -188,9 +188,9 @@ class PoolTest(DraftCase):
         self.assertNotIn("#skipquest 201", text)
 
     def test_excluded_quests_become_skipquest_lines(self):
-        text, report = self.draft("--exclude", "203", "--exclude-reason", "hardcore: elite")
+        text, report = self.draft("--exclude", "203", "--exclude-reason", "HARDCORE: elite")
         self.assertNotIn(203, self.quests_in(text, "accept"))
-        self.assertIn("#skipquest 203 >> hardcore: elite", text)
+        self.assertIn("#skipquest 203 >> HARDCORE: elite", text)
         self.assertIn("excluded by the author", report)
 
     def rules_file(self, rules):
@@ -216,7 +216,7 @@ class PoolTest(DraftCase):
         self.assertTrue({220, 221} <= set(self.quests_in(normal, "accept")))
         text, report = self.draft("--hardcore", self.rules_file([]))
         self.assertFalse({220, 221} & set(self.quests_in(text, "accept")))
-        self.assertIn("hardcore: needs an elite or boss kill", report)
+        self.assertIn("HARDCORE: needs an elite or boss kill", report)
         self.assertIn(203, self.quests_in(text, "accept"))  # a normal boar is fine
         self.assertIn(222, self.quests_in(text, "accept"))  # an elite drops it, but an object gives it too
 
@@ -225,7 +225,7 @@ class PoolTest(DraftCase):
         self.assertIn(223, self.quests_in(normal, "accept"))  # level 9 in a 1-6 chapter
         text, report = self.draft("--hardcore", self.rules_file([]))
         self.assertNotIn(223, self.quests_in(text, "accept"))
-        self.assertIn("hardcore: quest level too far above the chapter", report)
+        self.assertIn("HARDCORE: quest level too far above the chapter", report)
         text, _ = self.draft("--hardcore", self.rules_file([]), "--hardcore-over", "3")
         self.assertIn(223, self.quests_in(text, "accept"))  # 6 + 3 allows level 9
 
@@ -241,24 +241,94 @@ class PoolTest(DraftCase):
             self.assertTrue(rule.get("source") and rule.get("confidence") in ("high", "medium", "low"), rule)
             self.assertTrue(rule.get("reason") if rule["action"] == "skip" else rule.get("text"), rule)
 
-    def test_the_level_estimate_does_not_stall_on_a_gate(self):
+    def test_a_quest_above_the_walk_gets_a_level_step_and_a_level_line(self):
         quests = {**QUESTS, 218: {"n": "Level Six", "r": 6, "l": 6, **HOME}}
         text, report = self.draft(quests=quests)
         self.assertIn(218, self.quests_in(text, "accept"))
-        self.assertIn("assumed", report)
-
-    def test_xp_levels_estimate_from_quest_xp_and_still_do_not_stall(self):
-        quests = {**QUESTS, 218: {"n": "Level Six", "r": 6, "l": 6, **HOME}}
-        text, report = self.draft("--xp-levels", quests=quests)
-        self.assertIn(218, self.quests_in(text, "accept"))
-        self.assertIn("assumed", report)  # a few level-1 quests do not give six levels of XP
-        again, _ = self.draft("--xp-levels", quests=quests)
+        self.assertIn("level 6 is needed here", report)  # a few level-1 quests do not give five levels of XP
+        self.assertLess(text.index(".level 6"), text.index(".accept 218"))
+        again, _ = self.draft(quests=quests)
         self.assertEqual(text, again)  # the same pack and parameters give the same chapter
 
-    def test_xp_levels_keep_the_hardcore_wait(self):
-        text, _ = self.draft("--xp-levels", "--hardcore", self.rules_file([]))
-        self.assertNotIn(".complete 229,1", text.split("step" + chr(10))[1])
+    def test_each_quest_above_the_last_level_asked_for_gets_a_level_line_before_its_accept(self):
+        quests = {
+            **QUESTS,
+            250: {"n": "Needs Two", "r": 2, "l": 2, **HOME},
+            251: {"n": "Needs Three", "r": 3, "l": 3, **HOME},
+            252: {"n": "Also Three", "r": 3, "l": 3, **HOME},
+        }
+        text, _ = self.draft(quests=quests)
+        for quest, level in ((250, 2), (251, 3)):
+            self.assertRegex(text, rf"\.level {level}\n  \.accept {quest} ")  # the line comes right before the accept
+        self.assertRegex(text, r"\.accept 252 ")
+        self.assertEqual(text.count(".level 3\n"), 1)  # asked for once: the second level-3 quest needs no line
+
+    def test_the_walk_carries_over_from_the_chapter_before(self):
+        quests = {**QUESTS, 250: {"n": "Needs Four", "r": 4, "l": 4, **HOME}}
+        text, _ = self.draft("--start-level", "4", "--gated", "4", quests=quests)
+        self.assertRegex(text, r"\.accept 250 ")
+        self.assertNotIn(".level 4", text)  # the chapter before already asked for it, and the walk is there
+        text, _ = self.draft("--start-level", "4", quests=quests)
+        self.assertRegex(text, r"\.level 4\n  \.accept 250 ")  # the walk is there, but nothing has asked for it yet
+
+    def test_in_hardcore_objectives_still_wait_for_the_level(self):
+        text, _ = self.draft("--hardcore", self.rules_file([]))
+        self.assertNotIn(".complete 229,1", text.split("step\n")[1])
         self.assertLess(text.index(".level"), text.index(".complete 229,1"))
+
+    def test_a_prerequisite_of_another_class_does_not_open_the_quest_that_follows_it(self):
+        # the Burning Blade Medallion (794): it follows Vile Familiars, which the Warlock has its own version of; the
+        # Warlock's version being someone else's must not make the Medallion available before the hunter's version is done
+        quests = {
+            **QUESTS,
+            240: {"n": "Everyone's Familiars", "r": 1, "l": 2, "classes": 1247, "next": 242, **HOME},
+            241: {"n": "Warlock Familiars", "r": 1, "l": 2, "classes": 256, "next": 242, **HOME},
+            242: {"n": "The Medallion", "r": 1, "l": 3, "preSingle": [240, 241], **HOME},
+        }
+        text, report = self.draft(quests=quests)
+        self.assertNotIn(241, self.quests_in(text, "accept"))
+        self.assertIn(242, self.quests_in(text, "accept"))
+        self.assertLess(text.index(".turnin 240"), text.index(".accept 242"))
+        # and a quest whose only alternatives are other classes' is not routed at all
+        quests[242] = {"n": "The Medallion", "r": 1, "l": 3, "preSingle": [241], **HOME}
+        text, report = self.draft(quests=quests)
+        self.assertNotIn(242, self.quests_in(text, "accept"))
+        self.assertIn("a prerequisite is closed to this character", report)
+
+    def test_a_quest_the_game_hands_over_on_turn_in_is_accepted_after_that_turn_in(self):
+        quests = {
+            **QUESTS,
+            243: {"n": "Lead In", "r": 1, "l": 1, "next": 244, **HOME},
+            244: {"n": "Handed Over", "r": 1, "l": 1, **HOME},  # no prerequisite in the pack, like Cutting Teeth
+        }
+        text, _ = self.draft(quests=quests)
+        self.assertLess(text.index(".turnin 243"), text.index(".accept 244"))
+
+    def test_a_step_is_one_npc(self):
+        text, _ = self.draft()
+        for step in text.split("step\n")[1:]:
+            places = {line.split("--")[0].strip() for line in step.splitlines() if line.strip().startswith(".goto")}
+            self.assertLessEqual(len(places), 1, step)  # a .todo step (no position) has none
+        # 202 ends with another NPC than the one that gave 201: they are two steps
+        steps = text.split("step\n")
+        accept_201 = next(step for step in steps if ".accept 201" in step)
+        self.assertNotIn(".turnin 202", accept_201)
+
+    def test_group_quests_are_optional_in_a_normal_guide_and_left_out_of_a_hardcore_one(self):
+        text, _ = self.draft()
+        self.assertIn(220, self.quests_in(text, "accept"))  # kills an elite
+        self.assertRegex(text, r"\.optional 220 -- group quest: Elite Hunt")
+        self.assertNotIn(".optional 203", text)  # an ordinary boar quest is not optional
+        hardcore, _ = self.draft("--hardcore", self.rules_file([]))
+        self.assertNotIn(".optional", hardcore)
+
+    def test_only_drafts_the_named_quests_and_a_note_goes_after_the_accept(self):
+        text, report = self.draft("--only", "201", "--only", "202", "--note", "202=Unverified: from the data.")
+        self.assertEqual(set(self.quests_in(text, "accept")), {201, 202})
+        self.assertIn("not named by --only", report)
+        self.assertRegex(text, r"\.accept 202 -- Follows First\n  \.note Unverified: from the data\.")
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.draft("--note", "not a note")
 
     def test_a_chain_orders_quests_the_pack_does_not_link(self):
         text, _ = self.draft("--chain", "203,201")  # 201 has no prerequisite in the pack; the chain makes it wait for 203

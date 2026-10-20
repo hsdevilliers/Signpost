@@ -6,16 +6,23 @@
 Steps, in the order PLAN §7 gives:
   1. the candidate pool: every quest the race, class and faction may take in the zones asked for (masks, side, level,
      not repeatable, no profession requirement), with the reason each other quest was dropped;
-  2. prerequisites and chains decide when a quest is available (a prerequisite outside the pool counts as done;
-     mutually exclusive quests keep the first one reached);
+  2. the availability rules (tools/signpost_tools/availability.py) decide when a quest may be taken: the level it needs,
+     prerequisites and chains (a prerequisite that is another class's or race's quest never counts), quests that close each
+     other, quests a quest hands over when it is turned in. A quest whose prerequisites the route never does is not routed;
   3. town loops: from where the walker stands, the nearest place with something to do (accept, turn in, an objective
-     area), everything that can be done at that place in one step, until nothing is left;
-  4. a level estimate keeps required levels met: a placeholder (one level per --quests-per-level finished quests) or, with
-     --xp-levels, the simulator's XP model (tools/guide_sim.py). Treat the order as a first draft: the author reorders, drops and tags.
+     area); a step holds what can be done at that one place: one NPC for quests, one area for objectives;
+  4. the walker's level is tools/guide_sim.py's: experience from the quests it turns in and the kills it makes. A quest above
+     the level the route has asked for gets a `.level N` line before its `.accept`, so the step shows why a quest is not
+     offered yet; when nothing can be done until the walker has levelled, a `.level N` step says so.
+Treat the order as a first draft: the author reorders, drops and tags.
 
-Group (elite) quests and the hardcore skip list are not in the pack: name them with --exclude (each becomes a
-`#skipquest <id> >> <reason>` line) and review the draft. Travel between zones is not generated here: a `.todo` marks each
-zone change, and tools/guide_travel.py proposes the travel steps. Output is DSL for a chapter file (docs/GUIDE-FORMAT.md).
+Group (elite) quests are tagged `.optional` in a normal guide and left out of a HARDCORE one (`--hardcore`, which also
+applies the sourced skip list in tools/hardcore_rules.json: each skip becomes a `#skipquest <id> >> <reason>` line, each
+note a `.note`). Further quests to leave out are named with --exclude; a hand-picked chapter (the arrival quests of a new race) names the
+quests it holds with --only. Travel between zones is not generated here: a `.todo`
+marks each zone change, and tools/guide_travel.py proposes the travel steps. Output is DSL for a chapter file
+(docs/GUIDE-FORMAT.md). tools/rebuild_drafts.py drafts a whole guide, chapter after chapter, handing each the level,
+experience and finished quests of the one before.
 """
 
 from __future__ import annotations
@@ -28,48 +35,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import guide_sim  # noqa: E402
 import guide_travel  # noqa: E402
-from signpost_tools import guidefile  # noqa: E402
+from signpost_tools import availability, guidefile  # noqa: E402
+from signpost_tools.availability import CLASS_BITS, CLASS_SORTS, EVENT_SORTS, RACE_BITS  # noqa: E402
 from signpost_tools.guidefile import Coord  # noqa: E402
 
-# The data pack's masks are bit (id - 1) of the client's race and class IDs.
-RACE_BITS = {
-    "human": 1, "orc": 2, "dwarf": 4, "nightelf": 8, "scourge": 16, "undead": 16, "tauren": 32, "gnome": 64, "troll": 128
-}  # fmt: skip
-CLASS_BITS = {
-    "WARRIOR": 1, "PALADIN": 2, "HUNTER": 4, "ROGUE": 8, "PRIEST": 16, "SHAMAN": 64, "MAGE": 128, "WARLOCK": 256, "DRUID": 1024
-}  # fmt: skip
-# A class quest the pack gives no class mask is filed under its class's quest sort (the client's quest categories with the
-# sign dropped); the Forever layers do this for new class chains (Windshaper Cat Form).
-CLASS_SORTS = {
-    61: "WARLOCK", 81: "WARRIOR", 82: "SHAMAN", 141: "PALADIN", 161: "MAGE", 162: "ROGUE", 261: "HUNTER", 262: "PRIEST", 263: "DRUID"
-}  # fmt: skip
-# The pack's `sort` values of seasonal and event quests (the client's quest categories with the sign dropped): Seasonal 22,
-# Special 284, Darkmoon Faire 364, Ahn'Qiraj War Effort 365, Lunar Festival 366, Invasion 368, Midsummer 369.
-EVENT_SORTS = {22, 284, 364, 365, 366, 368, 369}
-# Reasons that make a quest unavailable to the route: a quest that depends on one of these cannot be reached either. The
-# other reasons (other race, class or faction, repeatable, a profession skill, grey) count as "done before or irrelevant".
-BLOCKING = {
-    "above the level range",
-    "does not start in the zones",
-    "belongs to another zone",
-    "turn-in outside the zones (route by hand)",
-    "excluded by the author",
-    "needs a profession skill",
-    "objective lies outside the zones (route by hand)",
-    "hardcore: needs an elite or boss kill",
-    "hardcore: quest level too far above the chapter",
-}
 ZONE_STICKINESS = 3000.0  # yards of extra cost for leaving the zone the walker is in, so a zone is finished first
 # Forever is not Classic (CLAUDE.md): every drafted chapter says what its source is and is not.
 BASELINE_NOTE = (
     "-- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). "
     "The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md."
 )
-SAME_PLACE = 2.0  # map percent: positions this close are one place (a few dozen yards in a zone)
+SAME_PLACE = 2.0  # map percent: objective areas this close are one place (a few dozen yards in a zone)
+NPC_PLACE = 0.35  # map percent: quest givers this close are one NPC's place (a few yards); a step is one NPC
 NEAR_BAND = 40.0  # map percent beyond which two places on one map are a trip of their own
 MAX_OBJECTIVE_SPOTS = 3  # spawn areas considered per objective
 MAX_DROP_SOURCES = 4  # an item with more drop sources than this is pinned at the nearest few only
+HARDCORE_NOTE = "HARDCORE: not routed"
+PERMANENT = {"locked", "impossible", "faction", "race", "class"}  # availability reasons that do not pass with time
 
 
 @dataclass
@@ -94,6 +78,7 @@ class Quest:
     exclusive: list[int]
     class_mask: int | None
     race_mask: int | None
+    optional: bool = False  # a group (elite) quest in a normal guide: the step does not wait for it
 
 
 @dataclass
@@ -105,6 +90,14 @@ class Draft:
     unplaced: list[str] = field(default_factory=list)
     kept: int = 0
     skipped: dict[int, str] = field(default_factory=dict)  # routed out on purpose: quest -> reason
+    # where the walk ends, for the next chapter of the guide
+    level: int = 1
+    xp: float = 0.0
+    gated: int = 0  # the highest `.level N` the route has asked for
+    done: set[int] = field(default_factory=set)  # every quest turned in, this chapter's and the earlier ones'
+
+
+LAST: tuple[Draft, argparse.Namespace] | None = None  # the last main() result, for tools/rebuild_drafts.py
 
 
 def _ids(value: object) -> list[int]:
@@ -169,7 +162,11 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
     zones = set(spec.zone)
     dropped: dict[str, list[int]] = {}
     pool: dict[int, Quest] = {}
-    for qid, record in sorted(pack.table("quests").items()):
+    quests = pack.table("quests")
+    rules = availability.Rules(quests, availability.Character(spec.faction, spec.race_bit, spec.class_bit))
+    # the level the walk has when the chapter begins decides which quests are too low to bother with
+    floor = max(spec.min_level, getattr(spec, "start_level", None) or 0)
+    for qid, record in sorted(quests.items()):
         if not isinstance(record, dict):
             continue
 
@@ -185,6 +182,8 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
             drop("other race")
         elif isinstance(classes, int) and not classes & spec.class_bit:
             drop("other class")
+        elif getattr(spec, "only", None) and qid not in spec.only:
+            drop("not named by --only")
         elif spec.class_only and not isinstance(classes, int):
             drop("not a class quest (--class-only)")
         elif record.get("repeatable"):
@@ -195,8 +194,10 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
             drop("needs a profession skill")
         elif (record.get("r") or 0) > spec.max_level:
             drop("above the level range")
-        elif (record.get("l") or 0) and record["l"] + spec.grey < spec.min_level:
+        elif (record.get("l") or 0) and record["l"] + spec.grey < floor:
             drop("below the level range")
+        elif rules.never(qid):
+            drop("a prerequisite is closed to this character")
         else:
             zone = record.get("zone")
             if isinstance(zone, int) and not any(world.within(zone, wanted) for wanted in zones):
@@ -223,10 +224,11 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
                 drop("objective lies outside the zones (route by hand)")
                 continue
             if spec.hardcore and (record.get("l") or 0) > spec.max_level + spec.hardcore_over:
-                drop("hardcore: quest level too far above the chapter")
+                drop("HARDCORE: quest level too far above the chapter")
                 continue
-            if spec.hardcore and any(_elite_objective(pack, o.kind, o.ident) for o in objectives):
-                drop("hardcore: needs an elite or boss kill")
+            elite = any(_elite_objective(pack, o.kind, o.ident) for o in objectives)
+            if spec.hardcore and elite:
+                drop("HARDCORE: needs an elite or boss kill")
                 continue
             pool[qid] = Quest(
                 qid,
@@ -241,6 +243,7 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
                 _ids(record.get("exclusive")),
                 classes if isinstance(classes, int) else None,
                 races if isinstance(races, int) else None,
+                optional=elite,
             )
     return pool, dropped
 
@@ -311,59 +314,45 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
         result.skipped[qid] = spec.skip_reasons[qid]
         result.dropped.setdefault("excluded by the author", []).append(qid)
     result.kept = len(pool)
-    blocking = {qid for reason in BLOCKING for qid in result.dropped.get(reason, [])}
+
+    rules = availability.Rules(pack.table("quests"), availability.Character(spec.faction, spec.race_bit, spec.class_bit))
+    model = guide_sim.make_model(pack)
+    progress = guide_sim.Progress(model, getattr(spec, "start_level", None) or spec.min_level, getattr(spec, "start_xp", 0.0))
+    gated = getattr(spec, "gated", 0)  # the highest `.level N` the route has asked for so far
 
     # a chain the pack lacks the links of (new Forever chains): each quest waits for the one before it
+    after: dict[int, list[int]] = {}
     for chain in getattr(spec, "chain", None) or []:
         for earlier, later in zip(chain, chain[1:]):
-            if later in pool and earlier not in pool[later].pre_all:
-                pool[later].pre_all.append(earlier)
+            after.setdefault(later, []).append(earlier)
 
-    done: set[int] = set(spec.done)  # routed by an earlier chapter: not drafted again, and they satisfy prerequisites
+    done: set[int] = set(spec.done)  # turned in by earlier chapters: not drafted again, and they satisfy prerequisites
     for qid in sorted(done & set(pool)):
         pool.pop(qid)
     active: dict[int, set[int]] = {}  # quest -> objective indexes still open
     gone: set[int] = set()  # quests made unavailable by an exclusive one
+    for qid in done:  # a quest an earlier chapter turned in closes the quests that exclude it
+        gone.update(other for other in _ids((pack.table("quests").get(qid) or {}).get("exclusive")) if other in pool)
     pos = spec.start
     zone_of = world.geo.zone
 
-    assumed = [0]  # levels the walker is assumed to gain beyond the quest estimate when the route stalls on a gate
+    def closed(p: int) -> bool:
+        """A quest this character will never do from here: another race's or class's, or closed by an exclusive one."""
+        return any(r.code in PERMANENT for r in rules.unmet(p, 99, done, active))
 
-    xp_model = None
-    if getattr(spec, "xp_levels", False):
-        # the level the walker has reached from the XP of the quests this chapter finished (tools/guide_sim.py's model)
-        import guide_sim
+    def waiting(q: Quest) -> bool:
+        """A quest that has to come after another one of this route: the quest that hands it over when it is turned in
+        (the game stops offering it while that one is in the log), or the one before it in a chain."""
+        handed = any(p in pool and p not in done and p not in gone and not closed(p) for p in rules.parents.get(q.id, ()))
+        return handed or any(p not in done for p in after.get(q.id, ()))
 
-        xp_model = guide_sim.Model(
-            guide_sim.load_params(),
-            pack.table("quests"),
-            pack.table("npcs"),
-            pack.table("items"),
-            guide_sim.read_quest_xp(pack.path),
-        )
-    reached: dict[int, int] = {}
-
-    def level() -> int:
-        if xp_model is None:
-            return min(spec.max_level, spec.min_level + len(done) // spec.quests_per_level + assumed[0])
-        size = len(done)
-        if size not in reached:
-            xp = sum(xp_model.quest_xp_total(qid) for qid in done - set(spec.done))
-            current = spec.min_level
-            while current < spec.max_level and xp >= xp_model.to_next(current):
-                xp -= xp_model.to_next(current)
-                current += 1
-            reached[size] = current
-        return min(spec.max_level, reached[size] + assumed[0])
+    def reasons(q: Quest) -> list[str]:
+        return [r.code for r in rules.unmet(q.id, progress.level, done, active) if r.severity == "error"]
 
     def available(q: Quest) -> bool:
-        if q.id in done or q.id in active or q.id in gone or q.required > level():
+        if q.id in done or q.id in active or q.id in gone:
             return False
-        if any((p in pool and p not in done) or p in blocking for p in q.pre_all):
-            return False
-        if q.pre_any and not any(p in done or (p not in pool and p not in blocking) for p in q.pre_any):
-            return False
-        return True
+        return not waiting(q) and not reasons(q)
 
     def place_of(q: Quest, coords: list[Coord], here: Coord | None) -> Coord | None:
         if not coords:
@@ -372,6 +361,9 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
 
     def at(coord: Coord, other: Coord) -> bool:
         return coord.map == other.map and abs(coord.x - other.x) <= SAME_PLACE and abs(coord.y - other.y) <= SAME_PLACE
+
+    def at_npc(coord: Coord, other: Coord) -> bool:
+        return coord.map == other.map and abs(coord.x - other.x) <= NPC_PLACE and abs(coord.y - other.y) <= NPC_PLACE
 
     def line(directive: str, q: Quest, gate: bool = True) -> str:
         text = f"  {directive}"
@@ -384,7 +376,7 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
     margin = spec.hardcore_over if spec.hardcore else 99
 
     def soon(q: Quest) -> bool:
-        return q.level <= level() + margin
+        return q.level <= progress.level + margin
 
     guard = 0
     last_zone = zone_of(pos.map) if pos else None
@@ -392,7 +384,7 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
         guard += 1
         # what can be done where: (kind rank, place, quest, objective)
         targets: list[tuple[int, Coord, Quest, Objective | None]] = []
-        deferred = False
+        deferred: list[Quest] = []
         for q in pool.values():
             if q.id in active:
                 if not active[q.id]:
@@ -400,12 +392,16 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
                     if place:
                         targets.append((0, place, q, None))
                     else:
+                        # the pack does not say where it ends: the step says so, and the quest is turned in all the same
                         result.unplaced.append(f"quest {q.id} ({q.name}): no turn-in position in the pack")
+                        reason = _clean(f"{q.name}: the turn-in has no position in the pack")
+                        result.steps.append([f'  .todo "{reason}"', line(f".turnin {q.id}", q)])
+                        progress.gain(model.reward_xp(q.id, progress.level))
                         active.pop(q.id)
                         done.add(q.id)
                     continue
                 if active[q.id] and not soon(q):
-                    deferred = True
+                    deferred.append(q)
                     continue
                 for objective in q.objectives:
                     if objective.index in active[q.id]:
@@ -417,17 +413,29 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
                             result.unplaced.append(f"quest {q.id} ({q.name}) objective {objective.index} ({what}): no position")
                             reason = _clean(f"{q.name}: objective {objective.index} ({what}) has no position in the pack")
                             result.steps.append([f'  .todo "{reason}"', f"  .complete {q.id},{objective.index} -- {_clean(q.name)}"])
+                            progress.gain(model.objective(q.id, objective.index, progress.level)[2])
                             active[q.id].discard(objective.index)
             elif available(q):
                 targets.append((1, place_of(q, q.starts, pos), q, None))
         if not targets:
-            gated = [q for q in pool.values() if q.id not in done and q.id not in active and q.id not in gone and q.required > level()]
-            if (gated or deferred) and level() < spec.max_level:
-                assumed[0] += 1
-                result.notes.append(f"level {level()} assumed here (kills and travel between quests): quests need it")
-                result.steps.append([f"  .level {level()} -- assumed: grind or kill on the way until then"])
+            # nothing to do until the walker has levelled: the quests that wait only for their level, and the objectives
+            # of quests still above it, say how far
+            by_level = [
+                q.required
+                for q in pool.values()
+                if q.id not in done and q.id not in active and q.id not in gone and not waiting(q) and reasons(q) == ["level"]
+            ]
+            by_objective = [q.level - margin for q in deferred]
+            wanted = [n for n in by_level + by_objective if n > progress.level]
+            if wanted and progress.level < spec.max_level:
+                target = min(wanted)
+                result.notes.append(f"level {target} is needed here (kills and travel between quests): quests wait for it")
+                result.steps.append([f"  .level {target} -- reach it first: kill or grind on the way"])
+                progress.grind_to(target)
+                gated = max(gated, target)
                 continue
             break
+
         def cost(target: tuple[int, Coord, Quest, Objective | None]) -> tuple[float, int]:
             far = _near(world, pos, target[1]) if pos else 0.0
             stay = 0.0 if zone_of(target[1].map) == last_zone else ZONE_STICKINESS
@@ -440,19 +448,28 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
             result.steps.append([f'  .todo "travel to {_clean(world.label(zone_of(place.map)))}"'])
         last_zone = zone_of(place.map)
         step.append(f"  .goto {place.dsl()}")
+        optional_here: dict[int, str] = {}
         # everything doable here, until nothing new turns up (a turn-in can open the next link of a chain)
         while True:
             changed = False
             for q in list(pool.values()):
-                if q.id in active and not active[q.id] and any(at(place, e) for e in q.ends):
+                if q.id in active and not active[q.id] and any(at_npc(place, e) for e in q.ends):
                     step.append(line(f".turnin {q.id}", q))
+                    if q.optional:
+                        optional_here[q.id] = q.name
+                    progress.gain(model.reward_xp(q.id, progress.level))
                     active.pop(q.id)
                     done.add(q.id)
                     gone.update(x for x in q.exclusive if x in pool)
                     changed = True
             for q in list(pool.values()):
-                if available(q) and any(at(place, s) for s in q.starts):
+                if available(q) and any(at_npc(place, s) for s in q.starts):
+                    if q.required > 1 and q.required > gated:
+                        step.append(f"  .level {q.required}")  # the step says why the quest is not offered until then
+                        gated = q.required
                     step.append(line(f".accept {q.id}", q))
+                    if q.optional:
+                        optional_here[q.id] = q.name
                     if q.id in spec.notes:
                         step.append(f"  .note {_clean(spec.notes[q.id])}")
                     active[q.id] = {o.index for o in q.objectives}
@@ -467,15 +484,21 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
                     for objective in q.objectives:
                         if objective.index in active[q.id] and any(at(place, s) for s in objective.spots):
                             step.append(line(f".complete {q.id},{objective.index}", q))
+                            if q.optional:
+                                optional_here[q.id] = q.name
+                            progress.gain(model.objective(q.id, objective.index, progress.level)[2])
                             active[q.id].discard(objective.index)
                             changed = True
             if not changed:
                 break
+        for qid, name in optional_here.items():
+            step.append(f"  .optional {qid} -- group quest: {_clean(name)}")
         pos = place
         result.steps.append(step)
     result.unreachable = sorted(q.id for q in pool.values() if q.id not in done and q.id not in active and q.id not in gone)
     for qid in sorted(active):
         result.notes.append(f"quest {qid} ({pool[qid].name}) was accepted but never finished: check its objectives")
+    result.level, result.xp, result.gated, result.done = progress.level, progress.xp, gated, done
     return result
 
 
@@ -498,7 +521,7 @@ def lua_file(chapter_id: str, text: str, header: list[str]) -> str:
 
 
 def summary(result: Draft, spec: argparse.Namespace) -> list[str]:
-    out = [f"pool: {result.kept} quests; {len(result.steps)} steps"]
+    out = [f"pool: {result.kept} quests; {len(result.steps)} steps; the walk ends at level {result.level}"]
     for reason, ids in sorted(result.dropped.items()):
         out.append(f"dropped {len(ids)}: {reason}")
     if result.unreachable:
@@ -516,7 +539,9 @@ def _levels(text: str) -> tuple[int, int]:
         raise argparse.ArgumentTypeError("levels are N or N-M")
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, carry: dict | None = None) -> int:
+    """`carry` is what the chapter before ends with (tools/rebuild_drafts.py): done (quests turned in), level, xp, gated."""
+    global LAST
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--race", required=True, help="raceFile token (Tauren, Troll, Orc, Scourge, Skyborne ...)")
     parser.add_argument("--race-bit", type=int, help="the pack's race mask bit, for a race this tool does not know")
@@ -528,13 +553,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--id", dest="chapter_id", required=True, help="chapter id (lowercase letters, digits, -)")
     parser.add_argument("--name", required=True, help="chapter name")
     parser.add_argument("--exclude", type=int, action="append", default=[], metavar="QUEST", help="never route this quest")
-    parser.add_argument("--exclude-reason", default="hardcore: not routed", help="the #skipquest reason")
+    parser.add_argument("--exclude-reason", default=HARDCORE_NOTE, help="the #skipquest reason")
     parser.add_argument(
         "--hardcore",
         nargs="?",
         const=str(Path(__file__).resolve().parent / "hardcore_rules.json"),
         metavar="RULES",
-        help="apply the hardcore rules (default tools/hardcore_rules.json): skips become #skipquest, notes become .note",
+        help="draft a HARDCORE guide, applying the rules (default tools/hardcore_rules.json): skips become #skipquest, "
+        "notes become .note; elite quests and quests far above the chapter are left out",
     )
     parser.add_argument(
         "--hardcore-over",
@@ -542,13 +568,10 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="with --hardcore: drop quests whose level is more than this above the chapter's top level (default 1)",
     )
-    parser.add_argument(
-        "--xp-levels",
-        action="store_true",
-        help="estimate the level from the XP of the quests done (tools/guide_sim.py's model) instead of --quests-per-level",
-    )
-    parser.add_argument("--quests-per-level", type=int, default=5, help="placeholder level estimate (default 5)")
-    parser.add_argument("--grey", type=int, default=8, help="drop quests this many levels below the range (default 8)")
+    parser.add_argument("--start-level", type=int, help="the walker's level when the chapter begins (default: the chapter's first level)")
+    parser.add_argument("--start-xp", type=float, default=0.0, help="experience into that level")
+    parser.add_argument("--gated", type=int, default=0, help="the highest `.level N` the route has asked for before this chapter")
+    parser.add_argument("--grey", type=int, default=8, help="drop quests this many levels below the walker (default 8)")
     parser.add_argument(
         "--class-only", action="store_true", help="draft only the quests limited to the class (class quest chapters)"
     )
@@ -563,6 +586,21 @@ def main(argv: list[str] | None = None) -> int:
         metavar="Q1,Q2,...",
         help="quests of a chain in order, for chains whose links the pack lacks (repeatable)",
     )
+    parser.add_argument(
+        "--only",
+        type=int,
+        action="append",
+        default=[],
+        metavar="QUEST",
+        help="draft only these quests (for a hand-picked chapter, e.g. the arrival quests of a new race)",
+    )
+    parser.add_argument(
+        "--note",
+        action="append",
+        default=[],
+        metavar="QUEST=TEXT",
+        help="a `.note` after the quest's `.accept` (repeatable), e.g. to mark a route unverified",
+    )
     parser.add_argument("--no-gate-class", dest="gate_class", action="store_false", help="no .class gate on class quests")
     parser.add_argument("--pack", type=Path, help="the data pack folder (default ../Signpost_Data)")
     parser.add_argument("--out", type=Path, help="write the chapter file here (default: print)")
@@ -571,6 +609,11 @@ def main(argv: list[str] | None = None) -> int:
     spec.name = _clean(spec.name)
     spec.skip_reasons = {qid: spec.exclude_reason for qid in spec.exclude}
     spec.notes = {}
+    if carry:
+        spec.done = sorted(set(spec.done) | set(carry.get("done", ())))
+        spec.start_level = spec.start_level or carry.get("level")
+        spec.start_xp = spec.start_xp or carry.get("xp", 0.0)
+        spec.gated = max(spec.gated, carry.get("gated", 0))
     if spec.hardcore:
         try:
             rules = json.loads(Path(spec.hardcore).read_text(encoding="utf-8")).get("rules", [])
@@ -580,9 +623,15 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(rule, dict) or not isinstance(rule.get("id"), int):
                 continue
             if rule.get("action") == "skip":
-                spec.skip_reasons.setdefault(rule["id"], str(rule.get("reason") or "hardcore: not routed"))
+                spec.skip_reasons.setdefault(rule["id"], str(rule.get("reason") or HARDCORE_NOTE))
             elif rule.get("action") == "note" and rule.get("text"):
                 spec.notes[rule["id"]] = str(rule["text"])
+
+    for item in spec.note:
+        qid, _, text = item.partition("=")
+        if not qid.strip().isdigit() or not text.strip():
+            parser.error(f"--note {item!r}: expected QUEST=TEXT")
+        spec.notes[int(qid)] = text.strip()
 
     bit = spec.race_bit or RACE_BITS.get(spec.race.lower())
     if not bit:
@@ -613,6 +662,7 @@ def main(argv: list[str] | None = None) -> int:
         print("guide_draft: no quest in the pool to start from", file=sys.stderr)
         return 1
     result = draft(pack, world, spec)
+    LAST = (result, spec)
     text = render(result, spec, {q.id: q.name for q in pool.values()})
     header = summary(result, spec)
     for item in header:

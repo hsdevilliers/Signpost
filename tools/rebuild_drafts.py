@@ -4,14 +4,18 @@
     python tools/rebuild_drafts.py --guide horde-tauren-druid
     python tools/rebuild_drafts.py --pack ../Signpost_Data
 
-For each guide: run tools/guide_draft.py for each of its chapters (always with --hardcore, the Release 1 routes are hardcore),
-write Guides/Chapters/<id>.lua, drop each draft's own "travel to" `.todo` steps, then insert the steps tools/guide_travel.py
-proposes for every uncovered zone change, and apply the manifest's text rewrites. Chapters are GENERATED: a hand edit to one is lost
-at the next rebuild, so changes go into the manifest (arguments, rewrites), the hardcore rules or the tools, or into the guide file
-(Guides/<Guide>.lua), which this script never touches.
+For each guide: run tools/guide_draft.py for each of its chapters, in the order the guide includes them, each chapter starting
+from the level, experience, finished quests and `.level` gates the one before ended with (the walk is one walk, as in the
+game); write Guides/Chapters/<id>.lua, drop each draft's own "travel to" `.todo` steps, then insert the steps
+tools/guide_travel.py proposes for every uncovered zone change (until none is left: a travel step can open the next gap),
+and apply the manifest's text rewrites. A guide is drafted with --hardcore only if the manifest says so ("hardcore": true):
+a HARDCORE guide leaves out elite quests and the sourced dangerous ones, a normal guide tags group quests `.optional`.
+Chapters are GENERATED: a hand edit to one is lost at the next rebuild, so changes go into the manifest (arguments, rewrites),
+the HARDCORE rules or the tools, or into the guide file (Guides/<Guide>.lua), which this script never touches.
 
-The manifest, per guide: { "guide": id, "chapters": [ { "id", "name", "race", "class", "zones": [uiMapID, ...], "levels": "N-M",
-"args": [extra guide_draft.py arguments] } ], "rewrites": [ { "match": regex, "with": replacement } ] }.
+The manifest, per guide: { "guide": id, "faction", "hardcore": true|false, "chapters": [ { "id", "name", "race", "class",
+"zones": [uiMapID, ...], "levels": "N-M", "args": [extra guide_draft.py arguments] } ], "rewrites": [ { "match": regex,
+"with": replacement } ] }.
 """
 
 from __future__ import annotations
@@ -31,20 +35,32 @@ import guide_travel  # noqa: E402
 
 DRAFT_TRAVEL = re.compile(r'step\n  \.todo "travel to [^"\n]*"\n')
 PROPOSAL = re.compile(r"-- insert after (\S+?):(\d+);.*?\n(step\n(?:  .*\n)+)")
+TRAVEL_PASSES = 12
 
 
 def chapter_path(chapter_id: str) -> Path:
     return ROOT / "Guides" / "Chapters" / f"{chapter_id}.lua"
 
 
-def draft_chapter(guide: dict, chapter: dict, pack: Path) -> int:
+def guide_includes(guide_id: str) -> list[str] | None:
+    """The chapter ids a guide file includes, in order (None: no guide file has that id)."""
+    for path in sorted((ROOT / "Guides").glob("*.lua")):
+        text = path.read_text(encoding="utf-8")
+        if re.search(r'\bid\s*=\s*"%s"' % re.escape(guide_id), text):
+            return re.findall(r"^#include\s+(\S+)", text, re.M)
+    return None
+
+
+def draft_chapter(guide: dict, chapter: dict, pack: Path, carry: dict) -> int:
     args = ["--race", chapter["race"], "--class", chapter["class"], "--faction", guide.get("faction", "Horde")]
     for zone in chapter["zones"]:
         args += ["--zone", str(zone)]
-    args += ["--levels", chapter["levels"], "--id", chapter["id"], "--name", chapter["name"], "--hardcore"]
+    args += ["--levels", chapter["levels"], "--id", chapter["id"], "--name", chapter["name"]]
+    if guide.get("hardcore", True):
+        args += ["--hardcore"]
     args += [str(a) for a in chapter.get("args", [])]
     args += ["--pack", str(pack), "--out", str(chapter_path(chapter["id"]))]
-    return guide_draft.main(args)
+    return guide_draft.main(args, carry=carry)
 
 
 def proposals(guide_id: str, pack: Path) -> list[tuple[str, int, str]]:
@@ -71,20 +87,41 @@ def insert_proposals(found: list[tuple[str, int, str]]) -> int:
 
 
 def rebuild(guide: dict, pack: Path) -> bool:
+    ids = [chapter["id"] for chapter in guide["chapters"]]
+    included = guide_includes(guide["guide"])
+    if included is not None and [i for i in included if i in ids] != ids:
+        print(
+            f"rebuild_drafts: {guide['guide']}: the manifest drafts {', '.join(ids)} but the guide file includes "
+            f"{', '.join(included)}: the walk is one walk, so the orders must match",
+            file=sys.stderr,
+        )
+        return False
+    carry: dict = {"done": set(), "level": None, "xp": 0.0, "gated": 0}
     for chapter in guide["chapters"]:
-        if draft_chapter(guide, chapter, pack) != 0:
+        if draft_chapter(guide, chapter, pack, carry) != 0:
             print(f"rebuild_drafts: {chapter['id']}: guide_draft failed", file=sys.stderr)
             return False
+        result, _ = guide_draft.LAST
+        carry = {"done": set(result.done), "level": result.level, "xp": result.xp, "gated": result.gated}
         path = chapter_path(chapter["id"])
         path.write_text(DRAFT_TRAVEL.sub("", path.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
-    inserted = insert_proposals(proposals(guide["guide"], pack))
+    inserted = 0
+    for _ in range(TRAVEL_PASSES):  # a travel step can open the next gap (Stonetalon -> Barrens -> Ashenvale): until none is left
+        found = proposals(guide["guide"], pack)
+        if not found:
+            break
+        inserted += insert_proposals(found)
     for rewrite in guide.get("rewrites", []):
         for chapter in guide["chapters"]:
             path = chapter_path(chapter["id"])
             text = path.read_text(encoding="utf-8")
             path.write_text(re.sub(rewrite["match"], rewrite["with"], text), encoding="utf-8", newline="\n")
     left = len(proposals(guide["guide"], pack))
-    print(f"rebuild_drafts: {guide['guide']}: {len(guide['chapters'])} chapters, {inserted} travel steps inserted, {left} still uncovered")
+    kind = "HARDCORE" if guide.get("hardcore", True) else "normal"
+    print(
+        f"rebuild_drafts: {guide['guide']} ({kind}): {len(guide['chapters'])} chapters, ends at level {carry['level']}, "
+        f"{inserted} travel steps inserted, {left} still uncovered"
+    )
     return left == 0
 
 
