@@ -237,6 +237,22 @@
           ]
         },
         {
+          "id": "windshaper-barrens-12-20",
+          "name": "The Barrens",
+          "race": "Skyborne",
+          "class": "DRUID",
+          "zones": [
+            1413
+          ],
+          "levels": "12-20",
+          "args": [
+            "--race-bit",
+            8589934592,
+            "--done",
+            94638
+          ]
+        },
+        {
           "id": "windshaper-cat-form-20",
           "name": "Windshaper Druid: Cat Form",
           "race": "Skyborne",

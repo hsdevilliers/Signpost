@@ -34,7 +34,7 @@ step
   .goto 1450,56.21,30.64
   .turnin 94913 .class DRUID -- Moonglade
 step
-  .todo "Return from Moonglade to Thunder Bluff (VERIFY(beta): hearthstone or flight path; the way back is not in the data)"
-  .zone 1456 >> Go to Thunder Bluff
+  .todo "Return from Moonglade to The Barrens (VERIFY(beta): hearthstone or flight path; the way back is not in the data)"
+  .zone 1413 >> Go to The Barrens
 ]]
 )

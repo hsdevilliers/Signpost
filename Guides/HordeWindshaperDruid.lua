@@ -11,8 +11,9 @@ ns.Guides:Register({
 #guide Windshaper Druid, hardcore route
 #include zephras-isle-1-12
 #include windshaper-bear-form-10
+#include windshaper-barrens-12-20
 step
-  .todo "After Zephras Isle: where a Windshaper levels from 12 to 20 is not in the data yet; do the quests that suit your level, then go on at the Cat Form chain at 20"
+  .todo "Druid forms at 14-16 (Cure Poison, Aquatic Form): the Tauren chains are not open to a Windshaper and nothing in the data says where it learns them; check with your trainer in Thunder Bluff"
 #include windshaper-cat-form-20
 ]],
 })
