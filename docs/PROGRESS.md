@@ -221,6 +221,15 @@ Acceptance
 - [ ] Helper script that copies a clean `Signpost.lua` to the shared folder (the friend's main path); in-game export block as the fallback.
 - [ ] Options panel entry for the checkbox once `UI/Options.lua` exists.
 
+## Tauren Druid guide (Release 1)
+
+- [x] `Guides/HordeTaurenDruid.lua` + `Guides/Chapters/mulgore-1-12.lua`: drafted by `guide_draft.py --hardcore` from the pack (39 quests, 52 steps,
+  Tauren druid class chain included), travel steps from `guide_travel.py`, class chains skipped with reasons. `guide_lint --strict` with the
+  pack: 0 errors, 7 `.todo` (the Mulgore/Thunder Bluff crossing is not in the travel graph yet; Kodo Hide Bag items have no position).
+  A DRAFT: order is a first pass (placeholder level pacing, `.level N` steps mark assumed levels), not yet walked in game.
+- [ ] Moonglade/Bear Form timing (the chain's Moonglade trip is skipped here; a later chapter must route it): a hardcore design call, see docs/HARDCORE.md.
+- [ ] Barrens and later chapters; Windshaper guide (needs recorded data); levels 12-60.
+
 ## Hardcore (user, 2026-10-20)
 
 - [x] Research and policy: `docs/HARDCORE.md` (sources with confidence, what is not known). `tools/hardcore_rules.json` (4 skips, 1 note,
