@@ -125,6 +125,30 @@ class PoolTest(DraftCase):
         first_goto = re.search(r"\.goto (\d+),", text).group(1)
         self.assertEqual(first_goto, "10")
 
+    def test_the_walk_starts_with_the_races_own_first_quest(self):
+        # a generic Horde quest with a lower ID and a giver in another zone must not pull the start away from the race's own start
+        quests = {
+            230: {"n": "Breadcrumb From Afar", "r": 1, "l": 1, "s": {"npc": [1002]}, "e": START, "side": "Horde", "races": 178},
+            231: {"n": "Our Own First", "r": 1, "l": 1, "s": START, "e": START, "side": "Horde", "races": 2},
+            # a lower ID than 231, the same race, but a level 6 quest at a place away from the start: not where level 1 begins
+            229: {"n": "Own But Harder", "r": 1, "l": 6, "s": {"npc": [1003]}, "e": START, "side": "Horde", "races": 2},
+        }
+        text, _ = self.draft("--zone", "20", quests=quests)  # zones 10 then 20
+        first_step = text.split("step\n")[1]
+        self.assertIn(".goto 10,40.0,40.0", first_step)  # the Orc's own start, not the other zone's breadcrumb giver
+        self.assertIn(".accept 231", first_step)
+
+    def test_a_race_only_quest_above_the_starting_level_is_not_the_start(self):
+        # Tauren-style: the only race-limited quests are village quests that need level 3; the real start is a generic Horde one
+        quests = {
+            228: {"n": "Village Own", "r": 3, "l": 3, "s": {"npc": [1003]}, "e": START, "side": "Horde", "races": 2},
+            234: {"n": "Camp Start", "r": 1, "l": 2, "s": START, "e": START, "side": "Horde", "races": 178},
+        }
+        text, _ = self.draft(quests=quests)
+        first_step = text.split("step\n")[1]
+        self.assertIn(".goto 10,40.0,40.0", first_step)
+        self.assertIn(".accept 234", first_step)
+
     def test_class_quests_carry_a_class_gate_unless_asked_not_to(self):
         text, _ = self.draft()
         self.assertRegex(text, r"\.accept 217 \.class HUNTER")

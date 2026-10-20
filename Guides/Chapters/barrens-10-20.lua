@@ -36,9 +36,6 @@ ns.Chapters:Register(
 #skipquest 4021 >> hardcore: the banner is guarded by Warlord Krom'zar, an elite the data does not link to the quest
 #skipquest 8368 >> battleground (PvP) quest, not leveling content
 step
-  .goto 1413,45.34,28.41
-  .accept 855 -- Centaur Bracers
-step
   .goto 1413,51.21,29.05
   .accept 844 -- Plainstrider Menace
   .accept 848 -- Fungal Spores
@@ -52,6 +49,9 @@ step
   .accept 870 -- The Forgotten Pools
   .turnin 870 -- The Forgotten Pools
   .accept 877 -- The Stagnant Oasis
+step
+  .goto 1413,45.34,28.41
+  .accept 855 -- Centaur Bracers
 step
   .goto 1413,62.68,36.23
   .accept 887 -- Southsea Freebooters

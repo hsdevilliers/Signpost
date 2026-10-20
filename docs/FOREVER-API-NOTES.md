@@ -189,6 +189,13 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
   object positions and the quest IDs of what a character accepts and turns in, which is enough to draft the chapter with
   `guide_draft.py` (it needs no Wowhead). The Skyborne race bit in the pack's quest masks is unknown (`--race-bit`).
 
+## Observed in the game (user reports)
+- 2026-10-20, a level-1 Troll in the Valley of Trials: Gornek offers **Cutting Teeth** and **Wayward Weapons**, Kaltunk offers **Your Place in the
+  World**. Wayward Weapons is **not in the data pack** (no quest of that name below level 60): Forever's starting zones carry quests the Classic
+  baseline lacks. The first draft also wrongly started the walk in Orgrimmar ("The New Horde" starts with Eitrigg there, as an intro for characters
+  created in Orgrimmar); fixed in `tools/guide_draft.py` (the walk starts where the race starts). Record the starting quests with `Core/Learn.lua`
+  (accept and turn them in, `/reload`) so their IDs and positions reach the pack.
+
 ## Open probes (answer in game, record the evidence and build number, then move to Verified)
 - [ ] Launch client folder name (after Nov 4): `_classic_`? `_forever_`? other?
 - [ ] How does an addon tell that the character is on a Hardcore ruleset (a `C_` call, a character flag, a realm type)? The `.hc` gate
