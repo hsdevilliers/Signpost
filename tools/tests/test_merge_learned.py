@@ -237,6 +237,75 @@ class BuildTest(unittest.TestCase):
         self.assertEqual((stats["npcs"], stats["quests"], stats["crossings"]), (1, 1, 1))
 
 
+class AccumulationTest(unittest.TestCase):
+    """The learned layer is built from everything a source ever recorded, not from the last read alone."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.pack = Path(self._tmp.name)
+        datapack.init_stub(self.pack)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def layer(self) -> dict:
+        return json.loads(datapack.layer_path(self.pack, "learned").read_text(encoding="utf-8"))["tables"]
+
+    @staticmethod
+    def npc(name, x, count=1, when=5):
+        return {"n": name, "map": 1411, "x": x, "y": 50.0, "t": when, "c": count}
+
+    def test_records_evicted_from_saved_variables_survive_the_next_import(self):
+        learned.merge_learned(self.pack, [{"learned": {"npcs": {3143: self.npc("Gornek", 42.1)}}}], "test")
+        learned.merge_learned(self.pack, [{"learned": {"npcs": {3144: self.npc("Other", 20.0)}}}], "test")
+        self.assertEqual(sorted(self.layer()["npcs"]), ["3143", "3144"])
+
+    def test_importing_fewer_sources_drops_nothing(self):
+        dev = {"learned": {"npcs": {3143: self.npc("Gornek", 42.1)}}}
+        play = {"eventLog": [seen("GOSSIP_SHOW", POSTER, "Wanted Poster", pos(1411, 44.0, 70.0))]}
+        learned.merge_learned(self.pack, [dev, play], "test", labels=["local", "also-play"])
+        both = self.layer()
+        learned.merge_learned(self.pack, [dev], "test", labels=["local"])
+        self.assertEqual(self.layer(), both)
+        self.assertIn("1617", both["objects"])
+
+    def test_importing_the_same_file_again_changes_nothing(self):
+        db = {
+            "learned": {"npcs": {3143: self.npc("Gornek", 42.1, count=4)}, "vendors": {3143: {"items": [159, 4540]}}},
+            "eventLog": [zone_change(DUROTAR_EDGE, BARRENS_EDGE), seen("GOSSIP_SHOW", GORNEK, "Gornek", pos(1411, 42.5, 50.0))],
+        }
+        learned.merge_learned(self.pack, [db], "test")
+        archive = (self.pack / "layers" / learned.ARCHIVE_NAME).read_text(encoding="utf-8")
+        layer = self.layer()
+        learned.merge_learned(self.pack, [db], "test")
+        self.assertEqual((self.pack / "layers" / learned.ARCHIVE_NAME).read_text(encoding="utf-8"), archive)
+        self.assertEqual(self.layer(), layer)
+
+    def test_the_fuller_record_of_a_source_wins_and_vendor_items_add_up(self):
+        first = {"learned": {"npcs": {3143: self.npc("Gornek", 42.0, count=1)}, "vendors": {9: {"items": [1, 2]}}}}
+        second = {"learned": {"npcs": {3143: self.npc("Gornek", 45.0, count=3)}, "vendors": {9: {"items": [2, 3]}}}}
+        learned.merge_learned(self.pack, [first], "test")
+        learned.merge_learned(self.pack, [second], "test")
+        archived = json.loads((self.pack / "layers" / learned.ARCHIVE_NAME).read_text(encoding="utf-8"))["source-1"]
+        self.assertEqual(archived["learned"]["npcs"]["3143"]["x"], 45.0)
+        self.assertEqual(archived["learned"]["vendors"]["9"]["items"], [1, 2, 3])
+        # a restarted SavedVariables (counts back at 1) does not replace the fuller record
+        learned.merge_learned(self.pack, [first], "test")
+        archived = json.loads((self.pack / "layers" / learned.ARCHIVE_NAME).read_text(encoding="utf-8"))["source-1"]
+        self.assertEqual(archived["learned"]["npcs"]["3143"]["x"], 45.0)
+
+    def test_the_archive_keeps_only_what_the_layer_reads_of_the_event_log(self):
+        entry = seen("GOSSIP_SHOW", GORNEK, "Gornek", pos(1411, 42.5, 50.0))
+        entry["s"]["player"] = "Someone-Realm"
+        entry["a"] = {"text": "chat words"}
+        chatter = {"e": "CHAT_MSG_SAY", "time": 1790000001, "s": {"text": "hello"}}
+        learned.merge_learned(self.pack, [{"eventLog": [entry, chatter]}], "test")
+        text = (self.pack / "layers" / learned.ARCHIVE_NAME).read_text(encoding="utf-8")
+        for forbidden in ("Someone-Realm", "chat words", "hello", "CHAT_MSG_SAY"):
+            self.assertNotIn(forbidden, text)
+        self.assertIn("Creature-0-1465-1-47-3143", text)
+
+
 class CommandLineTest(unittest.TestCase):
     def run_main(self, *args):
         out = io.StringIO()

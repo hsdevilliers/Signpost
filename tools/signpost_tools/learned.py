@@ -16,6 +16,7 @@ buy or collect.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from pathlib import Path
@@ -406,11 +407,129 @@ def learned_layer(dbs: list[dict], base: dict, guide_dirs: list[Path] = ()) -> t
     return tables, trainer_problems + taxi_problems, stats
 
 
-def merge_learned(pack: Path, dbs: list[dict], origin: str, guide_dirs: list[Path] = ()) -> dict[str, int]:
-    """Write layers/learned.json from the SignpostDB tables; datapack.build then merges it last."""
+# The archive: what each source has ever recorded ------------------------------------------------------------------------
+#
+# Core/Learn.lua caps its tables and evicts the oldest entries, and the event log is truncated, so a layer rebuilt from
+# one SavedVariables read would forget what an earlier read held. Each import therefore folds its sources into
+# layers/learned-sources.json (local only, like the layers) and the layer is built from the whole archive. A source is
+# one SavedVariables file, named by a label that stays the same between imports; folding a source into itself keeps the
+# record with the larger count (the counters only grow within one file), so importing the same file twice changes
+# nothing, and importing fewer sources than last time drops nothing.
+
+ARCHIVE_NAME = "learned-sources.json"
+ARCHIVE_TABLES = ("npcs", "objects", "quests", "taxi", "trainers", "vendors")
+ARCHIVE_EVENTS = 5000  # event log entries kept per source, newest first
+
+
+def _rank(record: object) -> tuple[float, float]:
+    """Which of two records of one thing is the fuller: more sightings, then the later one."""
+    record = record if isinstance(record, dict) else {}
+    return tuple(float(record[key]) if _number(record.get(key)) else 0.0 for key in ("c", "t"))
+
+
+def _union(old: object, new: object) -> list:
+    return sorted({*_listed(old), *_listed(new)}, key=str)
+
+
+def _fold_keyed(old: object, new: object) -> dict:
+    merged = {str(key): record for key, record in _keyed(old).items()}
+    for key, record in _keyed(new).items():
+        key = str(key)
+        if not isinstance(record, dict):
+            continue
+        previous = merged.get(key)
+        if not isinstance(previous, dict):
+            merged[key] = record
+            continue
+        better = dict(record if _rank(record) >= _rank(previous) else previous)
+        for field in ("items", "spells"):  # what a vendor sells and a trainer teaches only ever grows
+            if field in record or field in previous:
+                better[field] = _union(previous.get(field), record.get(field))
+        merged[key] = better
+    return merged
+
+
+def _crossing_key(crossing: dict) -> tuple | None:
+    a, b = _point(crossing.get("from")), _point(crossing.get("to"))
+    if not (a and b):
+        return None
+    return (a[0], round(a[1], 1), round(a[2], 1), b[0], round(b[1], 1), round(b[2], 1))
+
+
+def _fold_crossings(old: object, new: object) -> list:
+    merged: dict[tuple, dict] = {}
+    for crossing in [*_listed(old), *_listed(new)]:
+        key = _crossing_key(crossing) if isinstance(crossing, dict) else None
+        if key and (key not in merged or _rank(crossing) >= _rank(merged[key])):
+            merged[key] = crossing
+    return [merged[key] for key in sorted(merged)]
+
+
+def _event(entry: object) -> dict | None:
+    """The part of an event log entry the layer reads: an NPC or object at a window, or a zone change with its
+    previous position. Nothing else of the entry (and nothing about the player) is kept."""
+    if not isinstance(entry, dict):
+        return None
+    snapshot = entry.get("s") if isinstance(entry.get("s"), dict) else {}
+    npc = snapshot.get("npc")
+    if isinstance(npc, dict) and entity(npc.get("guid")) and _point(npc.get("pos")):
+        kept = {key: npc[key] for key in ("guid", "name", "pos") if key in npc}
+        return {"e": entry.get("e"), "time": entry.get("time"), "s": {"npc": kept}}
+    if entry.get("e") == "ZONE_CHANGED_NEW_AREA" and _point(snapshot.get("pos")) and _point(snapshot.get("prev")):
+        return {"e": entry["e"], "time": entry.get("time"), "s": {"pos": snapshot["pos"], "prev": snapshot["prev"]}}
+    return None
+
+
+def _event_key(event: dict) -> str:
+    snapshot = event["s"]
+    who = (snapshot.get("npc") or {}).get("guid") or json.dumps(snapshot.get("pos"), sort_keys=True)
+    return f"{event.get('e')}|{event.get('time')}|{who}"
+
+
+def fold_source(old: dict | None, db: dict) -> dict:
+    """The archived record of one source with a fresh read of it folded in (see the comment above)."""
+    old = old or {}
+    old_learned, new_learned = _learned(old), _learned(db)
+    learned = {table: _fold_keyed(old_learned.get(table), new_learned.get(table)) for table in ARCHIVE_TABLES}
+    learned["crossings"] = _fold_crossings(old_learned.get("crossings"), new_learned.get("crossings"))
+    events: dict[str, dict] = {}
+    for entry in [*_listed(old.get("eventLog")), *_listed(db.get("eventLog"))]:
+        event = _event(entry)
+        if event:
+            events[_event_key(event)] = event
+    newest = sorted(events.values(), key=lambda event: (_when(event.get("time")), _event_key(event)), reverse=True)
+    return {"learned": learned, "eventLog": newest[:ARCHIVE_EVENTS]}
+
+
+def _read_archive(pack: Path) -> dict[str, dict]:
+    path = Path(pack) / "layers" / ARCHIVE_NAME
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {label: db for label, db in value.items() if isinstance(label, str) and isinstance(db, dict)}
+
+
+def _write_archive(pack: Path, archive: dict[str, dict]) -> None:
+    path = Path(pack) / "layers" / ARCHIVE_NAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(archive, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def merge_learned(
+    pack: Path, dbs: list[dict], origin: str, guide_dirs: list[Path] = (), labels: list[str] | None = None
+) -> dict[str, int]:
+    """Fold the SignpostDB tables into the archive and write layers/learned.json from all of it; datapack.build then
+    merges that layer last. `labels` name the sources (the same label on every import of the same file)."""
+    labels = labels or [f"source-{number}" for number in range(1, len(dbs) + 1)]
+    archive = _read_archive(pack)
+    for label, db in zip(labels, dbs):
+        archive[label] = fold_source(archive.get(label), db)
+    _write_archive(pack, archive)
+    everything = [archive[label] for label in sorted(archive)]
     earlier = [
         (name, layer) for name in datapack.LAYERS if name != "learned" and (layer := datapack.read_layer(pack, name))
     ]
-    tables, problems, stats = learned_layer(dbs, datapack.merge_layers(earlier), guide_dirs)
+    tables, problems, stats = learned_layer(everything, datapack.merge_layers(earlier), guide_dirs)
     datapack.write_layer(pack, "learned", tables, origin, problems)
     return stats

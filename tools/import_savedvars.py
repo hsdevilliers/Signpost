@@ -143,7 +143,9 @@ def main() -> None:
         sources = [databases["account"]] + [account_db(folder, None) for folder in options.also]
         # No paths in the origin: it ends up in the pack's _meta.lua and data-gaps.md.
         origin = f"in game: Core/Learn.lua and the debug event log, {len(sources)} SavedVariables file(s)"
-        stats = learned.merge_learned(options.pack, sources, origin, [options.guides])
+        # the labels stay the same between imports, so a source is folded into its own earlier record
+        labels = ["local"] + [f"also-{Path(folder).name}" for folder in options.also]
+        stats = learned.merge_learned(options.pack, sources, origin, [options.guides], labels)
         written.append("learned layer: " + ", ".join(f"{count} {name}" for name, count in stats.items()))
 
     if written:
