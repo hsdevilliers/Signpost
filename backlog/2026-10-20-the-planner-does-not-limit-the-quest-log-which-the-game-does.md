@@ -27,3 +27,7 @@ A guide that has the player accept a 26th quest sends them back to abandon or ha
 ## Notes
 
 - Quests a route accepts and never finishes are already taken out (`Planner.tidy`). This is about the quests it holds at one time.
+- An independent review of the planned Troll Hunter guide (2026-10-20) found quests held for hours between accepting and handing in, because an
+  accept costs the planner nothing: 6365 Meats to Orgrimmar accepted in chapter 5 and handed in 612 minutes later (giver and ender 118 yards
+  apart), 851 for 359 minutes, 8370 and 8426 for 207, 1095 for 189. At most 15 quests were in the log at once there, so the limit is not what
+  hurts yet; the long holds are.

@@ -147,6 +147,47 @@ class EndToEndTest(RouteCase):
         self.assertIn("[normal route]", text)
 
 
+class Fake:
+    """An outcome as the install choice sees it."""
+
+    def __init__(self, ok=True, level=6, total=1.0, wins=None, name="greedy"):
+        self.evaluation = mock.Mock(lint_errors=[] if ok else ["error"], sim=mock.Mock(violations=[], level=level))
+        self.plan = mock.Mock(complete=True, total=total)
+        self.preset, self.monte = name, ({} if wins is None else {"wins": wins})
+
+
+class ChoiceTest(unittest.TestCase):
+    def test_a_route_must_pass_every_check_to_be_installed(self):
+        self.assertTrue(rp.passes(Fake(), 6))
+        self.assertFalse(rp.passes(Fake(ok=False), 6))
+        self.assertFalse(rp.passes(Fake(level=5), 6))  # the full simulation stops short of the cap
+        incomplete = Fake()
+        incomplete.plan.complete = False
+        self.assertFalse(rp.passes(incomplete, 6))
+        error = Fake()
+        error.evaluation.sim.violations = [mock.Mock(reason=mock.Mock(severity="error"))]
+        self.assertFalse(rp.passes(error, 6))
+
+    def test_without_a_monte_carlo_the_lowest_total_that_passes_wins(self):
+        slow, fast, bad = Fake(total=3.0, name="slow"), Fake(total=2.0, name="fast"), Fake(ok=False, total=1.0, name="bad")
+        self.assertIs(rp.choose([slow, bad, fast], [], 6), fast)
+        self.assertIsNone(rp.choose([bad], [], 6))
+
+    def test_with_a_monte_carlo_the_route_fastest_in_most_runs_wins_whatever_its_total(self):
+        beam = Fake(total=2.0, wins=0.2, name="beam")
+        lucky = Fake(total=3.0, wins=0.5, name="thorough alt 3")
+        broken = Fake(ok=False, total=1.0, wins=0.9, name="thorough alt 1")
+        self.assertIs(rp.choose([beam], [beam, lucky, broken], 6), lucky)  # a route that fails its checks never wins, however often fastest
+        tie = Fake(total=1.5, wins=0.5, name="tie")
+        self.assertIs(rp.choose([beam], [lucky, tie], 6), tie)  # equal wins: the lower total
+
+    def test_the_planner_of_an_outcome_and_the_command_line_that_made_it(self):
+        planners = {"thorough": "T", "beam": "B"}
+        self.assertEqual(rp.planner_of(planners, Fake(name="thorough alt 2")), "T")
+        self.assertEqual(rp.planner_of(planners, Fake(name="beam")), "B")
+        self.assertEqual(rp.command_of(["troll", "--root", "C:/x", "--preset", "all", "--pack", "C:/y", "--install"]), "troll --preset all --install")
+
+
 class InstallTest(RouteCase):
     def setUp(self):
         super().setUp()
@@ -154,35 +195,64 @@ class InstallTest(RouteCase):
         patch.start()
         self.addCleanup(patch.stop)
 
+    def install(self, *extra):
+        return self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--install", "--steps", "0", "--decisions", "0", *extra)
+
+    def chapters(self):
+        folder = self.root / "Guides" / "Chapters"
+        return sorted(folder.glob("test-guide-*.lua")) if folder.exists() else []
+
     def test_the_best_route_that_passes_its_checks_becomes_the_guides_chapters(self):
-        code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--install", "--steps", "0", "--decisions", "0")
+        code, text = self.install("--force")  # the fixture guide covers more levels than a route to 6
         self.assertEqual(code, 0, text)
         self.assertIn("INSTALLED", text)
-        chapters = sorted((self.root / "Guides" / "Chapters").glob("test-guide-*.lua"))
+        chapters = self.chapters()
         self.assertTrue(chapters)
         guide = (self.root / "Guides" / "Test.lua").read_text(encoding="utf-8")
         self.assertIn(f"#include {chapters[0].stem}", guide)
         self.assertIn("levels = { 1, 6 }", guide)
+        self.assertIn("-- PLANNED: the greedy route for", chapters[0].read_text(encoding="utf-8"))
         self.assertIn("test-guide", guidefile.load_project(self.root).guides)  # the project still loads
 
-    def test_nothing_is_installed_without_asking_and_installing_needs_the_checks(self):
+    def test_nothing_is_installed_without_asking(self):
         self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
-        self.assertFalse(list((self.root / "Guides" / "Chapters").glob("test-guide-*.lua")) if (self.root / "Guides" / "Chapters").exists() else [])
+        self.assertEqual(self.chapters(), [])
+
+    def test_a_route_that_would_shorten_the_guide_is_refused_unless_forced(self):
+        code, text = self.install()
+        self.assertEqual(code, 2, text)
+        self.assertIn("would shorten it", text)
+        self.assertEqual(self.chapters(), [])
+
+    def test_install_needs_a_guide_the_checks_and_the_guides_own_mode(self):
+        with self.assertRaises(SystemExit):
+            self.run_main("--install")
         with self.assertRaises(SystemExit):
             self.run_main("troll", "--install", "--no-check")
+        with self.assertRaises(SystemExit):
+            self.run_main("troll", "--install", "--mode", "hardcore")
 
-    def test_a_route_that_does_not_pass_is_not_chosen(self):
-        class Fake:
-            def __init__(self, ok):
-                self.evaluation = mock.Mock(lint_errors=[] if ok else ["error"], sim=mock.Mock(violations=[]))
-                self.plan = mock.Mock(complete=True, total=1.0)
-                self.preset, self.monte = "greedy", {}
+    def test_the_guide_stays_as_it_was_when_the_install_is_refused(self):
+        before = (self.root / "Guides" / "Test.lua").read_text(encoding="utf-8")
+        text = (self.root / "Guides" / "Test.lua").read_text(encoding="utf-8").replace("text = [[", "text = [==[").replace("]],", "]==],")
+        (self.root / "Guides" / "Test.lua").write_text(text, encoding="utf-8")
+        code, out = self.install("--force")
+        self.assertEqual(code, 1, out)
+        self.assertIn("not installed", out)
+        self.assertEqual((self.root / "Guides" / "Test.lua").read_text(encoding="utf-8"), text)
+        self.assertNotEqual(before, text)
+        self.assertEqual(self.chapters(), [])
 
-        good, bad = Fake(True), Fake(False)
-        self.assertTrue(rp.passes(good))
-        self.assertFalse(rp.passes(bad))
-        self.assertIs(rp.choose([bad, good], []), good)
-        self.assertIsNone(rp.choose([bad], []))
+    def test_the_quests_a_guides_chapters_leave_out_on_purpose_are_left_out_with_their_reason(self):
+        (self.root / "tools").mkdir(exist_ok=True)
+        manifest = {"guides": [{"guide": "test-guide", "chapters": [
+            {"id": "a", "args": ["--exclude", 5, "--exclude-reason", "no known source", "--exclude", "6", "--chain", "1,2"]},
+            {"id": "b", "args": ["--exclude", 7]}]}]}
+        (self.root / "tools" / "drafts.json").write_text(json.dumps(manifest), encoding="utf-8")
+        found = rp.manifest_excludes(self.root, "test-guide")
+        self.assertEqual(found, {5: "no known source", 6: "no known source", 7: "HARDCORE: not routed"})
+        self.assertEqual(rp.manifest_chains(self.root, "test-guide"), [[1, 2]])
+        self.assertEqual(rp.manifest_excludes(self.root, "nobody"), {})
 
 
 if __name__ == "__main__":

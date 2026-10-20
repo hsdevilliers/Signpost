@@ -98,7 +98,7 @@ class InstallTest(InstallCase):
         self.install()
         data = json.loads((self.root / "tools" / "drafts.json").read_text(encoding="utf-8"))
         entry = data["guides"][0]
-        self.assertEqual(entry["chapters"], [])
+        self.assertEqual(entry["chapters"], [{"id": "old-a"}])  # the hints of the drafted chapters stay: the planner reads them
         self.assertIn("the beam route", entry["planned"])
         self.assertIs(entry["hardcore"], False)
         self.assertEqual(data["about"], "x")
@@ -123,6 +123,95 @@ class InstallTest(InstallCase):
             self.install()
 
 
+class KeepTest(InstallCase):
+    def test_the_rest_of_the_guide_text_stays_where_it_was(self):
+        path = self.root / "Guides" / "HordeTrollHunter.lua"
+        text = path.read_text(encoding="utf-8").replace("#guide Troll Hunter\n", "#guide Troll Hunter\n#professions skinning\n")
+        path.write_text(text.replace("]],\n})", 'step\n  .todo "by hand"\n]],\n})'), encoding="utf-8")
+        self.install()
+        new = path.read_text(encoding="utf-8")
+        self.assertIn("#guide Troll Hunter\n#professions skinning\n#skipquest 5 >> alternative", new)
+        self.assertIn('step\n  .todo "by hand"\n', new)
+        self.assertLess(new.index("#include troll-hunter-02-the-barrens"), new.index("by hand"))
+        self.assertEqual(new.count("#include troll-hunter-01-durotar"), 1)
+
+    def test_a_chapter_another_chapter_includes_is_not_deleted(self):
+        (self.root / "Guides" / "Chapters" / "outer.lua").write_text(CHAPTER % "outer" + "-- #include old-a\n", encoding="utf-8")
+        (self.root / "Guides" / "Chapters" / "outer.lua").write_text('ns.Chapters:Register("outer", [[\n#include old-a\n]])\n', encoding="utf-8")
+        result = self.install()
+        self.assertNotIn("old-a", result.removed)
+        self.assertTrue((self.root / "Guides" / "Chapters" / "old-a.lua").exists())
+
+    def test_an_install_twice_changes_nothing_the_second_time(self):
+        self.install()
+        before = {p: p.read_text(encoding="utf-8") for p in self.root.rglob("*") if p.is_file()}
+        self.install()
+        self.assertEqual({p: p.read_text(encoding="utf-8") for p in self.root.rglob("*") if p.is_file()}, before)
+
+
+class RefusalTest(InstallCase):
+    def snapshot(self):
+        return {str(p.relative_to(self.root)): p.read_text(encoding="utf-8") for p in self.root.rglob("*") if p.is_file()}
+
+    def refused(self, error=ValueError):
+        before = self.snapshot()
+        with self.assertRaises(error):
+            self.install()
+        self.assertEqual(self.snapshot(), before)  # nothing written, nothing deleted
+
+    def test_a_built_chapter_without_text(self):
+        (self.built / "Guides" / "Chapters" / "plan-beam-02-the-barrens.lua").write_text("nothing", encoding="utf-8")
+        self.refused()
+
+    def test_a_missing_built_chapter(self):
+        (self.built / "Guides" / "Chapters" / "plan-beam-02-the-barrens.lua").unlink()
+        self.refused(FileNotFoundError)
+
+    def test_a_guide_text_block_that_does_not_match(self):
+        path = self.root / "Guides" / "HordeTrollHunter.lua"
+        path.write_text(path.read_text(encoding="utf-8").replace("text = [[", "text = [==[").replace("]],", "]==],"), encoding="utf-8")
+        self.refused()
+
+    def test_a_guide_without_levels(self):
+        path = self.root / "Guides" / "HordeTrollHunter.lua"
+        path.write_text(path.read_text(encoding="utf-8").replace("levels = { 1, 20 },", ""), encoding="utf-8")
+        self.refused()
+
+    def test_a_toc_without_chapter_lines(self):
+        (self.root / "Signpost_Camelot.toc").write_text("## Interface: 1\nGuides\\HordeTrollHunter.lua\n", encoding="utf-8")
+        self.refused()  # the first TOC would have been rewritten before the second failed
+
+    def test_a_corrupt_manifest(self):
+        (self.root / "tools" / "drafts.json").write_text("{", encoding="utf-8")
+        self.refused()
+
+    def test_a_new_name_that_another_guide_includes(self):
+        (self.root / "Guides" / "Other.lua").write_text(GUIDE % ("horde-other", "Other", "Other", "shared\n#include troll-hunter-01-durotar"), encoding="utf-8")
+        self.refused()
+
+    def test_a_zone_that_is_not_a_plain_name(self):
+        (self.built / "Guides" / "Plan.lua").write_text(
+            (self.built / "Guides" / "Plan.lua").read_text(encoding="utf-8").replace("plan-beam-02-the-barrens", "plan-beam-02-x/../../evil"), encoding="utf-8"
+        )
+        self.refused()
+
+
+class StyluaTest(InstallCase):
+    def test_what_stylua_did_is_reported_as_it_happened(self):
+        with mock.patch.object(route_install, "find_stylua", lambda root: None):
+            self.assertIsNone(self.install().formatted)
+        fake = Path(self.dir.name) / "stylua"
+        fake.write_text("", encoding="utf-8")
+        with mock.patch.object(route_install, "find_stylua", lambda root: fake), mock.patch.object(
+            route_install.subprocess, "run", lambda *a, **k: mock.Mock(returncode=1)
+        ):
+            self.assertIs(self.install().formatted, False)
+        with mock.patch.object(route_install, "find_stylua", lambda root: fake), mock.patch.object(
+            route_install.subprocess, "run", lambda *a, **k: mock.Mock(returncode=0)
+        ):
+            self.assertIs(self.install().formatted, True)
+
+
 class HelperTest(unittest.TestCase):
     def test_short_ids_drop_the_faction(self):
         self.assertEqual(route_install.short_id("horde-troll-hunter", "Horde"), "troll-hunter")
@@ -135,6 +224,15 @@ class HelperTest(unittest.TestCase):
         self.assertTrue(out.endswith("\n"))
         with self.assertRaises(ValueError):
             route_install.toc_with("## Interface: 1\n", set(), ["x"])
+
+    def test_a_toc_whose_every_chapter_line_belongs_to_the_guide_still_gets_the_new_ones_in_place(self):
+        toc = "## Interface: 1\nGuides\\Travel\\Borders.lua\nGuides\\Chapters\\old-a.lua\nGuides\\Chapters\\old-b.lua\nGuides\\Guide.lua\n"
+        out = route_install.toc_with(toc, {"old-a", "old-b"}, ["new-1", "new-2"])
+        self.assertEqual(out, "## Interface: 1\nGuides\\Travel\\Borders.lua\nGuides\\Chapters\\new-1.lua\nGuides\\Chapters\\new-2.lua\nGuides\\Guide.lua\n")
+
+    def test_a_toc_with_forward_slashes_keeps_them(self):
+        toc = "## Interface: 1\nGuides/Chapters/old-a.lua\nGuides/Guide.lua\n"
+        self.assertEqual(route_install.toc_with(toc, {"old-a"}, ["new-1"]), "## Interface: 1\nGuides/Chapters/new-1.lua\nGuides/Guide.lua\n")
 
 
 if __name__ == "__main__":

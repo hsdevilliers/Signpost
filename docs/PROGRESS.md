@@ -395,10 +395,16 @@ prerequisite, the lint did not model prerequisites, and its 20 or so level warni
   its report) over `tools/planner.py` (the engine), docs/PLANNER.md. First runs, beam, model time to level 30, the route written as
   guide steps and walked by the simulator and lint with 0 availability errors and 0 lint errors: Troll Hunter 18h17 (16.8% faster than
   the greedy route), Tauren Druid (HARDCORE) 25h00 (18.5%), Skyborne Druid (HARDCORE) 25h20 (9.8%). Known limits, in PLANNER.md:
-  class quests are done when cheapest, not when they open; the quest log size is not modelled; the planner prices borders by distance
-  and the simulator flat, a 10-20% gap.
-- [ ] Install a planned route in the guides on purpose (compare, copy the chapters, `guide_lint --strict`); the drafted chapters for
-  levels 12-30 of the druids and 20-30 of the hunter are regenerated from planner routes, not hand-drafted.
+  the quest log size is not modelled; the planner prices borders by distance and the simulator flat, a 10-20% gap.
+- [x] Activity steps in the tools (user, 2026-10-20; the in-game half is in the entry above): `signpost_tools/steps.py` reads a step's kind from
+  its directives and joins neighbouring steps of one kind within 250 yards (pick up and hand in per area, doing steps per group of quests;
+  `.complete <quest>` when all of a quest's objectives are in the step); the planner and the drafter write them (`--group-yards`).
+- [x] Class quests have no deadline (user's answer, 2026-10-20): a class quest still undone costs the route 20 minutes per level past the level
+  it opens at (at most 6 levels; `--class-push`, `--class-grace`), and the search always tries the nearest hubs of an overdue one. The druid
+  routes no longer do every class quest at level 30.
+- [x] Install a planned route on purpose (`route_planner.py --install`, `tools/route_install.py`): the Troll Hunter guide is the planner's
+  route (levels 1 to 30), replacing `durotar-1-12` and `barrens-10-20-hunter`; the druid chapters were rebuilt with grouped steps. Not yet:
+  the druid guides from planner routes (they stay drafted to level 20; 21 to 30 is open).
 
 ## Backlog (user, 2026-10-20)
 

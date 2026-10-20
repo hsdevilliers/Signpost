@@ -1,5 +1,5 @@
 {
-  "about": "Manifest for tools/rebuild_drafts.py: the drafted guide chapters, rebuilt from the data pack. Chapter files are generated; change this file, tools/hardcore_rules.json or the tools, not the chapter text. \"hardcore\" says which guides are HARDCORE routes (elite and sourced dangerous quests left out); the others are normal routes (group quests tagged optional).",
+  "about": "Manifest for tools/rebuild_drafts.py: the drafted guide chapters, rebuilt from the data pack. Chapter files are generated; change this file, tools/hardcore_rules.json or the tools, not the chapter text. \"hardcore\" says which guides are HARDCORE routes (elite and sourced dangerous quests left out); the others are normal routes (group quests tagged optional). A guide with a \"planned\" note was installed from tools/route_planner.py --install and is not drafted: its chapter entries stay for the planner's --chain and --exclude hints.",
   "guides": [
     {
       "guide": "horde-tauren-druid",
@@ -99,7 +99,36 @@
     {
       "guide": "horde-troll-hunter",
       "faction": "Horde",
-      "chapters": [],
+      "chapters": [
+        {
+          "id": "durotar-1-12",
+          "name": "Durotar",
+          "race": "Troll",
+          "class": "HUNTER",
+          "zones": [
+            1411,
+            1454
+          ],
+          "levels": "1-12",
+          "args": [
+            "--exclude",
+            787,
+            "--exclude-reason",
+            "starts with Eitrigg in Orgrimmar: an intro for characters created there, not for the Valley of Trials"
+          ]
+        },
+        {
+          "id": "barrens-10-20-hunter",
+          "name": "The Barrens",
+          "race": "Troll",
+          "class": "HUNTER",
+          "zones": [
+            1413
+          ],
+          "levels": "10-20",
+          "args": []
+        }
+      ],
       "rewrites": [],
       "hardcore": false,
       "planned": "the beam route for Troll Hunter, planned by tools/route_planner.py on 2026-10-20 (docs/PLANNER.md)"

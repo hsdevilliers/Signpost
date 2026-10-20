@@ -60,6 +60,8 @@ class Settings:
     class_grace: int = 0  # levels past the one it opens at before the charge starts
     class_levels: int = 6  # levels past that the charge keeps growing for: a quest this late is not worth bending the route for
     group_yards: float = steps.GROUP_YARDS  # neighbouring steps of one kind this near each other are written as one
+    unknown_work: float = 300.0  # seconds given to a class quest whose objectives the pack does not have (taming, an escort...)
+    instant_quests: bool = False  # keep quests with no objective that are handed in at the NPC that gave them: the pack probably lacks them
 
 
 @dataclass
@@ -69,6 +71,7 @@ class PObjective:
     ident: int
     spots: list
     hubs: tuple = ()
+    elsewhere: bool = False  # the pack has positions for it, but none where this route goes
 
 
 @dataclass
@@ -95,6 +98,8 @@ class PQuest:
     why: str = ""  # why it is not kept
     needed: bool = False  # a kept quest has it as a prerequisite: never left out for being slow
     unknown_xp: bool = False  # the data has no experience for it (a quest new to Forever): never left out for being slow
+    end_unknown: bool = False  # a class quest whose ender has no position in the pack: handed in at its start, and the step says so
+    unknown_work: bool = False  # a class quest with no objective in the pack, accepted and handed in at one NPC: what it asks is not known
 
 
 @dataclass
@@ -221,6 +226,8 @@ class Planner:
         self._rates: dict[tuple, bool] = {}
         self._order: dict[tuple, list] = {}
         self.nodes_made = 0
+        self._giver_index: dict[int, list] = {}  # start NPC -> (quest, name, class mask) of every quest of the pack
+        self._required: set[int] = set()  # quests that another quest needs first
         self.home: Coord | None = None  # where the character begins
         self.core: set[int] = set()  # the class quests and the quests they need: all that is done once the cap is reached
         self.forbidden: set[int] = set()  # quests a tidied route no longer accepts (it never turned them in)
@@ -253,6 +260,11 @@ class Planner:
         planner.skip_reasons = dict(exclude or {})
         planner.mandatory = set(mandatory)
         planner.home = home
+        planner._giver_index = planner._index_givers(quests)
+        planner._required = {
+            p for record in quests.values() if isinstance(record, dict)
+            for p in guide_draft._ids(record.get("preGroup")) + guide_draft._ids(record.get("preSingle"))
+        }
         started = time.perf_counter()
         for qid, record in sorted(quests.items()):
             if isinstance(record, dict):
@@ -275,6 +287,29 @@ class Planner:
     def _drop(self, reason: str, qid: int) -> None:
         self.dropped.setdefault(reason, []).append(qid)
 
+    def _index_givers(self, quests: dict) -> dict[int, list]:
+        found: dict[int, list] = {}
+        for qid, record in quests.items():
+            if isinstance(record, dict):
+                mask = self.rules.class_mask(record)
+                for npc in guide_draft._ids((record.get("s") or {}).get("npc")):
+                    found.setdefault(npc, []).append((qid, str(record.get("n") or ""), mask))
+        return found
+
+    def _inferred_class(self, qid: int, record: dict) -> int | None:
+        """The class a quest with no class mask probably belongs to: the mask of a quest of the same name from the same giver (the
+        Forever copy of a class quest), else the one class all of that giver's other quests are limited to (a class trainer's NPC)."""
+        name = str(record.get("n") or "")
+        for npc in guide_draft._ids((record.get("s") or {}).get("npc")):
+            others = [(n, m) for q, n, m in self._giver_index.get(npc, ()) if q != qid]
+            same = [m for n, m in others if m and n == name]
+            if same:
+                return same[0]
+            masks = [m for n, m in others]
+            if len(masks) >= 3 and all(masks) and len(set(masks)) == 1:
+                return masks[0]
+        return None
+
     def _consider(self, qid: int, record: dict) -> None:
         s, world, pack = self.s, self.world, self.pack
         block = self.rules.mask_block(qid)
@@ -292,18 +327,38 @@ class Planner:
             return self._drop("a prerequisite is closed to this character", qid)
         if qid in self.skip_reasons:
             return self._drop("excluded", qid)
+        mine = self.rules.me.class_bit
+        if self.rules.class_mask(record) is None and mine:
+            inferred = self._inferred_class(qid, record)
+            if inferred and not inferred & mine:
+                return self._drop("probably another class's quest (the quests of its giver are)", qid)
         starts = _unique(world.quest_coords(qid, "s"))
         if not starts:
             return self._drop("no start position in the data", qid)
-        ends = _unique(world.quest_coords(qid, "e")) or list(starts)
+        ends = _unique(world.quest_coords(qid, "e"))
+        end_unknown = not ends
+        if end_unknown:
+            if qid not in self.mandatory:
+                return self._drop("no turn-in position in the data", qid)
+            ends = list(starts)  # a class quest is routed all the same, and its step says that the turn-in has no position
         objectives: list[PObjective] = []
         elite = False
         for number, objective in enumerate(record.get("o") or [], 1):
-            if isinstance(objective, dict) and isinstance(objective.get("id"), int):
-                kind = str(objective.get("k"))
+            if not isinstance(objective, dict):
+                continue
+            kind = str(objective.get("k"))
+            if isinstance(objective.get("id"), int):
                 spots = guide_draft._objective_spots(pack, world, None, kind, objective["id"])
                 objectives.append(PObjective(number, kind, objective["id"], spots))
                 elite = elite or guide_draft._elite_objective(pack, kind, objective["id"])
+            elif kind == "explore":  # an area to reach: positions of its own, no creature or object
+                objectives.append(PObjective(number, kind, 0, _unique(guide_travel.coords_of(objective.get("p")))))
+        one_npc = bool(
+            set(guide_draft._ids((record.get("s") or {}).get("npc"))) & set(guide_draft._ids((record.get("e") or {}).get("npc")))
+        )
+        unknown_work = not objectives and one_npc
+        if unknown_work and not s.instant_quests and qid not in self.mandatory and qid not in self._required and not record.get("next"):
+            return self._drop("no objective in the data (accepted and handed in at one NPC)", qid)
         if s.hardcore and elite:
             return self._drop("HARDCORE: needs an elite or boss kill", qid)
         if (record.get("l") or 0) > s.cap + 5:
@@ -326,6 +381,8 @@ class Planner:
             class_mask=classes if isinstance(classes, int) else None,
             optional=elite and not s.hardcore,
             mandatory=qid in self.mandatory,
+            end_unknown=end_unknown,
+            unknown_work=unknown_work and qid in self.mandatory,
         )
 
     def _prune_territory(self, faction: str) -> None:
@@ -358,7 +415,12 @@ class Planner:
             for o in q.objectives:
                 spots = [c for c in o.spots if zone_of(c.map) in friendly]
                 near = [c for c in spots if geo.instance(c.map) == home]
+                o.elsewhere = bool(o.spots) and not (near or spots)
                 o.spots = near or spots
+        # a quest whose objective exists only where the route does not go cannot be done by it (a class quest stays, with a .todo)
+        for qid in [qid for qid, q in self.quests.items() if not q.mandatory and any(o.elsewhere for o in q.objectives)]:
+            del self.quests[qid]
+            self._drop("an objective only where the route does not go", qid)
 
     def _prune_unreachable(self) -> None:
         """A quest whose prerequisites the planner cannot route (data missing, a HARDCORE exclusion) is out with them."""
@@ -686,6 +748,8 @@ class Planner:
                         if not self.offered(q, progress.level, done, active, gone):
                             continue
                         gated = max(gated, q.req) if q.req > 1 else gated
+                        if q.unknown_work:
+                            objective += s.unknown_work
                         interact += interact_s
                         actions.append(Action("accept", q.id, None, place))
                         active[q.id] = {o.index for o in q.objectives}
@@ -1098,6 +1162,9 @@ class Planner:
             else:
                 chosen = next((x for x in self.quests[qid].excl if x in done), None)
                 skips[qid] = f"alternative to quest {chosen}, which is routed" if chosen else "not reached by this route"
+        for qid in self.dropped.get("excluded", ()):
+            if qid in self.skip_reasons and qid not in skips:
+                skips[qid] = self.skip_reasons[qid]
         for qid in done:
             for other in self.quests[qid].excl:
                 if other not in done and other in self.quests and other not in skips:
@@ -1170,14 +1237,19 @@ class Planner:
                     lines.append(f"  .level {q.req}")
                     gated = q.req
                 lines.append(f"  .accept {q.id}{gate} -- {name}")
+                if q.unknown_work:
+                    lines.append(f'  .todo "{name}: the pack has no objective for it; read what it asks in the quest log"')
                 if q.id in self.notes:
                     lines.append(f"  .note {guide_draft._clean(self.notes[q.id])}")
             elif a.kind == "turnin":
+                if q.end_unknown:
+                    lines.append(f'  .todo "{name}: the turn-in has no position in the pack"')
                 lines.append(f"  .turnin {q.id}{gate} -- {name}")
             else:
                 objective = next((o for o in q.objectives if o.index == a.index), None)
                 if objective is None or not objective.spots:
-                    lines.append(f'  .todo "{name}: objective {a.index} has no position in the pack"')
+                    why = "is only in places this guide does not go" if objective is not None and objective.elsewhere else "has no position in the pack"
+                    lines.append(f'  .todo "{name}: objective {a.index} {why}"')
                 lines.append(f"  .complete {q.id},{a.index}{gate} -- {name}")
             if q.optional:
                 optional[q.id] = name

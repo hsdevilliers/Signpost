@@ -5,6 +5,7 @@
     python tools/route_planner.py troll --preset all        run every technique and compare them
     python tools/route_planner.py druid --preset thorough   a wide search, then the finalists under uncertain assumptions
     python tools/route_planner.py tauren --cap 20 --friction 5 --steps 60
+    python tools/route_planner.py troll --preset all --install   plan, compare, and make the best route that passes its checks the guide
 
 The guide is named by any words of its id, name, race or class. The tool takes the guide's character (faction, race, class),
 whether it is a HARDCORE or a normal guide, and its class quests (which must be done or accounted for), and plans a route from
@@ -23,6 +24,9 @@ The report says what the search did (how many situations, how many dropped and w
 and experience by level, the quests done and left out, the decisions at each change of zone with the alternatives, and the
 check of the finished route by the same simulator and lint the shipped guides go through. It is written to plans/<guide>/.
 Every number is an assumption (tools/sim_params.json): this is the best route under those assumptions, not a prediction.
+
+--install is the step taken on purpose: the route that passes every check and was fastest in most of the Monte Carlo runs (or, without
+thorough, has the lowest total) becomes the guide's chapters; tools/route_install.py says what it changes (docs/PLANNER.md).
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ import argparse
 import datetime
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -173,6 +178,29 @@ def manifest_chains(root: Path, guide_id: str) -> list[list[int]]:
     return found
 
 
+def manifest_excludes(root: Path, guide_id: str) -> dict[int, str]:
+    """The quests the guide's drafted chapters leave out on purpose (`--exclude` with the chapter's `--exclude-reason`): the planner
+    leaves them out too and says why in a `#skipquest` line."""
+    try:
+        manifest = json.loads((root / "tools" / "drafts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    found: dict[int, str] = {}
+    for entry in manifest.get("guides", []):
+        if entry.get("guide") != guide_id:
+            continue
+        for chapter in entry.get("chapters", []):
+            args = [str(a) for a in chapter.get("args", [])]
+            reason = guide_draft.HARDCORE_NOTE
+            for i, a in enumerate(args[:-1]):
+                if a == "--exclude-reason":
+                    reason = args[i + 1]
+            for i, a in enumerate(args[:-1]):
+                if a == "--exclude" and args[i + 1].isdigit():
+                    found[int(args[i + 1])] = reason
+    return found
+
+
 def start_of(job_project: guidefile.Project, guide: guidefile.Guide, world, override: str | None) -> Coord | None:
     """Where the character begins: --start, else the first place the guide as it is sends it to."""
     if override:
@@ -227,17 +255,19 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
     params = guide_sim.load_params(overrides=options.param)
     exclude: dict = {}
     notes: dict = {}
-    if hardcore:
-        try:
-            rules = json.loads((options.root / "tools" / "hardcore_rules.json").read_text(encoding="utf-8")).get("rules", [])
-        except (OSError, ValueError):
-            rules = []
-        for rule in rules:
-            if isinstance(rule, dict) and isinstance(rule.get("id"), int):
-                if rule.get("action") == "skip":
-                    exclude[rule["id"]] = str(rule.get("reason") or "HARDCORE: not routed")
-                elif rule.get("action") == "note" and rule.get("text"):
-                    notes[rule["id"]] = str(rule["text"])
+    try:
+        rules = json.loads((options.root / "tools" / "hardcore_rules.json").read_text(encoding="utf-8")).get("rules", [])
+    except (OSError, ValueError):
+        rules = []
+    for rule in rules:
+        if isinstance(rule, dict) and isinstance(rule.get("id"), int):
+            reason = str(rule.get("reason") or "HARDCORE: not routed")
+            # a skip whose reason is not about HARDCORE (a battleground quest is not leveling content) holds for every route
+            if rule.get("action") == "skip" and (hardcore or not reason.startswith("HARDCORE")):
+                exclude[rule["id"]] = reason
+            elif rule.get("action") == "note" and rule.get("text") and hardcore:
+                notes[rule["id"]] = str(rule["text"])
+    exclude.update(manifest_excludes(options.root, guide.id))
     for qid in options.exclude:
         exclude[qid] = "excluded on the command line"
     chains = guide_lint.class_chains(project, pack, cls, race)
@@ -250,6 +280,7 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
         class_push=options.class_push * 60,
         class_grace=options.class_grace,
         group_yards=options.group_yards,
+        instant_quests=options.instant_quests,
         skip_unprofitable=not options.no_skip,
         profit_threshold=options.threshold,
         ferry_seconds=options.ferry * 60,
@@ -467,7 +498,7 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         if s.skip_unprofitable
         else "no quest is left out for being slow",
         (f"HARDCORE: no elite or boss objectives, no quest more than {s.hardcore_over} level above the character, "
-         f"{len(job.exclude)} sourced skips (tools/hardcore_rules.json)")
+         f"{len(job.exclude)} skips (tools/hardcore_rules.json and the guide's own list)")
         if s.hardcore
         else f"a normal route: quests up to {pl.accept_over} levels above you are accepted and worked on up to {pl.work_over}; group quests are tagged optional",
         f"{len(job.mandatory)} class quests are mandatory: each is done or accounted for with a #skipquest reason; there is no deadline, "
@@ -476,7 +507,8 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         + ", so it is picked up when the route passes the giver and a far one gets its trip soon after it opens",
     ]
     for n, rule in enumerate(rules):
-        out(("rules         " if n == 0 else "              ") + rule)
+        for line in labelled("rules         " if n == 0 else "              ", rule):
+            out(line)
 
 
 def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
@@ -497,7 +529,7 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
     if "baseline_seconds" in p:
         base = p["baseline_seconds"]
         better = (base - plan.total) / base * 100 if base else 0
-        out(f"baseline      the greedy route takes {hms(base)} (with the zone-change cost); this one {hms(plan.total)}: "
+        out(f"baseline      the greedy route takes {hms(base)} (with the planner's charges); this one {hms(plan.total)}: "
             f"{better:.1f}% {'faster' if better >= 0 else 'slower'}")
     if p.get("finals"):
         out(f"finished      {p['finals']:,} complete routes reached the cap during the search; the best {len(plan.alternatives) + 1} with different "
@@ -566,6 +598,13 @@ def report_time(out: Out, pl: engine.Planner, plan: engine.Plan) -> None:
     quest_xp = sum(v.xp for v in plan.visits if v.hub is not None)
     out(f"  experience: {xp_total:,.0f} to reach level {plan.final.level}; {quest_xp:,.0f} of it from quests and kills, "
         f"{plan.final.ground:,.0f} from grinding ({share(plan.final.ground, xp_total).strip()})")
+    done, levels = plan.final.done, plan.levels_done()
+    fallback = [q for q in done if q not in pl.model.quest_xp]
+    reward = lambda q: pl.reward(q, levels.get(q, 1))
+    xp_fallback, xp_done = sum(reward(q) for q in fallback), sum(reward(q) for q in done)
+    out(f"  quest XP    {len(fallback)} of the {len(done)} quests done ({share(xp_fallback, xp_done).strip()} of their experience) have no entry in "
+        f"QuestieDB's Classic seed and get {pl.model.p['quest_xp_fraction_of_level']:.0%} of the level: the more a route leans on them, the less "
+        f"certain it is (--param quest_xp_fraction_of_level=0.05 shows by how much)")
 
 
 def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> None:
@@ -688,7 +727,7 @@ def report_compare(out: Out, pls: dict, outcomes: list[Outcome]) -> None:
     out.section("COMPARISON OF THE TECHNIQUES")
     base = next((o for o in outcomes if o.preset == "greedy"), outcomes[0])
     base_total = base.plan.total
-    out(f"  {'technique':<11} {'work':>8} {'situations':>11} {'play time':>9} {'+ zone cost':>11} {'vs greedy':>9} {'legs':>5} {'visits':>6} {'quests':>6}  complete")
+    out(f"  {'technique':<11} {'work':>8} {'situations':>11} {'play time':>9} {'+ charges':>11} {'vs greedy':>9} {'legs':>5} {'visits':>6} {'quests':>6}  complete")
     for o in outcomes:
         pl = pls[o.preset]
         legs = legs_of(pl, o.plan)
@@ -712,50 +751,94 @@ def report_steps(out: Out, ev: Evaluation, limit: int) -> None:
             out(" " * len(header) + "  " + event)
 
 
-def passes(o: Outcome) -> bool:
-    """A route that may be installed: it reaches the cap with every class quest done or accounted for, the game would offer every quest
-    where it accepts it, and the lint finds no error."""
+def passes(o: Outcome, cap: int) -> bool:
+    """A route that may be installed: it reaches the cap in the planner and in the full simulation with every class quest done or
+    accounted for, the game would offer every quest where it accepts it, and the lint finds no error."""
     ev = o.evaluation
     return (
         ev is not None
         and o.plan.complete
+        and ev.sim.level >= cap
         and not [v for v in ev.sim.violations if v.reason.severity == "error"]
         and not ev.lint_errors
     )
 
 
-def choose(outcomes: list[Outcome], finalists: list[Outcome]) -> Outcome | None:
-    """The route to install: of those that pass, the one the planner finds fastest; where thorough ran, its own finalist is the one that
-    was most often the fastest when the assumptions varied."""
-    pool = []
-    for o in outcomes:
-        if o.preset == "thorough" and finalists:
-            winner = max((f for f in finalists if passes(f)), key=lambda f: f.monte.get("wins", 0.0), default=None)
-            if winner is not None:
-                pool.append(winner)
-        elif passes(o):
-            pool.append(o)
+def choose(outcomes: list[Outcome], finalists: list[Outcome], cap: int) -> Outcome | None:
+    """The route to install: of those that pass their checks, the one that was fastest in the most Monte Carlo runs (every technique's
+    route and thorough's finalists meet the same luck), ties by the planner's total; without a Monte Carlo, the lowest total."""
+    pool = list({id(o): o for o in [*outcomes, *finalists] if passes(o, cap)}.values())
+    measured = [o for o in pool if o.monte]
+    if measured:
+        return max(measured, key=lambda o: (o.monte.get("wins", 0.0), -o.plan.total))
     return min(pool, key=lambda o: o.plan.total, default=None)
 
 
-def install_route(job: Job, chosen: Outcome, out: Out) -> None:
-    note = (f"the {chosen.preset} route for {job.guide.name}, planned by tools/route_planner.py on {datetime.date.today().isoformat()} "
-            f"(docs/PLANNER.md)")
-    result = route_install.install(job.root, chosen.evaluation.root, job.guide.id, job.guide.faction, note, job.settings.cap,
-                                   guide_draft.BASELINE_NOTE)
+def planner_of(pls: dict, o: Outcome) -> engine.Planner:
+    """The planner a technique's outcome came from (thorough's finalists are named "thorough alt N")."""
+    return pls.get(o.preset) or pls[o.preset.split(" ")[0]]
+
+
+def command_of(argv: list[str] | None) -> str:
+    """The command line that made the route, without the paths of this machine."""
+    tokens = list(sys.argv[1:] if argv is None else argv)
+    kept, i = [], 0
+    while i < len(tokens):
+        if tokens[i] in ("--root", "--pack", "--out"):
+            i += 2
+            continue
+        kept.append(tokens[i])
+        i += 1
+    return " ".join(kept)
+
+
+def install_problem(job: Job, options) -> str | None:
+    """Why this install should not go ahead without --force: it would shorten the guide, or overwrite uncommitted changes."""
+    top = job.guide.levels[1]
+    if options.cap < top:
+        return (f"--install: {job.guide.name} covers levels 1 to {top} and this route stops at {options.cap}, which would shorten it "
+                f"(plan to --cap {top} or more, or use --force)")
+    try:
+        status = subprocess.run(["git", "status", "--porcelain", "--", "Guides", "Signpost.toc", "Signpost_Camelot.toc", "tools/drafts.json"],
+                                cwd=job.root, capture_output=True, text=True)
+    except OSError:
+        return None  # no git here: nothing to check against
+    if status.returncode == 0 and status.stdout.strip():
+        return ("--install: the guide files have uncommitted changes that the install would overwrite or delete; "
+                "commit or stash them, or use --force")
+    return None
+
+
+def install_route(job: Job, chosen: Outcome, out: Out, command: str) -> bool:
+    note = f"the {chosen.preset} route for {job.guide.name}: tools/route_planner.py {command} (docs/PLANNER.md)"
+
     def say(text: str = "") -> None:
         out(text, always=True)
 
+    try:
+        result = route_install.install(job.root, chosen.evaluation.root, job.guide.id, job.guide.faction, note, job.settings.cap,
+                                       guide_draft.BASELINE_NOTE)
+    except ValueError as error:
+        say()
+        say(f"not installed: {error} (nothing was changed)")
+        return False
+    except OSError as error:
+        say()
+        say(f"INSTALL FAILED part-way: {error}; look at `git status` before anything else")
+        return False
     say()
     say("== INSTALLED " + "=" * (WIDTH - 16))
     say(f"the {chosen.preset} route ({hms(chosen.plan.seconds)} of play, {hms(chosen.evaluation.sim.seconds)} simulated in full) is now "
-        f"{job.guide.name}'s guide: {len(result.chapters)} chapters, levels 1 to {job.settings.cap}")
+        f"{job.guide.name}'s guide: {len(result.chapters)} chapters, levels 1 to {job.settings.cap}, {chosen.evaluation.todos} .todo steps")
     say(f"  chapters written   {', '.join(result.chapters[:6])}" + (" ..." if len(result.chapters) > 6 else ""))
     if result.removed:
         say(f"  chapters replaced  {', '.join(result.removed)}")
     say(f"  changed            {', '.join(sorted({p.name for p in result.files if p.suffix != '.lua' or 'Chapters' not in p.parts}))}")
-    say("  StyLua             " + ("ran on the Lua files" if result.formatted else "NOT run (no StyLua found): run it on Guides/ before committing"))
-    say("  next               read `git diff`, run tools/check.ps1, then commit")
+    say("  StyLua             " + {True: "ran on the Lua files", False: "FAILED: run StyLua on Guides/ before committing",
+                                    None: "not found: run StyLua on Guides/ before committing"}[result.formatted])
+    say("  next               read `git diff`; run tools/check.ps1 and, with the data pack, `python tools/guide_lint.py --strict` and")
+    say("                     `python tools/guide_sim.py --check`; then commit")
+    return True
 
 
 def write_outputs(job: Job, outcome: Outcome, pl: engine.Planner, out_dir: Path, out: Out) -> None:
@@ -807,6 +890,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="yards within which neighbouring steps of one kind are written as one: pick up, doing, hand in (default 250)")
     parser.add_argument("--threshold", type=float, default=1.0, help="times the grinding rate a quest must give to be kept (default 1)")
     parser.add_argument("--no-skip", action="store_true", help="do not leave out quests for being slower than grinding")
+    parser.add_argument("--instant-quests", action="store_true",
+                        help="keep quests that have no objective and are handed in where they were accepted (free experience: the data probably lacks them)")
     parser.add_argument("--width", type=int, help="routes the beam keeps (default by technique)")
     parser.add_argument("--branch", type=int, help="hubs tried from each situation (default by technique)")
     parser.add_argument("--horizon", type=int, help="visits a lookahead plays out (default 12)")
@@ -825,12 +910,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--install", action="store_true",
                         help="install the best route that passes its checks as the guide's chapters (the guide file, both TOCs and "
                              "tools/drafts.json change): the step you take on purpose, after reading the report")
+    parser.add_argument("--force", action="store_true", help="with --install: also when it would shorten the guide or overwrite uncommitted changes")
     parser.add_argument("--quiet", action="store_true", help="print only the summary")
     parser.add_argument("--root", type=Path, default=REPO_ROOT, help="the Signpost checkout")
     parser.add_argument("--pack", type=Path, help="the data pack folder (default ../Signpost_Data)")
     options = parser.parse_args(argv)
-    if options.install and options.no_check:
-        parser.error("--install needs the checks (the route must pass them): drop --no-check")
+    if options.install:
+        if options.no_check:
+            parser.error("--install needs the checks (the route must pass them): drop --no-check")
+        if not options.guide:
+            parser.error("--install needs a guide: python tools/route_planner.py troll --install")
+        if options.mode != "auto":
+            parser.error("--install: the route has to be planned in the guide's own mode (HARDCORE or normal): drop --mode")
     guide_travel.safe_stdout()
 
     project = guidefile.load_project(options.root)
@@ -846,6 +937,11 @@ def main(argv: list[str] | None = None) -> int:
     job = build_job(options, project, matches[0], out)
     if job is None:
         return 1
+    if options.install and not options.force:
+        problem = install_problem(job, options)
+        if problem:
+            out(problem, always=True)
+            return 2
 
     presets = list(PRESETS) if options.preset == "all" else [options.preset]
     first_pl = planner_for(job, out, quiet=True)
@@ -864,27 +960,32 @@ def main(argv: list[str] | None = None) -> int:
             if outcome.plan.complete or outcome.plan.visits:
                 outcome.evaluation = evaluate(job, pls[outcome.preset], outcome.plan, outcome.preset)
     shown = outcomes[-1]
-    pl = pls[shown.preset]
+    finalists: list[Outcome] = []
     if "thorough" in presets and not options.no_check:
-        candidates = [shown] + [
-            Outcome(f"thorough alt {i}", alt, 0.0, evaluate(job, pl, alt, f"alt{i}")) for i, alt in enumerate(shown.plan.alternatives, 1)
+        thorough = next(o for o in outcomes if o.preset == "thorough")
+        alternatives = [
+            Outcome(f"thorough alt {i}", alt, 0.0, evaluate(job, pls["thorough"], alt, f"alt{i}"))
+            for i, alt in enumerate(thorough.plan.alternatives, 1)
         ]
-        monte_carlo(job, candidates, options.runs, options.seed)
-        shown.monte = candidates[0].monte
-        shown_monte = candidates
-    else:
-        shown_monte = []
+        # every route that was checked meets the same luck: thorough's finalists and the other techniques' routes
+        finalists = [thorough, *alternatives, *[o for o in outcomes if o is not thorough and o.evaluation is not None]]
+        monte_carlo(job, finalists, options.runs, options.seed)
+        thorough.monte = finalists[0].monte
+    chosen = choose(outcomes, finalists, job.settings.cap) if options.install else None
+    if chosen is not None:
+        shown = chosen  # the report describes the route that is installed
+    pl = planner_of(pls, shown)
     report_route(out, pl, shown.plan)
     report_time(out, pl, shown.plan)
     report_quests(out, pl, job, shown.plan)
-    if options.decisions and shown.preset != "greedy":
+    if options.decisions and shown.plan.decisions:
         explain_decisions(out, pl, shown.plan, options.decisions)
     if shown.evaluation is not None:
         report_validation(out, pl, shown.plan, shown.evaluation)
         if options.steps >= 0:
             report_steps(out, shown.evaluation, options.steps)
-    if shown_monte:
-        report_monte(out, shown_monte)
+    if finalists:
+        report_monte(out, finalists)
     if len(outcomes) > 1:
         report_compare(out, pls, outcomes)
     if not options.no_write and shown.evaluation is not None:
@@ -894,14 +995,15 @@ def main(argv: list[str] | None = None) -> int:
                 write_outputs(job, outcome, pls[outcome.preset], out_dir, out)
         out.section("FILES")
         out(f"  {out_dir}/<technique>/ holds report.txt, plan.json and the route as guide chapters (Guides/Chapters/*.lua, Guides/Plan.lua)")
-        out("  nothing was changed in the guides: the chapters are a candidate to read, compare and then install on purpose")
+        if not options.install:
+            out("  nothing was changed in the guides: the chapters are a candidate to read, compare and then install on purpose (--install)")
     if options.install:
-        chosen = choose(outcomes, shown_monte)
         if chosen is None:
             out("", always=True)
-            out("not installed: no route passes its checks (complete, no availability error, no lint error)", always=True)
+            out("not installed: no route passes its checks (it reaches the cap, no availability error, no lint error)", always=True)
             return 1
-        install_route(job, chosen, out)
+        if not install_route(job, chosen, out, command_of(argv)):
+            return 1
     out("", always=True)
     out(f"{shown.preset}: {hms(shown.plan.seconds)} to level {shown.plan.final.level} under the stated assumptions"
         + (f"; {hms(shown.evaluation.sim.seconds)} when the written route is simulated in full" if shown.evaluation else ""), always=True)

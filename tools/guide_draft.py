@@ -215,12 +215,19 @@ def candidates(pack: guide_travel.Pack, world: guide_travel.World, spec: argpars
             objectives = []
             outside = False
             for number, objective in enumerate(record.get("o") or [], 1):
-                if isinstance(objective, dict) and isinstance(objective.get("id"), int):
-                    kind = str(objective.get("k"))
+                if not isinstance(objective, dict):
+                    continue
+                kind = str(objective.get("k"))
+                if isinstance(objective.get("id"), int):
                     spots = _objective_spots(pack, world, zones, kind, objective["id"])
                     if not spots and _objective_spots(pack, world, None, kind, objective["id"]):
                         outside = True  # it exists, but only in another zone
                     objectives.append(Objective(number, kind, objective["id"], spots))
+                elif kind == "explore":  # an area to reach: positions of its own
+                    area = guide_travel.coords_of(objective.get("p"))
+                    spots = _spots(area, world, zones)
+                    outside = outside or (bool(area) and not spots)
+                    objectives.append(Objective(number, kind, 0, spots))
             if outside:
                 drop("objective lies outside the zones (route by hand)")
                 continue
@@ -635,18 +642,21 @@ def main(argv: list[str] | None = None, carry: dict | None = None) -> int:
         spec.start_level = spec.start_level or carry.get("level")
         spec.start_xp = spec.start_xp or carry.get("xp", 0.0)
         spec.gated = max(spec.gated, carry.get("gated", 0))
-    if spec.hardcore:
-        try:
-            rules = json.loads(Path(spec.hardcore).read_text(encoding="utf-8")).get("rules", [])
-        except (OSError, ValueError) as exc:
+    rules = []
+    try:
+        rules = json.loads(Path(spec.hardcore or Path(__file__).resolve().parent / "hardcore_rules.json").read_text(encoding="utf-8")).get("rules", [])
+    except (OSError, ValueError) as exc:
+        if spec.hardcore:
             parser.error(f"--hardcore: {exc}")
-        for rule in rules:
-            if not isinstance(rule, dict) or not isinstance(rule.get("id"), int):
-                continue
-            if rule.get("action") == "skip":
-                spec.skip_reasons.setdefault(rule["id"], str(rule.get("reason") or HARDCORE_NOTE))
-            elif rule.get("action") == "note" and rule.get("text"):
-                spec.notes[rule["id"]] = str(rule["text"])
+    for rule in rules:
+        if not isinstance(rule, dict) or not isinstance(rule.get("id"), int):
+            continue
+        reason = str(rule.get("reason") or HARDCORE_NOTE)
+        # a skip whose reason is not about HARDCORE (a battleground quest is not leveling content) holds for every guide
+        if rule.get("action") == "skip" and (spec.hardcore or not reason.startswith("HARDCORE")):
+            spec.skip_reasons.setdefault(rule["id"], reason)
+        elif rule.get("action") == "note" and rule.get("text") and spec.hardcore:
+            spec.notes[rule["id"]] = str(rule["text"])
 
     for item in spec.note:
         qid, _, text = item.partition("=")

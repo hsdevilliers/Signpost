@@ -13,7 +13,7 @@ HORDE = availability.Character("Horde", availability.race_bit("Orc", "Horde"), a
 
 class PlannerCase(TempProject):
     def planner(self, quests=None, character=HORDE, mandatory=(), npcs=None, **settings):
-        base = dict(cap=6, skip_unprofitable=False, hub_radius=150.0)
+        base = dict(cap=6, skip_unprofitable=False, hub_radius=150.0, instant_quests=True)  # the fixtures' quests have no objectives
         base.update(settings)
         pack_dir = write_pack(self.pack_dir, {"maps": MAPS, "quests": quests or QUESTS, "npcs": npcs or NPCS, "travel": TRAVEL, "items": ITEMS})
         pack = guide_travel.load_pack(pack_dir)
@@ -276,6 +276,96 @@ class ActivityStepsTest(PlannerCase):
                 if ".accept" in step or ".turnin" in step:
                     continue  # a talk-to objective at an NPC is part of the NPC's step
                 self.assertNotIn(".level", step.replace(".level 2 ", ""))  # a doing step is not a level gate
+
+
+class DataQualityTest(PlannerCase):
+    """What the pack does not say must not become free experience."""
+
+    BINDER = {
+        1005: {"n": "Binder", "p": [[10, 45, 45]], "side": "Horde"},
+        1006: {"n": "Nowhere", "side": "Horde"},  # no position
+        1007: {"n": "Pact Master", "p": [[10, 48, 48]], "side": "Horde"},
+    }
+
+    def quests(self):
+        lock = {"s": {"npc": [1005]}, "e": {"npc": [1005]}, "side": "Horde", "races": 178}
+        pact = {"s": {"npc": [1007]}, "e": {"npc": [1007]}, "side": "Horde", "races": 178}
+        return {
+            **QUESTS,
+            280: {"n": "The Binding", "r": 1, "l": 1, "classes": 256, **lock},  # a warlock's
+            281: {"n": "The Binding", "r": 1, "l": 1, **lock},  # the same name from the same giver, no mask: its Forever copy
+            282: {"n": "Second Pact", "r": 1, "l": 1, "classes": 256, **pact},
+            283: {"n": "Third Pact", "r": 1, "l": 1, "classes": 256, **pact},
+            284: {"n": "Fourth Pact", "r": 1, "l": 1, "classes": 256, **pact},
+            285: {"n": "Unmasked Other", "r": 1, "l": 1, **pact},  # all the giver's other quests are the warlock's
+            286: {"n": "General Errand", "r": 1, "l": 2, "o": [{"id": 3001, "k": "kill"}], **HOME},  # a giver whose quests are of every class
+            290: {"n": "Look Around", "r": 1, "l": 2, "o": [{"k": "explore", "p": [[10, 55, 55]]}], **HOME},
+            292: {"n": "Ends Nowhere", "r": 1, "l": 1, "s": START, "e": {"npc": [1006]}, "side": "Horde", "races": 178},
+            293: {"n": "Class Ends Nowhere", "r": 1, "l": 1, "classes": 4, "s": START, "e": {"npc": [1006]}, "side": "Horde", "races": 178},
+            294: {"n": "Talk To Yourself", "r": 1, "l": 1, **HOME},  # no objective, handed in where it was accepted
+            295: {"n": "Needed First", "r": 1, "l": 1, **HOME},
+            296: {"n": "After Needed", "r": 1, "l": 1, "preSingle": [295], **HOME},
+            297: {"n": "Taming", "r": 1, "l": 1, "classes": 4, **HOME},  # a class quest with no objective
+        }
+
+    def planner(self, **kw):
+        kw.setdefault("instant_quests", False)
+        return super().planner(quests=self.quests(), npcs={**NPCS, **self.BINDER}, **kw)
+
+    def test_a_quest_with_no_mask_is_another_classs_when_its_giver_says_so(self):
+        pl = self.planner()
+        dropped = pl.dropped["probably another class's quest (the quests of its giver are)"]
+        self.assertEqual(sorted(dropped), [281, 285])
+        self.assertIn(286, list(pl.quests))
+
+    def test_an_explore_objective_is_an_area_to_reach(self):
+        pl = self.planner()
+        objective = pl.quests[290].objectives[0]
+        self.assertEqual((objective.kind, [(c.map, c.x, c.y) for c in objective.spots]), ("explore", [(10, 55.0, 55.0)]))
+        plan = pl.plan("greedy", self.start(pl))
+        text = "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+        self.assertIn(".complete 290", text)
+
+    def test_a_quest_whose_objective_is_only_where_the_route_does_not_go_is_left_out(self):
+        pl = self.planner()
+        self.assertIn(228, pl.dropped["an objective only where the route does not go"])  # the far rats are in a zone nobody quests in
+        self.assertNotIn(228, pl.quests)
+
+    def test_a_turn_in_with_no_position_is_left_out_but_a_class_quest_keeps_a_todo(self):
+        pl = self.planner(mandatory=(293,))
+        self.assertIn(292, pl.dropped["no turn-in position in the data"])
+        self.assertTrue(pl.quests[293].end_unknown)
+        plan = pl.plan("greedy", self.start(pl))
+        text = "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+        self.assertRegex(text, r'\.todo "Class Ends Nowhere: the turn-in has no position in the pack"\n  \.turnin 293')
+
+    def test_a_quest_with_no_objective_handed_in_where_it_was_accepted_is_left_out_unless_needed(self):
+        pl = self.planner()
+        self.assertIn(294, pl.dropped["no objective in the data (accepted and handed in at one NPC)"])
+        self.assertIn(295, list(pl.quests))  # another quest needs it first
+        self.assertIn(296, pl.dropped["no objective in the data (accepted and handed in at one NPC)"])  # nothing needs this one
+        kept = self.planner(instant_quests=True)
+        self.assertIn(294, list(kept.quests))
+
+    def test_a_class_quest_with_no_objective_gets_time_and_a_todo(self):
+        pl = self.planner(mandatory=(297,))
+        self.assertTrue(pl.quests[297].unknown_work)
+        plan = pl.plan("greedy", self.start(pl))
+        text = "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+        self.assertIn('.todo "Taming: the pack has no objective for it', text)
+        self.assertGreaterEqual(sum(v.objective_seconds for v in plan.visits), pl.s.unknown_work)
+
+    def test_what_is_left_out_on_purpose_is_named_in_the_skip_lines(self):
+        pl = engine_build(self, {211: "battleground (PvP) quest, not leveling content"})
+        plan = pl.plan("greedy", self.start(pl))
+        self.assertNotIn(211, pl.quests)
+        self.assertEqual(pl.skipquests(plan).get(211), "battleground (PvP) quest, not leveling content")
+
+
+def engine_build(case, exclude):
+    pack_dir = write_pack(case.pack_dir, {"maps": MAPS, "quests": QUESTS, "npcs": NPCS, "travel": TRAVEL, "items": ITEMS})
+    pack = guide_travel.load_pack(pack_dir)
+    return engine.Planner.build(pack, guide_travel.World(pack, [], "Horde"), HORDE, engine.Settings(cap=6, skip_unprofitable=False, instant_quests=True), exclude=exclude)
 
 
 class EmitTest(PlannerCase):
