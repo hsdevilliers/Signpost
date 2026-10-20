@@ -203,6 +203,8 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
 - [ ] The "Help improve Signpost" window (`UI/Contribute.lua`, `/signpost contribute`) in the real client: built from
   `ButtonFrameTemplate`, `UICheckButtonTemplate` and `UIPanelButtonTemplate` on specs only. Does it lay out (text not clipped, checkbox
   clickable on its label, Escape closes it, opens once by itself on a release build, not in combat)?
+- [ ] The **Options entry** (`UI/Options.lua`): do `Settings.RegisterCanvasLayoutCategory(panel, name)` and `Settings.RegisterAddOnCategory(category)` exist
+  and show the panel under Options > AddOns on Forever? Does the "Open the Journal" button work from there?
 - [ ] The **Journal window** (`UI/Journal.lua`, `/signpost`) in the real client: `WowStyle1DropdownTemplate` as a `DropdownButton` with `SetupMenu` and
   `CreateRadio` (the menu API), `SearchBoxTemplate`, three `PanelTabButtonTemplate` tabs below the frame (`PanelTemplates_SetNumTabs/SetTab`),
   `UICheckButtonTemplate` rows, plain scroll lists, the LibDBIcon minimap button and the AddOn Compartment click. Does it lay out and work?

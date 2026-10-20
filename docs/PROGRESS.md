@@ -285,6 +285,13 @@ Acceptance
 - [ ] The route tracks (`Guides/Professions/<key>.lua`) and the `.hub` markers in the chapters they anchor to: with the guide content (the pack
   knows the profession trainers by NPC title, e.g. Thuwd for Skinning in Orgrimmar).
 
+## Report this step and the Options entry (2026-10-20)
+
+- [x] `UI/Report.lua`: `/signpost report [note]`, a "Report this step" button in the Journal's Route tab, bounded `SignpostDB.reports`, shown by
+  `/signpost export`; the consent window says the file holds the notes. `UI/Options.lua`: a "Signpost" category in Blizzard's Options window that
+  opens the Journal (unverified in the client: open probe). Fixed a layout overlap of the dungeon Skip box and the Current step button.
+  10 specs in `tests/report_options_spec.lua`.
+
 ## Notes
 
 - 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,
