@@ -58,8 +58,8 @@ BLOCKING = {
 ZONE_STICKINESS = 3000.0  # yards of extra cost for leaving the zone the walker is in, so a zone is finished first
 # Forever is not Classic (CLAUDE.md): every drafted chapter says what its source is and is not.
 BASELINE_NOTE = (
-    "-- Built on the data pack's Classic baseline (QuestieDB): Forever's own additions (new class quests, "
-    "quests, zones) are NOT in it: docs/CLASS-QUESTS.md."
+    "-- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). "
+    "The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md."
 )
 SAME_PLACE = 2.0  # map percent: positions this close are one place (a few dozen yards in a zone)
 NEAR_BAND = 40.0  # map percent beyond which two places on one map are a trip of their own
