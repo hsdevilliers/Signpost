@@ -247,6 +247,19 @@ class PoolTest(DraftCase):
         self.assertIn(218, self.quests_in(text, "accept"))
         self.assertIn("assumed", report)
 
+    def test_xp_levels_estimate_from_quest_xp_and_still_do_not_stall(self):
+        quests = {**QUESTS, 218: {"n": "Level Six", "r": 6, "l": 6, **HOME}}
+        text, report = self.draft("--xp-levels", quests=quests)
+        self.assertIn(218, self.quests_in(text, "accept"))
+        self.assertIn("assumed", report)  # a few level-1 quests do not give six levels of XP
+        again, _ = self.draft("--xp-levels", quests=quests)
+        self.assertEqual(text, again)  # the same pack and parameters give the same chapter
+
+    def test_xp_levels_keep_the_hardcore_wait(self):
+        text, _ = self.draft("--xp-levels", "--hardcore", self.rules_file([]))
+        self.assertNotIn(".complete 229,1", text.split("step" + chr(10))[1])
+        self.assertLess(text.index(".level"), text.index(".complete 229,1"))
+
 
 class OutputTest(DraftCase):
     def test_the_draft_is_a_chapter_the_linter_accepts(self):

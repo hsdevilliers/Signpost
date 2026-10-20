@@ -10,8 +10,8 @@ Steps, in the order PLAN §7 gives:
      mutually exclusive quests keep the first one reached);
   3. town loops: from where the walker stands, the nearest place with something to do (accept, turn in, an objective
      area), everything that can be done at that place in one step, until nothing is left;
-  4. a placeholder level estimate (one level per --quests-per-level finished quests) keeps required levels met until quest
-     XP is in the pack (PLAN §2, "Quest XP"). Treat the order as a first draft: the author reorders, drops and tags.
+  4. a level estimate keeps required levels met: a placeholder (one level per --quests-per-level finished quests) or, with
+     --xp-levels, the simulator's XP model (tools/guide_sim.py). Treat the order as a first draft: the author reorders, drops and tags.
 
 Group (elite) quests and the hardcore skip list are not in the pack: name them with --exclude (each becomes a
 `#skipquest <id> >> <reason>` line) and review the draft. Travel between zones is not generated here: a `.todo` marks each
@@ -316,8 +316,32 @@ def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Nam
 
     assumed = [0]  # levels the walker is assumed to gain beyond the quest estimate when the route stalls on a gate
 
+    xp_model = None
+    if getattr(spec, "xp_levels", False):
+        # the level the walker has reached from the XP of the quests this chapter finished (tools/guide_sim.py's model)
+        import guide_sim
+
+        xp_model = guide_sim.Model(
+            guide_sim.load_params(),
+            pack.table("quests"),
+            pack.table("npcs"),
+            pack.table("items"),
+            guide_sim.read_quest_xp(pack.path),
+        )
+    reached: dict[int, int] = {}
+
     def level() -> int:
-        return min(spec.max_level, spec.min_level + len(done) // spec.quests_per_level + assumed[0])
+        if xp_model is None:
+            return min(spec.max_level, spec.min_level + len(done) // spec.quests_per_level + assumed[0])
+        size = len(done)
+        if size not in reached:
+            xp = sum(xp_model.quest_xp_total(qid) for qid in done - set(spec.done))
+            current = spec.min_level
+            while current < spec.max_level and xp >= xp_model.to_next(current):
+                xp -= xp_model.to_next(current)
+                current += 1
+            reached[size] = current
+        return min(spec.max_level, reached[size] + assumed[0])
 
     def available(q: Quest) -> bool:
         if q.id in done or q.id in active or q.id in gone or q.required > level():
@@ -504,6 +528,11 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=1,
         help="with --hardcore: drop quests whose level is more than this above the chapter's top level (default 1)",
+    )
+    parser.add_argument(
+        "--xp-levels",
+        action="store_true",
+        help="estimate the level from the XP of the quests done (tools/guide_sim.py's model) instead of --quests-per-level",
     )
     parser.add_argument("--quests-per-level", type=int, default=5, help="placeholder level estimate (default 5)")
     parser.add_argument("--grey", type=int, default=8, help="drop quests this many levels below the range (default 8)")
