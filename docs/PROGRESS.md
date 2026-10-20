@@ -61,6 +61,16 @@ Tasks
   report_gaps.py); private-repo commit 48d9c6d (not pushed). Rebuilding its layers with the integrated `datapack.py` gives
   byte-identical tables (only `_meta.lua` gains `classes = { count = 0 }`).
 
+- [x] QuestieDB's Forever layers in the questie layer (2026-10-20, branch feat/forever-layers; `tools/signpost_tools/lua_corrections.py`,
+  `forever_layers.py`, `questie_import.py`, off with `--no-forever-layers`). QuestieDB's data/Forever tables are a converted Era baseline;
+  its real Forever content sits in correction providers (generated delta-base, beta traces, authored fixes) that are read as data
+  (never executed; anything non-literal is skipped and counted) and applied in QuestieDB's static order on the importer's own
+  records. Evidence on QuestieDB af56aeef17, horde: quests 2710 -> 3353, NPCs 3704 -> 4209, objects 552 -> 670, items 2023 -> 2576;
+  Wayward Weapons (97279) is in (start Gornek 3143, end 3159, Horde, levels 1-2, Durotar); Zephras Isle 90 quests, Shen'dralas 16,
+  Darkspear Islands 10, Riverglades and Mount Hyjal none (QuestieDB has none). Still not covered: complete objectives,
+  restrictions and gameplay behavior of new quests (QuestieDB's own limit) and its runtime `LoadDynamic` corrections.
+  Skyborne race bits (1 << 32 Alliance, 1 << 33 Horde) are part of the importer's side logic.
+
 Acceptance
 - [ ] Every Durotar/Barrens quest a Troll Hunter can take is in the pack's `Quests.lua` with start/end entity and ≥1 coordinate
   (or listed in gaps). Lua files load under `luac -p` and in-game; the main addon also loads cleanly with the pack disabled.

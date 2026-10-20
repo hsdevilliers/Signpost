@@ -1,12 +1,15 @@
 """Import QuestieDB's WoW: Forever data into the private data pack's `questie` layer (PLAN §6; CLAUDE.md, Data sources).
 
-    python tools/questie_import.py                     Horde and neutral quests and what they reference
+    python tools/questie_import.py                     Horde and neutral quests and what they reference, Forever layers on
+    python tools/questie_import.py --no-forever-layers the converted Classic Era baseline tables only
     python tools/questie_import.py --faction both      both factions
     python tools/questie_import.py --check-maps 1411,1413 --check-races 128 --check-classes 4
                                                        afterwards, check the quests of those maps (see --check-maps)
 
 Reads the pinned QuestieDB checkout (default <out>/cache/questiedb): data/Forever/forever{Quest,Npc,Object,Item}DB.lua
-and support/Forever/Zones/areaIdToUiMapId.lua. QuestieDB is used with its maintainers' permission (Questie Discord,
+and support/Forever/Zones/areaIdToUiMapId.lua. Those tables are a converted Classic Era baseline; QuestieDB's real Forever
+content is layered on top as correction providers (src/corrections/Forever: generated delta-base, traces, authored fixes),
+which are read as data and applied first (signpost_tools.lua_corrections, forever_layers; --no-forever-layers switches it off). QuestieDB is used with its maintainers' permission (Questie Discord,
 2026-10-17) as an input to the private pack only. Its files are read as data and never executed: each key table
 (`QuestieDB.<x>Keys`, including the commented part positions under a key) gives the field positions, and each
 `[[return {...}]]` string holds the records.
@@ -29,8 +32,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from signpost_tools import datapack, devconfig  # noqa: E402
+from signpost_tools import datapack, devconfig, forever_layers  # noqa: E402
 from signpost_tools.geo import cluster  # noqa: E402
+from signpost_tools.lua_corrections import CorrectionsFormatError  # noqa: E402
 from signpost_tools.savedvars import LuaParseError, parse_value  # noqa: E402
 
 TOOL = "questie_import.py"
@@ -90,8 +94,12 @@ LIST_FIELDS = (("preGroup", "preQuestGroup"), ("preSingle", "preQuestSingle"), (
 ID_FIELDS = (("next", "nextQuestInChain"), ("parent", "parentQuest"), ("breadcrumbFor", "breadcrumbForQuestId"))
 
 # Classic race bits (2^(raceID - 1)): Human 1, Orc 2, Dwarf 4, Night Elf 8, Undead 16, Tauren 32, Gnome 64, Troll 128.
-ALLIANCE_RACES = 1 | 4 | 8 | 64  # 77
-HORDE_RACES = 2 | 16 | 32 | 128  # 178
+# Forever's Skyborne races (raceIDs 95 and 96) are bits 32 and 33, not raceID - 1 (QuestieDB src/corrections/enum/expansions.lua
+# raceMaskById); its aggregate masks ALL_ALLIANCE / ALL_HORDE are the Classic races plus the Skyborne bit of their side.
+SKYBORNE_ALLIANCE = 4294967296  # 1 << 32
+SKYBORNE_HORDE = 8589934592  # 1 << 33
+ALLIANCE_RACES = 1 | 4 | 8 | 64 | SKYBORNE_ALLIANCE  # 77 + Skyborne
+HORDE_RACES = 2 | 16 | 32 | 128 | SKYBORNE_HORDE  # 178 + Skyborne
 FACTION_SIDES = {"horde": ("Horde", "both"), "alliance": ("Alliance", "both"), "both": ("Horde", "Alliance", "both")}
 FACTION_LETTERS = {"horde": "H", "alliance": "A", "both": "AH"}  # friendlyToFaction letters of the faction's friends
 
@@ -112,7 +120,7 @@ P_START_UNPLACED = "quests whose start has no position"
 P_END_UNPLACED = "quests whose end has no position"
 P_ZONE_UNMAPPED = "quests whose zone AreaID has no uiMapID"
 P_NO_ZONE = "quests without a zone or sort"
-P_RACES = "quests whose race mask has no Classic race bit"
+P_RACES = "quests whose race mask has no Classic or Skyborne race bit"
 P_EXPLORE = "quests with an explore objective without coordinates"
 P_AREAS = "AreaIDs without a uiMapID"
 
@@ -220,7 +228,7 @@ def first_id(entry: object) -> int | None:
 
 
 def race_side(mask: object) -> str | None:
-    """The side a race mask allows: "Horde", "Alliance", "both" (0, or races of both), None (no Classic race bit)."""
+    """The side a race mask allows: "Horde", "Alliance", "both" (0, or races of both), None (no Classic or Skyborne race bit)."""
     if not isinstance(mask, int) or mask == 0:
         return "both"
     alliance, horde = mask & ALLIANCE_RACES, mask & HORDE_RACES
@@ -276,6 +284,7 @@ class Questie:
     area_maps: dict[int, int]  # AreaID -> uiMapID, override applied (0: suppressed)
     commit: str | None = None
     build: str | None = None
+    layers: forever_layers.LayerReport = field(default_factory=forever_layers.LayerReport)  # Forever correction layers applied
 
     def get(self, kind: str, record: object, name: str) -> object:
         return part(record, self.keys[kind][name])
@@ -455,7 +464,7 @@ class Importer:
             if side in self.sides or (side is None and self.faction == "both"):
                 quests[qid] = self.quest(qid, record, side)
             else:
-                self.count(f"quests left out ({side or 'no Classic race'})")
+                self.count(f"quests left out ({side or 'no Classic or Skyborne race'})")
         return quests
 
     def entities(self, value: object, composite: str, kinds: tuple[str, ...]) -> dict[str, list[int]]:
@@ -785,18 +794,49 @@ def check(pack: Path, maps: set[int], races: int | None, classes: int | None, si
 # Command line ---------------------------------------------------------------------------------------------------------
 
 
-def import_layer(questie_dir: Path, pack: Path, **options: object) -> tuple[Importer, dict[str, int]]:
-    """Read QuestieDB, write layers/questie.json and rebuild the pack. Returns the importer and the record counts."""
+def import_layer(
+    questie_dir: Path, pack: Path, forever_layers_on: bool = True, **options: object
+) -> tuple[Importer, dict[str, int]]:
+    """Read QuestieDB, write layers/questie.json and rebuild the pack. Returns the importer and the record counts.
+
+    With `forever_layers_on` the Forever correction layers (delta-base, traces, authored fixes) are applied to the
+    records first (signpost_tools.forever_layers); without it only the converted Classic Era baseline is imported."""
     questie = load(questie_dir)
+    base = {kind: len(questie.data[kind]) for kind in KINDS}
+    if forever_layers_on:
+        questie.layers = forever_layers.apply_layers(questie, questie_dir)
+    else:
+        questie.layers.note = "Forever layers switched off (--no-forever-layers)"
     importer = Importer(questie, **options)  # type: ignore[arg-type]
+    for kind in KINDS:
+        importer.stats[f"{kind} records in QuestieDB's base tables"] = base[kind]
+        importer.stats[f"{kind} records after the Forever layers"] = len(questie.data[kind])
+    for layer in questie.layers.layers:
+        for kind in KINDS:
+            importer.stats[f"forever layer {layer.name}: {kind} records added"] = layer.added[kind]
+            importer.stats[f"forever layer {layer.name}: {kind} records changed"] = layer.changed[kind]
     tables = importer.run()
-    # QuestieDB's "Forever" tables are its Classic Era tables with the map coordinates converted to Forever's geometry
+    # QuestieDB's "Forever" base tables are its Classic Era tables with the map coordinates converted to Forever's geometry
     # (data/Forever/conversion.json: "a converted Era baseline, not complete Forever content"): say so wherever it shows.
     origin = f"QuestieDB {questie.commit or 'unknown commit'}: a Classic Era baseline, coordinates converted to Forever's maps"
     if questie.build:
         origin += f" (geometry of build {questie.build})"
-    origin += f", {importer.faction}; no Forever content (new quests, zones, race and class restrictions)"
-    datapack.write_layer(pack, "questie", tables, origin, importer.problem_lines())
+    origin += f", {importer.faction}; "
+    if questie.layers.applied:
+        origin += (
+            f"plus {questie.layers.summary()}: Forever's own quests, zones, restrictions; not complete objectives or "
+            "gameplay behavior"
+        )
+    else:
+        origin += f"no Forever content (new quests, zones, race and class restrictions); {questie.layers.summary()}"
+    problems = importer.problem_lines()
+    problems += [
+        f"Forever layers skipped {reason}: {count}" for reason, count in sorted(questie.layers.skipped.items())
+    ]
+    problems += [
+        f"Forever layers rejected {reason}: {count}" for reason, count in sorted(questie.layers.rejected.items())
+    ]
+    datapack.write_layer(pack, "questie", tables, origin, problems)
     for table, records in tables.items():
         importer.stats[f"{table} in the questie layer"] = len(records)
     return importer, datapack.build(pack, TOOL)
@@ -824,6 +864,12 @@ def main() -> int:
     parser.add_argument("--radius", type=float, default=CLUSTER_RADIUS, help="spawn cluster radius, percent of the map")
     parser.add_argument("--clusters", type=int, default=MAX_CLUSTERS, help="positions kept per map (default 3)")
     parser.add_argument(
+        "--no-forever-layers",
+        action="store_true",
+        help="import only QuestieDB's converted Classic Era baseline tables; by default its Forever correction layers "
+        "(generated delta-base, traces, authored fixes) are applied on top",
+    )
+    parser.add_argument(
         "--check-maps",
         help="after the build, check the quests of these uiMapIDs (comma-separated): each needs a start and an end "
         "entity and a coordinate, or an entry in data-gaps.md; exit status 1 when one has neither",
@@ -838,16 +884,23 @@ def main() -> int:
         importer, counts = import_layer(
             options.questie or options.out / "cache" / "questiedb",
             options.out,
+            forever_layers_on=not options.no_forever_layers,
             faction=options.faction,
             max_drops=options.max_drops,
             radius=options.radius,
             clusters=options.clusters,
         )
-    except QuestieFormatError as exc:
+    except (QuestieFormatError, CorrectionsFormatError) as exc:
         print(f"questie_import: {exc}", file=sys.stderr)
         return 1
     for name, value in sorted(importer.stats.items()):
         print(f"{name}: {value}")
+    layers = importer.q.layers
+    print(f"layers: {layers.summary()}")
+    for reason, count in layers.skipped.most_common(10):
+        print(f"  skipped {count}: {reason}")
+    for reason, count in layers.rejected.most_common(10):
+        print(f"  rejected {count}: {reason}")
     print(f"problems: {sum(map(len, importer.problems.values()))} IDs of {len(importer.problems)} kinds (data-gaps.md)")
     print(f"data pack rebuilt: {counts}")
     for name in ("_meta.lua", *datapack.TABLE_FILES.values()):

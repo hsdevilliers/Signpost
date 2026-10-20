@@ -336,7 +336,7 @@ class ImportTest(unittest.TestCase):
             self.importer.problem_lines(),
             [
                 "AreaIDs without a uiMapID (1): 504",
-                "quests whose race mask has no Classic race bit (1): 10",
+                "quests whose race mask has no Classic or Skyborne race bit (1): 10",
                 "quests whose start has no position (2): 5, 8",
                 "quests whose zone AreaID has no uiMapID (1): 7",
                 "quests without an end entity (1): 8",
