@@ -6,6 +6,9 @@ from signpost_tools import guidefile
 from tests.guide_fixtures import MAPS, TRAVEL, TempProject, chapter_lua, guide_lua
 from tests.test_guide_travel import world
 
+NL = chr(10)
+TAB = chr(9)
+
 QUESTS = {
     1: {"n": "Early", "l": 1, "r": 1, "o": [{"id": 50, "k": "kill"}], "s": {"npc": [1001]}, "e": {"npc": [1001]}},
     2: {"n": "Gated", "l": 5, "r": 5, "o": [{"id": 51, "k": "kill"}], "s": {"npc": [1001]}, "e": {"npc": [1001]}},
@@ -133,6 +136,32 @@ class RunTest(TempProject):
         slower = self.run_text(text, ["kill_seconds=60"])
         self.assertGreater(slower.stall, result.stall)
 
+    def test_risk_marks_elite_objectives_and_quests_above_the_character(self):
+        text = "#chapter 1-5 One" + NL + "step" + NL + "  .goto 10,40,40" + NL + "  .accept 3" + NL + "  .accept 2" + NL
+        result = self.run_text(text)
+        marks = {quest: reason for reason, quest, _ql, _cl in result.risk}
+        self.assertEqual(marks[3], "elite")  # its objective is an elite
+        self.assertEqual(marks[2], "above")  # level 5 at level 1
+        self.assertEqual(guide_sim.risk_score(result), 3 + 4)
+
+    def test_what_if_leaves_a_quest_out(self):
+        text = (
+            "#chapter 1-5 One" + NL + "step" + NL + "  .goto 10,40,40" + NL + "  .accept 1" + NL
+            + "step" + NL + "  .complete 1,1" + NL + "step" + NL + "  .turnin 1" + NL
+        )
+        files = {"Guides/Test.lua": guide_lua("#include c" + NL), "Guides/Chapters/c.lua": chapter_lua("c", text)}
+        self.files(files)
+        project = guidefile.load_project(self.root)
+        guide = project.guides["test-guide"]
+        route = guidefile.build_route(project, guide, guidefile.variants(project, guide)[0])
+        m = Model(guide_sim.load_params(), QUESTS, NPCS, {}, {1: 450})
+        base = guide_sim.run(route, world(), m)
+        left_out = guide_sim.run(route, world(), m, skip=frozenset({1}))
+        self.assertLess(left_out.seconds, base.seconds)
+        self.assertEqual(left_out.skipped, 3)
+        self.assertEqual(left_out.level, 1)  # no XP from the quest
+        self.assertIn("what-if", " ".join(guide_sim.what_if(base, left_out)))
+
     def test_report_and_sensitivity_name_the_numbers(self):
         text = "#chapter 1-5 One\nstep\n  .goto 10,40,40\n  .accept 1\nstep\n  .complete 1,1\n"
         result = self.run_text(text)
@@ -142,8 +171,6 @@ class RunTest(TempProject):
         self.assertEqual(guide_sim.hours(3660), "1h01")
 
 
-NL = chr(10)
-TAB = chr(9)
 
 
 class CalibrationTest(unittest.TestCase):

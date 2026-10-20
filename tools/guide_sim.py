@@ -4,6 +4,8 @@
     python tools/guide_sim.py --guide horde-troll-hunter-1-60 --steps
     python tools/guide_sim.py --param kill_seconds=20 --param respawn_seconds.normal=240
     python tools/guide_sim.py --sensitivity                scale each parameter by 0.5 and 2 and report what moves
+    python tools/guide_sim.py --skip-quest 788 --skip-quest 5441   what-if: leave quests out, compare time, level and risk
+    python tools/guide_sim.py --pace                       compare with the time played recorded in game (Core/Pace.lua)
     python tools/guide_sim.py --json                       machine-readable output
 
 The route is walked as `tools/guide_travel.py --simulate` walks it (zones, flight paths, hearth, a travel clock), and each
@@ -73,7 +75,7 @@ def set_param(params: dict, key: str, value: float) -> None:
 
 def tunable(params: dict) -> list[str]:
     """The parameters a sensitivity run scales: every number, and each respawn time as one group."""
-    skip = {"xp_to_level", "over_levelled_gap", "under_levelled_gap", "quest_xp_penalty_after", "slowest_factor", "fastest_factor"}
+    skip = {"xp_to_level", "over_levelled_gap", "under_levelled_gap", "risk_gap", "quest_xp_penalty_after", "slowest_factor", "fastest_factor"}
     return [key for key, value in params.items() if not key.startswith("_") and key not in skip and isinstance(value, (int, float)) or key == "respawn_seconds"]
 
 
@@ -135,6 +137,18 @@ class Model:
     def rank_kind(self, npc: int | None) -> str:
         record = self.npcs.get(npc) or {}
         return RANK_KIND.get(record.get("rank", 0), "normal")
+
+    def note_risk(self, result: Result, quest_id: int, level: int) -> None:
+        """A hardcore risk mark: a quest whose objective is an elite or rare, or that is well above the character."""
+        record = self.quests.get(quest_id) or {}
+        quest_level = record.get("l") or level
+        if any(
+            objective.get("k") == "kill" and self.rank_kind(objective.get("id")) != "normal"
+            for objective in record.get("o") or []
+        ):
+            result.risk.append(("elite", quest_id, quest_level, level))
+        elif quest_level - level >= self.p["risk_gap"]:
+            result.risk.append(("above", quest_id, quest_level, level))
 
     def grind_xp_per_second(self, level: int) -> float:
         """Experience per second killing same-level mobs for the missing XP of a level gate."""
@@ -224,9 +238,18 @@ class Result:
     gaps: list[tuple[str, int, int, int]] = field(default_factory=list)  # (kind, quest, quest level, character level)
     steps: list[tuple[str, float, float, int]] = field(default_factory=list)  # (step id, seconds, clock, level)
     todo: int = 0
+    risk: list[tuple[str, int, int, int]] = field(default_factory=list)  # (reason, quest, quest level, character level)
+    skipped: int = 0
 
 
-def run(route: guidefile.Route, world: guide_travel.World, model: Model, start_level: int | None = None) -> Result:
+def run(
+    route: guidefile.Route,
+    world: guide_travel.World,
+    model: Model,
+    start_level: int | None = None,
+    skip: frozenset = frozenset(),
+) -> Result:
+    """Walk the route; `skip` is a what-if: the quests whose accept, objectives and turn-in are left out."""
     travel = guide_travel.simulate(route, world)
     p = model.p
     first = route.chapters[0].levels[0] if route.chapters else 1
@@ -250,6 +273,8 @@ def run(route: guidefile.Route, world: guide_travel.World, model: Model, start_l
         needs = 0
         todo = False
         for d in rs.directives:
+            if d.args.get("quest") in skip and d.name in ("accept", "turnin", "complete"):
+                continue
             if d.name == "todo":
                 todo = True
             elif d.name == "level":
@@ -260,6 +285,11 @@ def run(route: guidefile.Route, world: guide_travel.World, model: Model, start_l
         # a step is done together: its objectives run side by side in one area, so the longest wait counts once
         longest_wait = 0.0
         for d in rs.directives:
+            if d.args.get("quest") in skip and d.name in ("accept", "turnin", "complete"):
+                result.skipped += 1
+                continue
+            if d.name == "accept":
+                model.note_risk(result, d.args["quest"], level)
             if d.name in ("accept", "turnin"):
                 spent += p["interact_seconds"]
                 if d.name == "turnin":
@@ -340,11 +370,35 @@ def report(result: Result, with_steps: bool = False) -> list[str]:
         out.append("   over-levelled quests (the quest is well above the character): " + ", ".join(f"{q} (L{ql} at L{cl})" for _, q, ql, cl in over[:10]))
     if under:
         out.append("   under-levelled quests (far below the character: little XP): " + ", ".join(f"{q} (L{ql} at L{cl})" for _, q, ql, cl in under[:10]))
+    if result.risk:
+        out.append(f"   hardcore risk: score {risk_score(result)} ({len(result.risk)} marks; elite = 3, each level above the character beyond the gap = 1):")
+        for reason, quest, quest_level, level in sorted(result.risk, key=lambda m: -mark_weight(m))[:8]:
+            out.append(f"     {quest}: {reason} (quest L{quest_level} at character L{level})")
+    if result.skipped:
+        out.append(f"   what-if: {result.skipped} directive(s) of the skipped quests left out")
     if with_steps:
         out.append(f"   {'step':<36} {'minutes':>8} {'clock':>8} level")
         for step_id, seconds, clock, level in result.steps:
             out.append(f"   {step_id:<36} {seconds / 60:>8.1f} {hours(clock):>8} {level:>5}")
     return out
+
+
+def mark_weight(mark: tuple[str, int, int, int]) -> int:
+    reason, _quest, quest_level, level = mark
+    return 3 if reason == "elite" else max(1, quest_level - level)
+
+
+def risk_score(result: Result) -> int:
+    return sum(mark_weight(mark) for mark in result.risk)
+
+
+def what_if(base: Result, variant: Result) -> list[str]:
+    delta = variant.seconds - base.seconds
+    return [
+        f"   what-if against the route as written: {hours(abs(delta))} {'longer' if delta > 0 else 'shorter'} "
+        f"({delta / base.seconds * 100:+.1f}%), level {base.level} -> {variant.level}, "
+        f"risk {risk_score(base)} -> {risk_score(variant)}"
+    ]
 
 
 def sensitivity(runs: list, params: dict, factors=(0.5, 2.0)) -> list[str]:
@@ -418,8 +472,8 @@ def calibration_report(result: Result, owner: str, played: dict[int, float]) -> 
 # Command line ---------------------------------------------------------------------------------------------------------
 
 
-def run_one(route, world, quests, npcs, items, quest_xp, params) -> Result:
-    return run(route, world, Model(params, quests, npcs, items, quest_xp))
+def run_one(route, world, quests, npcs, items, quest_xp, params, skip=frozenset()) -> Result:
+    return run(route, world, Model(params, quests, npcs, items, quest_xp), skip=skip)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -435,6 +489,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profession", action="append", default=[])
     parser.add_argument("--no-tracks", action="store_true")
     parser.add_argument("--no-xp-file", action="store_true", help="ignore QuestieDB's quest XP seed")
+    parser.add_argument("--skip-quest", type=int, action="append", default=[], help="what-if: leave this quest out (repeatable)")
     parser.add_argument("--steps", action="store_true", help="list every step's time")
     parser.add_argument(
         "--pace",
@@ -481,13 +536,17 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(sensitivity(jobs, params)))
         return 0
     results = [run_one(*job, params) for job in jobs]
+    skip = frozenset(options.skip_quest)
+    variants = [run_one(*job, params, skip) for job in jobs] if skip else []
     if options.json:
         print(json.dumps([{"guide": r.guide, "variant": r.variant, "seconds": r.seconds, "travel": r.travel, "wait": r.wait,
                            "stall": r.stall, "level": r.level, "levels": {str(k): v[0] for k, v in r.levels.items()}} for r in results], indent=2))
         return 0
     paces = read_pace(Path(options.pace) if options.pace else None) if options.pace is not None else {}
-    for result in results:
-        print("\n".join(report(result, options.steps)))
+    for number, result in enumerate(results):
+        print("\n".join(report(variants[number] if skip else result, options.steps)))
+        if skip:
+            print("\n".join(what_if(result, variants[number])))
         for owner, played in paces.items():
             print("\n".join(calibration_report(result, owner, played)))
     if options.pace is not None and not paces:
