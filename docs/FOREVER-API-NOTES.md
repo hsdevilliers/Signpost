@@ -196,6 +196,9 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
 - [ ] The "Help improve Signpost" window (`UI/Contribute.lua`, `/signpost contribute`) in the real client: built from
   `ButtonFrameTemplate`, `UICheckButtonTemplate` and `UIPanelButtonTemplate` on specs only. Does it lay out (text not clipped, checkbox
   clickable on its label, Escape closes it, opens once by itself on a release build, not in combat)?
+- [ ] The **Journal window** (`UI/Journal.lua`, `/signpost`) in the real client: `WowStyle1DropdownTemplate` as a `DropdownButton` with `SetupMenu` and
+  `CreateRadio` (the menu API), `SearchBoxTemplate`, three `PanelTabButtonTemplate` tabs below the frame (`PanelTemplates_SetNumTabs/SetTab`),
+  `UICheckButtonTemplate` rows, plain scroll lists, the LibDBIcon minimap button and the AddOn Compartment click. Does it lay out and work?
 - [ ] **Druid forms in Forever** (sources disagree; the druid guide's Moonglade steps assume the first reading): is **Teleport: Moonglade**
   a level-10 trainer spell as in Classic, or a reward of the Bear Form chain (one Forever guide lists it as a reward)? How does a druid
   get back from Moonglade (hearthstone, a flight path, the spell)? Is **Cat Form** (level 20) a new quest chain ("The Great Cat Spirit",
