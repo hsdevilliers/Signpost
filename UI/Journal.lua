@@ -135,7 +135,7 @@ end
 
 -- Route tab -------------------------------------------------------------------------------------------------------
 
-local MARK = { done = "|cff40d040[x]|r", skipped = "|cff909090[-]|r", current = "|cffffd100>|r", todo = "[ ]" }
+local MARK = { done = UI.MARK.done, skipped = "|cff909090[-]|r", current = "|cffffd100>|r", todo = UI.MARK.todo }
 
 local function stepMark(step, current)
 	local p = progress()
@@ -561,6 +561,21 @@ local function settingsList()
 		automation(L["Take the flights the guide asks for"], "taxi"),
 		automation(L["Train the spells the guide lists"], "trainer"),
 		automation(L["Buy the items the guide lists"], "vendor"),
+		-- The quest tracker (Engine/Tracking.lua), under a header of its own in the second column. Its default is
+		-- Tracking.DEFAULT_ENABLED; only a choice made here is saved.
+		{
+			section = L["Quest tracker"],
+			label = L["Track only the current step's quests"],
+			column = 2,
+			get = function()
+				return ns.Tracking ~= nil and ns.Tracking:Enabled()
+			end,
+			set = function(value)
+				if ns.Tracking then
+					ns.Tracking:SetEnabled(value)
+				end
+			end,
+		},
 	}
 end
 
@@ -659,7 +674,7 @@ local function buildSettings(frame, host)
 			Journal:Refresh()
 		end)
 	end)
-	pane.boxes = {}
+	pane.boxes, pane.sectionHeaders = {}, {}
 	local anchor = pane.guideInfo
 	-- The second column: Automation, to the right of the step card and pin settings (the pane is not tall enough for one).
 	pane.automationHeader = pane:CreateFontString(nil, "ARTWORK", "GameFontNormal")
@@ -669,7 +684,17 @@ local function buildSettings(frame, host)
 	for _, def in ipairs(settingsList()) do
 		local check = CreateFrame("CheckButton", nil, pane, "UICheckButtonTemplate")
 		if def.column == 2 then
-			check:SetPoint("TOPLEFT", anchor2, "BOTTOMLEFT", anchor2 == pane.automationHeader and -4 or 0, -2)
+			-- A box with a `section` starts a small header of its own in the column; the check box right under a header
+			-- sits 4 to its left, as under the Automation header (the box's art has that much padding).
+			local underHeader = anchor2 == pane.automationHeader
+			if def.section then
+				local header = pane:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+				header:SetPoint("TOPLEFT", anchor2, "BOTTOMLEFT", underHeader and 0 or 4, -10)
+				header:SetText(def.section)
+				pane.sectionHeaders[#pane.sectionHeaders + 1] = header
+				anchor2, underHeader = header, true
+			end
+			check:SetPoint("TOPLEFT", anchor2, "BOTTOMLEFT", underHeader and -4 or 0, -2)
 			anchor2 = check
 		else
 			check:SetPoint(

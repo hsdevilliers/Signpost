@@ -50,6 +50,15 @@ local APIS = {
 	"C_QuestLog.IsComplete",
 	"C_QuestLog.IsOnQuest",
 	"C_QuestLog.GetTitleForQuestID",
+	-- the tracked quests (Engine/Tracking.lua)
+	"C_QuestLog.AddQuestWatch",
+	"C_QuestLog.RemoveQuestWatch",
+	"C_QuestLog.GetQuestWatchType",
+	"C_QuestLog.GetNumQuestWatches",
+	"C_QuestLog.GetQuestIDForQuestWatchIndex",
+	"C_SuperTrack.SetSuperTrackedQuestID",
+	"C_SuperTrack.GetSuperTrackedQuestID",
+	"Enum.QuestWatchType",
 	"GetQuestID",
 	"AcceptQuest",
 	"CompleteQuest",
@@ -177,6 +186,12 @@ local APIS = {
 	"GetItemInfo",
 	"GetItemCount",
 	"CombatLogGetCurrentEventInfo",
+	-- the Classic shape of the quest watch list, Engine/Tracking.lua's fallback: finding these means the fallback runs
+	"AddQuestWatch",
+	"RemoveQuestWatch",
+	"IsQuestWatched",
+	"GetNumQuestWatches",
+	"GetQuestIndexForWatch",
 }
 
 local EXPECTED_ABSENT = {
@@ -184,6 +199,11 @@ local EXPECTED_ABSENT = {
 	GetItemInfo = true,
 	GetItemCount = true,
 	CombatLogGetCurrentEventInfo = true,
+	AddQuestWatch = true,
+	RemoveQuestWatch = true,
+	IsQuestWatched = true,
+	GetNumQuestWatches = true,
+	GetQuestIndexForWatch = true,
 }
 
 -- Template name -> frame type, used only when C_XMLUtil.GetTemplateInfo is unavailable.
@@ -256,6 +276,7 @@ local EVENTS = {
 	"QUEST_REMOVED",
 	"QUEST_LOG_UPDATE",
 	"QUEST_WATCH_UPDATE",
+	"QUEST_WATCH_LIST_CHANGED",
 	"UNIT_QUEST_LOG_CHANGED",
 	"QUEST_DETAIL",
 	"QUEST_GREETING",

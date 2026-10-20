@@ -8,6 +8,8 @@ local state = uiMock.state
 
 local UI_FILES = { "UI/StepFrame.lua", "UI/Pins.lua" }
 local ONGOING = "|cffffd100Ongoing:|r "
+local DONE = "|cff40d040[x]|r " -- the done mark of a quest line, as the Journal's route list has it
+local TODO = "[ ] "
 
 -- A two-chapter guide in the shape of docs/ENGINE.md "Data shapes".
 local function newGuide()
@@ -45,6 +47,7 @@ local function newEngine(guide)
 		index = 1,
 		sticky = {},
 		lines = {},
+		info = {}, -- the second result of Conditions:Describe: one { name, done, ... } per line
 		targets = {},
 		items = {},
 		transport = {},
@@ -80,7 +83,7 @@ local function stubEngine(ns, engine)
 	end
 	ns.Conditions = {
 		Describe = function(_, step)
-			return engine.lines[step.id] or {}
+			return engine.lines[step.id] or {}, engine.info[step.id]
 		end,
 		Targets = function(_, step, _, states)
 			engine.statesSeen = engine.statesSeen or {}
@@ -186,7 +189,7 @@ describe("step frame", function()
 		assert.is_true(frame:IsShown())
 		assert.are.equal("Valley of Trials · step 2/3", frame.title:GetText())
 		assert.are.equal("Kill Mottled Boars\nMottled Boar slain: 6/10", frame.body:GetText())
-		assert.are.equal(5, frame.body:GetMaxLines())
+		assert.are.equal(10, frame.body:GetMaxLines())
 		assert.is_true(frame.body:GetWordWrap())
 		assert.are.equal("GameFontNormal", state(frame.title).template)
 		assert.are.equal("GameFontHighlight", state(frame.body).template)
@@ -267,6 +270,76 @@ describe("step frame", function()
 			frame.sticky:GetText()
 		)
 		assert.is_true(frame.sticky:IsShown())
+		noErrors(ns, mock)
+	end)
+
+	it("starts a quest line with its done mark and leaves every other line alone", function()
+		local ns, mock, _, engine = load({
+			setup = function(engine)
+				engine.lines["valley:2"] = {
+					'Complete "Cutting Teeth"',
+					'Complete "Sarkoth"',
+					'Accept "Sting of the Scorpid"',
+					"Up the ramp.",
+				}
+				engine.info["valley:2"] = {
+					{ name = "complete", directive = 1, done = true },
+					{ name = "complete", directive = 2, done = false },
+					{ name = "accept", directive = 3, done = false },
+					{ name = "note", directive = 4 },
+				}
+			end,
+		})
+		go(ns, engine, 2)
+		local frame = ns.StepFrame.frame
+		assert.are.equal(
+			DONE
+				.. 'Complete "Cutting Teeth"\n'
+				.. TODO
+				.. 'Complete "Sarkoth"\nAccept "Sting of the Scorpid"\nUp the ramp.',
+			frame.body:GetText()
+		)
+		-- the marks follow the quest log
+		engine.info["valley:2"][2].done = true
+		ns.Events:Fire("CONTEXT_CHANGED", "quests")
+		mock.runTimers()
+		assert.are.equal(
+			DONE
+				.. 'Complete "Cutting Teeth"\n'
+				.. DONE
+				.. 'Complete "Sarkoth"\nAccept "Sting of the Scorpid"\nUp the ramp.',
+			frame.body:GetText()
+		)
+		noErrors(ns, mock)
+	end)
+
+	it("lists all the quests of a step: five read like one, each with its mark and no counters", function()
+		local lines, info = {}, {}
+		for i = 1, 5 do
+			lines[i] = string.format('Complete "Quest %d"', i)
+			info[i] = { name = "complete", directive = i, done = i % 2 == 0 }
+		end
+		local ns, mock, _, engine = load({
+			setup = function(engine)
+				engine.lines["valley:2"], engine.info["valley:2"] = lines, info
+			end,
+		})
+		go(ns, engine, 2)
+		local frame = ns.StepFrame.frame
+		assert.are.equal(
+			TODO
+				.. 'Complete "Quest 1"\n'
+				.. DONE
+				.. 'Complete "Quest 2"\n'
+				.. TODO
+				.. 'Complete "Quest 3"\n'
+				.. DONE
+				.. 'Complete "Quest 4"\n'
+				.. TODO
+				.. 'Complete "Quest 5"',
+			frame.body:GetText()
+		)
+		assert.is_true(frame.body:GetMaxLines() >= #lines)
 		noErrors(ns, mock)
 	end)
 
@@ -695,6 +768,37 @@ describe("pins", function()
 		assert.are.equal(0, count(ui.world))
 		noErrors(ns, mock)
 	end)
+
+	it(
+		"a step with no targets (a doing step) draws nothing and clears the pins and the arrow of the one before",
+		function()
+			local ns, mock, ui, engine = load({ setup = questTargets })
+			ns.db.pins.showNext = true
+			go(ns, engine, 1)
+			local ticker = ui.tickers[#ui.tickers]
+			assert.are.equal(2, count(ui.minimap))
+			assert.is_false(ticker.cancelled == true)
+			go(ns, engine, 3) -- no targets: what Conditions gives a doing step
+			assert.are.same({}, ns.Pins:Collect())
+			assert.are.equal(0, count(ui.minimap))
+			assert.are.equal(0, count(ui.world))
+			assert.is_nil(next(ns.Pins.minimap))
+			assert.is_nil(next(ns.Pins.world))
+			assert.is_true(ticker.cancelled)
+			-- it stays bare through refreshes and context changes, and without the minimap or the world map pins
+			ns.Events:Fire("CONTEXT_CHANGED", "position")
+			ns.Events:Fire("CONTEXT_CHANGED", "quests")
+			mock.runTimers()
+			ns.Pins:Refresh(true)
+			ns.Pins:SetEnabled("minimap", false)
+			ns.Pins:SetEnabled("minimap", true)
+			assert.are.equal(0, count(ui.minimap))
+			assert.are.equal(0, count(ui.world))
+			-- the step frame still shows the step
+			assert.are.equal("Valley of Trials · step 3/3", ns.StepFrame.frame.title:GetText())
+			noErrors(ns, mock)
+		end
+	)
 
 	it("pins the sticky targets of the active sticky steps", function()
 		local sticky = { id = "track:a:1", sticky = { { name = "skill", text = "Skin until 50" } } }

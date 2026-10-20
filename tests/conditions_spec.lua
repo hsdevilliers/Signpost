@@ -55,6 +55,32 @@ describe("completion", function()
 		assert.is_true(isComplete(ns, step, context))
 	end)
 
+	it("a doing step completes when every one of its quests is complete, wherever the player stands", function()
+		local step = mocks.step(ns, { ".goto 1411,43.2,71.7", ".complete 787", ".complete 788", ".complete 789" })
+		context.log[787], context.log[788] = true, true
+		context.objectives[787] = { { text = "Boar slain: 10/10", finished = true } }
+		context.objectives[788] = { { text = "Scorpids slain: 3/5", finished = false } }
+		local complete, detail = ns.Conditions:IsComplete(step, context, {})
+		assert.is_false(complete)
+		assert.are.same({ false, true, false, false }, { detail[1], detail[2], detail[3], detail[4] })
+		context.ready[788] = true -- the quest log says it can be handed in
+		assert.is_false(isComplete(ns, step, context)) -- 789 is not even in the log yet
+		context.completed[789] = true -- or it was handed in already
+		complete, detail = ns.Conditions:IsComplete(step, context, {})
+		assert.is_true(complete)
+		assert.is_false(detail[1]) -- the player never went near the .goto: it does not hold the step or end it
+	end)
+
+	it(".complete <quest>,<objective> is satisfied by that one objective alone", function()
+		local step = mocks.step(ns, { ".goto 1411,43.2,71.7", ".complete 787,2" })
+		context.log[787] = true
+		context.objectives[787] =
+			{ { text = "Boars: 0/10", finished = false }, { text = "Hides: 5/5", finished = true } }
+		assert.is_true(isComplete(ns, step, context))
+		context.objectives[787][2].finished = false
+		assert.is_false(isComplete(ns, step, context))
+	end)
+
 	it("directives about an .optional quest do not block the step", function()
 		local step = mocks.step(ns, {
 			".goto 1411,42.1,68.7",
@@ -457,6 +483,200 @@ describe("pins", function()
 	end)
 end)
 
+-- A doing step (a .complete and no place directive) draws no markers: the quest log marks the objectives, the guide's
+-- markers steer the player to a place (docs/GUIDE-FORMAT.md "Step kinds").
+describe("step kinds", function()
+	-- Test data, not real: 787 and 789 are hunted around the Boar and Scorpid spawns, 788 is the neighbour's.
+	local function pack()
+		return {
+			quests = {
+				[787] = {
+					n = "Boar Hunt",
+					s = { npc = { 101 } },
+					e = { npc = { 101 } },
+					o = { { k = "kill", id = 201, c = 10 } },
+				},
+				[788] = { n = "Next Door", s = { npc = { 102 } }, e = { npc = { 102 } } },
+				[789] = { n = "Scorpid Hunt", s = { npc = { 101 } }, o = { { k = "kill", id = 202, c = 5 } } },
+			},
+			npcs = {
+				[101] = { n = "Camp Boss", p = { { 1411, 42.1, 68.7 } } },
+				[102] = { n = "Neighbour", p = { { 1411, 45, 70 } } },
+				[201] = { n = "Boar", p = { { 1411, 50, 50 } } },
+				[202] = { n = "Scorpid", p = { { 1411, 60, 60 } } },
+				[501] = { n = "Vendor", side = "both", p = { { 1411, 44, 66 } } },
+			},
+			items = { [401] = { n = "Pack Item", vendors = { 501 }, drops = { 202 } } },
+		}
+	end
+
+	-- One sample line per registered directive. The places are what sends the player somewhere: every travel directive
+	-- and every directive whose def pins anything but quest objectives.
+	local PLACES = {
+		accept = ".accept 788",
+		turnin = ".turnin 788",
+		train = ".train class",
+		trainprof = ".trainprof skinning",
+		buy = ".buy 401,5",
+		collect = ".collect 401,5",
+		fish = ".fish 1411,55,70",
+		path = ".path 1411,52,43.5 ; 1411,47.8,41",
+		zone = ".zone 1413",
+		fp = ".fp 1413,Ratchet",
+		fly = ".fly Orgrimmar",
+		boat = ".boat 1413,63.9,38.6 > 1434,27.2,77.1",
+		zeppelin = ".zeppelin 1454,51.2,12.6 > 1434,32.1,29.3",
+		hs = ".hs Razor Hill",
+		home = ".home",
+	}
+	local NOT_PLACES = {
+		["goto"] = ".goto 1411,10,10",
+		complete = ".complete 789",
+		optional = ".optional 789",
+		reward = ".reward 787,2",
+		skill = ".skill skinning 50",
+		craft = ".craft 2152,3",
+		use = ".use 5070",
+		level = ".level 5",
+		todo = '.todo "reason"',
+		note = ".note a note",
+		text = ".text some text",
+		link = ".link https://example.org/x",
+		hub = ".hub razorhill",
+		sticky = ".sticky .level 5",
+	}
+
+	local ns, context
+	before_each(function()
+		ns = mocks.load({ pack = pack(), professions = { skinning = SKINNING } })
+		context = mocks.context({ log = { [787] = true }, position = { map = 1411 } })
+		context.objectives[787] = { { text = "Boar slain: 3/10", finished = false } }
+	end)
+
+	local function kinds(pins)
+		local set = {}
+		for _, pin in ipairs(pins) do
+			set[pin.kind] = (set[pin.kind] or 0) + 1
+		end
+		return set
+	end
+
+	it("every registered directive is classified, as a place or not: decide when a new one comes", function()
+		for _, name in ipairs(ns.Directives:Names()) do
+			assert.is_true(PLACES[name] ~= nil or NOT_PLACES[name] ~= nil, "is ." .. name .. " a place directive?")
+		end
+	end)
+
+	it("a step with a .complete and a place directive is not a doing step", function()
+		for name, line in pairs(PLACES) do
+			local step = mocks.step(ns, { ".goto 1411,10,10", ".complete 787", line })
+			assert.is_false(ns.Conditions:IsDoingStep(step), name)
+		end
+	end)
+
+	it("the directives that send the player nowhere leave it a doing step", function()
+		for name, line in pairs(NOT_PLACES) do
+			local step = mocks.step(ns, { ".goto 1411,10,10", ".complete 787", line })
+			assert.is_true(ns.Conditions:IsDoingStep(step), name)
+		end
+	end)
+
+	it("a step needs a .complete of its own to be a doing step", function()
+		for _, directiveLines in ipairs({
+			{},
+			{ ".goto 1411,1,1" },
+			{ ".goto 1411,1,1", ".use 5070", ".note x" },
+			{ ".goto 1411,1,1", ".sticky .complete 787" }, -- ongoing beside later steps, not what the step is for
+		}) do
+			assert.is_false(
+				ns.Conditions:IsDoingStep(mocks.step(ns, directiveLines)),
+				table.concat(directiveLines, " ")
+			)
+		end
+		assert.is_false(ns.Conditions:IsDoingStep(nil))
+		assert.is_true(ns.Conditions:IsDoingStep(mocks.step(ns, { ".complete 787" })))
+	end)
+
+	it("a class or profession directive is a place when it travels or pins anything but objectives", function()
+		local function register(name, def)
+			def.parse = function()
+				return {}
+			end
+			ns.Directives:Register(name, def)
+		end
+		register("herd", { kind = "quest", pin = "gather" })
+		register("ride", { kind = "travel" })
+		register("mark", { kind = "quest", pin = "objective" })
+		register("count", { kind = "misc" })
+		local function doing(line)
+			return ns.Conditions:IsDoingStep(mocks.step(ns, { ".goto 1411,1,1", ".complete 787", line }))
+		end
+		assert.is_false(doing(".herd"))
+		assert.is_false(doing(".ride"))
+		assert.is_true(doing(".mark"))
+		assert.is_true(doing(".count"))
+	end)
+
+	it("a doing step draws no markers: neither its .goto nor its .complete quests are pinned", function()
+		local step = mocks.step(ns, { ".goto 1411,50,50", ".complete 787", ".complete 789", ".use 5070" })
+		context.log[789] = true
+		assert.is_true(ns.Conditions:IsDoingStep(step))
+		assert.are.same({}, ns.Conditions:Targets(step, context, {}))
+		-- before the quests are in the log it is the pack's own objective list that could pin them: still nothing
+		assert.are.same({}, ns.Conditions:Targets(step, mocks.context({ position = { map = 1411 } }), {}))
+		-- and a step with a .complete alone, in the same spot as its objectives
+		assert.are.same({}, ns.Conditions:Targets(mocks.step(ns, { ".complete 787" }), context, {}))
+		assert.are.same({}, ns.db.errors)
+	end)
+
+	it("a doing step draws nothing without the data pack either", function()
+		ns = mocks.load()
+		local step = mocks.step(ns, { ".goto 1411,50,50", ".complete 787" })
+		assert.are.same({}, ns.Conditions:Targets(step, mocks.context(), {}))
+	end)
+
+	it("a step that sends the player somewhere keeps all its markers, the objective ones too", function()
+		for name, line in pairs(PLACES) do
+			local step = mocks.step(ns, { ".goto 1411,10,10", ".complete 787", line })
+			local pins = ns.Conditions:Targets(step, context, {})
+			-- the quest's objective area, and the .goto's pin (which a directive without a position of its own, such
+			-- as a trainer the pack does not know, takes over: it keeps its place)
+			assert.are.equal(1, kinds(pins).objective, name)
+			assert.is_true(#pins >= 2, name)
+		end
+	end)
+
+	it("an old step that mixes a .turnin or an .accept with a .complete pins them all", function()
+		local step = mocks.step(ns, { ".goto 1411,42.1,68.7", ".turnin 787", ".complete 787", ".accept 788" })
+		local pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ accept = 1, objective = 1, turnin = 1 }, kinds(pins))
+		-- the turn-in at the .goto's own spot takes it over; the objective area and the other giver keep theirs
+		assert.are.same({ "turnin", 101 }, { pins[1].kind, pins[1].npc })
+	end)
+
+	it("a step with an .accept or a .turnin and a .goto still pins", function()
+		for _, line in ipairs({ ".accept 788", ".turnin 788" }) do
+			local pins = ns.Conditions:Targets(mocks.step(ns, { ".goto 1411,10,10", line }), context, {})
+			assert.are.same({ ["goto"] = 1, [line:match("^%.(%a+)")] = 1 }, kinds(pins), line)
+		end
+	end)
+
+	it("sticky directives do not decide the kind and keep what they pin", function()
+		-- a sticky place directive keeps its pin beside a doing step
+		local step = mocks.step(ns, { ".goto 1411,50,50", ".complete 787", ".sticky .accept 788" })
+		assert.is_true(ns.Conditions:IsDoingStep(step))
+		local pins = ns.Conditions:Targets(step, context, {})
+		assert.are.equal(1, #pins)
+		assert.are.same({ "accept", true, 788 }, { pins[1].kind, pins[1].sticky, pins[1].questID })
+		-- a sticky .complete in a doing step is as quiet as its own
+		step = mocks.step(ns, { ".goto 1411,50,50", ".complete 787", ".sticky .complete 789" })
+		assert.are.same({}, ns.Conditions:Targets(step, context, {}))
+		-- without a .complete of its own the step is not a doing one: the .goto and the sticky objective area pin
+		step = mocks.step(ns, { ".goto 1411,50,50", ".sticky .complete 789" })
+		assert.are.same({ ["goto"] = 1, objective = 1 }, kinds(ns.Conditions:Targets(step, context, {})))
+	end)
+end)
+
 describe("display lines", function()
 	local ns, context
 	before_each(function()
@@ -471,7 +691,50 @@ describe("display lines", function()
 	it("a bare .goto describes itself; beside other lines it only pins", function()
 		assert.are.same({ "Go to map 1411 42.1, 68.7" }, lines({ ".goto 1411,42.1,68.7" }))
 		assert.are.same({ 'Accept "Quest #787"' }, lines({ ".goto 1411,42.1,68.7", ".accept 787" }))
+		assert.are.same({ 'Turn in "Quest #4641"' }, lines({ ".goto 1411,42.1,68.7", ".turnin 4641" }))
 		assert.are.same({ "Raise skinning to 75" }, lines({ ".fish 1411,55,70", ".skill skinning 75" }))
+		-- an old step that mixes a turn-in with a .complete reads the same way
+		assert.are.same(
+			{ 'Turn in "Quest #4641"', 'Complete "Quest #787"' },
+			lines({ ".goto 1411,42.1,68.7", ".turnin 4641", ".complete 787" })
+		)
+	end)
+
+	it("a doing step lists its quests and names no place: not its .goto, not the objectives' progress", function()
+		context.log[787] = true
+		context.objectives[787] =
+			{ { text = "Boar slain: 3/10", finished = false }, { text = "Hides: 1/4", finished = false } }
+		local described, info = ns.Conditions:Describe(
+			mocks.step(ns, { ".goto 1411,43.2,71.7", ".complete 787", ".complete 788,2", ".use 5070" }),
+			context,
+			{}
+		)
+		assert.are.same(
+			{ 'Complete "Quest #787"', 'Complete objective 2 of "Quest #788"', "Use Item #5070" },
+			described
+		)
+		for i = 1, 2 do
+			assert.are.equal("complete", info[i].name)
+			assert.is_nil(info[i].progress)
+		end
+		assert.are.equal("use", info[3].name)
+		-- a step of one quest reads like a step of five
+		assert.are.same({ 'Complete "Quest #787"' }, lines({ ".goto 1411,43.2,71.7", ".complete 787" }))
+	end)
+
+	it("marks which quests of a doing step are done", function()
+		context.log[787], context.log[789] = true, true
+		context.ready[787] = true
+		context.objectives[789] = { { text = "Scorpids slain: 1/5", finished = false } }
+		local _, info = ns.Conditions:Describe(
+			mocks.step(ns, { ".goto 1411,1,1", ".complete 787", ".complete 789", ".complete 790" }),
+			context,
+			{}
+		)
+		assert.are.same({ true, false, false }, { info[1].done, info[2].done, info[3].done })
+		context.completed[790] = true -- handed in: complete too
+		_, info = ns.Conditions:Describe(mocks.step(ns, { ".complete 790" }), context, {})
+		assert.is_true(info[1].done)
 	end)
 
 	it(">> text replaces a line's description", function()
@@ -495,13 +758,14 @@ describe("display lines", function()
 		)
 	end)
 
-	it("objective progress follows its .complete line", function()
+	it("a .complete line names its quest and nothing else: the quest log has the objectives", function()
 		context.objectives[787] = { { text = "Boar slain: 3/10", finished = false } }
 		local described, info = ns.Conditions:Describe(mocks.step(ns, { ".complete 787", ".accept 788" }), context, {})
-		assert.are.same({ 'Complete "Quest #787"', "- Boar slain: 3/10", 'Accept "Quest #788"' }, described)
-		assert.is_true(info[2].progress)
-		assert.are.equal(1, info[2].directive)
+		assert.are.same({ 'Complete "Quest #787"', 'Accept "Quest #788"' }, described)
+		assert.are.same({ "complete", "accept" }, { info[1].name, info[2].name })
+		assert.are.same({ 1, 2 }, { info[1].directive, info[2].directive })
 		assert.is_nil(info[1].progress)
+		assert.is_nil(info[2].progress)
 	end)
 
 	it("sticky lines come last and are marked", function()

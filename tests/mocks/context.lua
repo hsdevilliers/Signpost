@@ -1,6 +1,7 @@
--- Scriptable client state for tests/context_spec.lua: the quest log, completed quests, spells, bags, level, position
--- and map tree, taxi state, bind location, both flight-map API shapes, a fake HereBeDragons behind a fake LibStub, and
--- a clock that runs C_Timer callbacks in time order when a test advances it.
+-- Scriptable client state for tests/context_spec.lua: the quest log and its watch list (the tracked quests, both API
+-- shapes), completed quests, spells, bags, level, position and map tree, taxi state, bind location, both flight-map API
+-- shapes, a fake HereBeDragons behind a fake LibStub, and a clock that runs C_Timer callbacks in time order when a test
+-- advances it.
 --
 --   local world = contextMock.install(mock)   -- in addon.load's `before`, after tests/wow_mock.lua installed
 --   world.x = world.x + 1; world.advance(0.5)  -- move one percent east, let half a second pass
@@ -9,6 +10,12 @@ local M = {}
 
 -- Globals defined here that tests/wow_mock.lua does not clear on install.
 local OWN = {
+	"AddQuestWatch",
+	"C_SuperTrack",
+	"GetNumQuestWatches",
+	"GetQuestIndexForWatch",
+	"IsQuestWatched",
+	"RemoveQuestWatch",
 	"UnitPosition",
 	"UnitOnTaxi",
 	"GetBindLocation",
@@ -233,6 +240,20 @@ function M.install(mock)
 		IsOnQuest = function(questID)
 			return findQuest(questID) ~= nil
 		end,
+		-- the number of a quest in the log and the quest at a number (a header is no quest: 0), as the client has them
+		GetLogIndexForQuestID = function(questID)
+			for number, entry in ipairs(visibleEntries()) do
+				if not entry.header and entry.questID == questID then
+					return number
+				end
+			end
+		end,
+		GetQuestIDForLogIndex = function(number)
+			local entry = visibleEntries()[number]
+			if entry then
+				return entry.header and 0 or entry.questID
+			end
+		end,
 		GetTitleForQuestID = function(questID)
 			local entry = findQuest(questID)
 			return entry and entry.title
@@ -252,6 +273,127 @@ function M.install(mock)
 			return copy
 		end,
 	}
+
+	-- Quest tracking: the watch list ----------------------------------------------------------------------------------
+	-- The retail shape by default: C_QuestLog.AddQuestWatch(questID[, watchType]), RemoveQuestWatch(questID),
+	-- GetQuestWatchType(questID), GetNumQuestWatches(), GetQuestIDForQuestWatchIndex(i) and C_SuperTrack;
+	-- useClassicWatch() swaps in the Classic shape (global functions on quest log numbers: AddQuestWatch(index),
+	-- RemoveQuestWatch(index), IsQuestWatched(index), GetNumQuestWatches(), GetQuestIndexForWatch(i)).
+	--   world.watch          the tracked quest IDs in order (a test plays the player by editing it)
+	--   world.watchLimit     when set, a quest is not tracked beyond that many
+	--   world.watchCalls     every call into the watch API, as { "FunctionName", arguments... }
+	--   world.watchFails     [function name] = true: that function raises
+	--   world.watchTypes     [questID] = what GetQuestWatchType answers for a tracked quest (default 1, Manual; 0 is
+	--                        Enum.QuestWatchType.Automatic: the game tracked it by itself)
+	--   world.superTracked   the quest C_SuperTrack answers with: SetSuperTrackedQuestID sets it, a test may too
+	world.watch, world.watchCalls, world.watchFails, world.watchTypes = {}, {}, {}, {}
+	local function watchCall(name, ...)
+		world.watchCalls[#world.watchCalls + 1] = { name, ... }
+		if world.watchFails[name] then
+			error("the client raised in " .. name)
+		end
+	end
+	local function watchIndex(questID)
+		for i, id in ipairs(world.watch) do
+			if id == questID then
+				return i
+			end
+		end
+	end
+	local function track(questID)
+		if not findQuest(questID) or watchIndex(questID) or (world.watchLimit and #world.watch >= world.watchLimit) then
+			return false
+		end
+		world.watch[#world.watch + 1] = questID
+		return true
+	end
+	local function untrack(questID)
+		local index = watchIndex(questID)
+		if index then
+			table.remove(world.watch, index)
+		end
+		return index ~= nil
+	end
+	local function questAtNumber(number)
+		local entry = visibleEntries()[number]
+		return entry and not entry.header and entry.questID or nil
+	end
+	local RETAIL_WATCH = {
+		"AddQuestWatch",
+		"RemoveQuestWatch",
+		"GetQuestWatchType",
+		"GetNumQuestWatches",
+		"GetQuestIDForQuestWatchIndex",
+	}
+	function world.useRetailWatch()
+		C_QuestLog.AddQuestWatch = function(questID, watchType)
+			watchCall("AddQuestWatch", questID, watchType)
+			return track(questID)
+		end
+		C_QuestLog.RemoveQuestWatch = function(questID)
+			watchCall("RemoveQuestWatch", questID)
+			return untrack(questID)
+		end
+		C_QuestLog.GetQuestWatchType = function(questID)
+			watchCall("GetQuestWatchType", questID)
+			if watchIndex(questID) then
+				return world.watchTypes[questID] or 1
+			end
+		end
+		C_QuestLog.GetNumQuestWatches = function()
+			watchCall("GetNumQuestWatches")
+			return #world.watch
+		end
+		C_QuestLog.GetQuestIDForQuestWatchIndex = function(index)
+			watchCall("GetQuestIDForQuestWatchIndex", index)
+			return world.watch[index]
+		end
+		C_SuperTrack = {
+			SetSuperTrackedQuestID = function(questID)
+				watchCall("SetSuperTrackedQuestID", questID)
+				world.superTracked = questID
+			end,
+			GetSuperTrackedQuestID = function()
+				watchCall("GetSuperTrackedQuestID")
+				return world.superTracked
+			end,
+		}
+	end
+	function world.useClassicWatch()
+		for _, name in ipairs(RETAIL_WATCH) do
+			C_QuestLog[name] = nil
+		end
+		C_SuperTrack = nil
+		AddQuestWatch = function(number)
+			watchCall("AddQuestWatch", number)
+			local questID = questAtNumber(number)
+			return questID ~= nil and track(questID)
+		end
+		RemoveQuestWatch = function(number)
+			watchCall("RemoveQuestWatch", number)
+			local questID = questAtNumber(number)
+			return questID ~= nil and untrack(questID)
+		end
+		IsQuestWatched = function(number)
+			watchCall("IsQuestWatched", number)
+			local questID = questAtNumber(number)
+			return questID ~= nil and watchIndex(questID) ~= nil
+		end
+		GetNumQuestWatches = function()
+			watchCall("GetNumQuestWatches")
+			return #world.watch
+		end
+		GetQuestIndexForWatch = function(index)
+			watchCall("GetQuestIndexForWatch", index)
+			local questID = world.watch[index]
+			for number, entry in ipairs(visibleEntries()) do
+				if questID and not entry.header and entry.questID == questID then
+					return number
+				end
+			end
+		end
+	end
+	world.useRetailWatch()
 
 	-- Spells and bags -----------------------------------------------------------------------------------------------
 	local function knows(spellID, api)

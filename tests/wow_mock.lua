@@ -27,6 +27,12 @@ local RESET = {
 	"issecretvalue",
 	-- client functions the Wave 1 module mocks install (tests/mocks/*.lua remove them too)
 	"C_SpellBook",
+	"C_SuperTrack",
+	"AddQuestWatch",
+	"GetNumQuestWatches",
+	"GetQuestIndexForWatch",
+	"IsQuestWatched",
+	"RemoveQuestWatch",
 	"GetBindLocation",
 	"GetProfessionInfo",
 	"GetProfessions",

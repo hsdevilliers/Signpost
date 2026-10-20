@@ -1,12 +1,14 @@
 ---
 title: Map and minimap markers only steer to a place; doing a quest is left to the quest log
 kind: feature
-status: open
+status: done
 priority: normal
 area: ui
 source: user
 raised: 2026-10-20
 raised_in: the user, 2026-10-20, dictated while the Route Planner was being merged
+closed: 2026-10-20
+resolution: PR #39: a doing step (a .complete and no place directive) draws no map pin, minimap pin or edge arrow (Conditions:IsDoingStep, Conditions:Targets); its .goto stays in the data and shows no line; pick-up, hand-in and travel steps keep their markers; GUIDE-FORMAT Step kinds says it
 ---
 
 ## What

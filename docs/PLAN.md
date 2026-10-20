@@ -67,8 +67,9 @@ database fills in during the launch period.
 - Small, movable, lockable frame. Styling: Blizzard dialog look — `BackdropTemplate` with the standard tooltip/dialog border
   (`Interface\DialogFrame\UI-DialogBox-Border` or the `BACKDROP_TOOLTIP_*` presets), `GameFontNormal`/`GameFontHighlight`,
   header strip like the Objective Tracker's module header. No custom art.
-- Content: `Chapter name · step i/N`, step text (word-wrapped, max ~5 lines, scroll of excess hidden), objective progress line
-  for `.complete` steps (e.g. `Mottled Boar slain 6/10`), small icons for step type.
+- Content: `Chapter name · step i/N`, step text (word-wrapped, max ten lines, the rest cut off), small icons for step type.
+  A quest the step has to complete is one line with a done mark (`[x]`/`[ ]`) and no objective counters: the quest log
+  shows them (user, 2026-10-20; GUIDE-FORMAT "Step kinds").
 - Controls: `<` `>` buttons (manual back/forward), a `skip` button (marks step skipped for this character), right-click → opens journal.
   Buttons use `UIPanelButtonTemplate` sized down, or the `UIPanelSquareButton`-style arrows.
 - An optional **quest-item button** (secure) appears beside the frame when the current step has `.use itemID`
@@ -82,6 +83,9 @@ database fills in during the launch period.
 - Icon by target kind: available quest `!`, turn-in `?`, objective area (dot/circle), trainer, vendor, flight master, innkeeper,
   fishing spot, skinning/grind area. Use Blizzard atlases where they exist (`QuestNormal`, `QuestTurnin`, `TaxiNode_Neutral`,
   `poi-workorders`, etc.) — fall back to `Interface\GossipFrame\*Icon` textures. Record which atlases exist on Forever in API notes.
+- A **doing step** (it has a `.complete` and nothing that sends the player to a place) draws no pin, no minimap pin and no edge
+  arrow: the quest log already marks the objectives on the map and the minimap, and the guide's markers are for steering to a
+  place (where to pick up, where to hand in, travel). User, 2026-10-20; GUIDE-FORMAT "Step kinds".
 - Tooltip: step text + distance in yards.
 
 **World map pin** (same module)

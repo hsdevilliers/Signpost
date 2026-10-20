@@ -1,9 +1,10 @@
 -- The step frame (PLAN §3.1): a small Blizzard-styled panel with the current step — "<chapter> · step i/N", the step's
--- lines from ns.Conditions:Describe (objective progress included), the active sticky directives, an in-transit note —
--- and < > Skip buttons. Shift-drag moves it; lock, scale, alpha and position are kept in SignpostDB.stepFrame. It hides
--- in combat and while dead (both configurable). A secure button beside it uses the step's .use item; that button is
--- parented to UIParent, not to this frame, so hiding the frame in combat never touches a protected frame, and its
--- attributes, position and visibility change only out of combat (queued until PLAYER_REGEN_ENABLED).
+-- lines from ns.Conditions:Describe, the active sticky directives, an in-transit note — and < > Skip buttons. A quest
+-- the step has to complete is one line with a done mark, never its objectives' progress: the quest log shows that.
+-- Shift-drag moves it; lock, scale, alpha and position are kept in SignpostDB.stepFrame. It hides in combat and while
+-- dead (both configurable). A secure button beside it uses the step's .use item; that button is parented to UIParent,
+-- not to this frame, so hiding the frame in combat never touches a protected frame, and its attributes, position and
+-- visibility change only out of combat (queued until PLAYER_REGEN_ENABLED).
 local ADDON_NAME, ns = ...
 local L = ns.L
 local Util = ns.Util
@@ -16,7 +17,9 @@ local PADDING = 10
 local GAP = 4
 local HEADER_HEIGHT = 16
 local ICON_SIZE = 14
-local MAX_BODY_LINES = 5 -- PLAN §3.1: about five lines, the rest is cut off
+-- PLAN §3.1 said about five lines; a step now lists all of its quests, five or more of them and a long title wraps,
+-- and what does not fit is cut off. VERIFY(beta): ten lines of this font fit the frame without covering too much.
+local MAX_BODY_LINES = 10
 local MAX_STICKY_LINES = 2
 local BUTTON_HEIGHT = 20
 local ITEM_BUTTON_SIZE = 32
@@ -93,8 +96,13 @@ local function statesFor(step)
 	end
 end
 
+-- The lines of these directives carry a done mark: the quests a step has to complete, so that the frame says which of
+-- them are done. (A `.accept` or `.turnin` line reads as it is.)
+local MARKED = { complete = true }
+
 -- The step's display lines from ns.Conditions:Describe, as plain strings (a line may also be a table with `text`).
--- Lines Describe marks as sticky (its second result) are left to the "Ongoing:" lines (StepFrame:StickyLines).
+-- Lines Describe marks as sticky (its second result) are left to the "Ongoing:" lines (StepFrame:StickyLines). The
+-- line of a MARKED directive starts with its done mark ("[x]" or "[ ]", the Journal's), from Describe's `done`.
 function StepFrame.DescribeLines(step)
 	local lines, conditions = {}, ns.Conditions
 	if type(step) ~= "table" or not (conditions and conditions.Describe) then
@@ -106,6 +114,9 @@ function StepFrame.DescribeLines(step)
 			local meta = type(info) == "table" and info[i]
 			local text = lineText(line)
 			if text and text ~= "" and not (type(meta) == "table" and meta.sticky) then
+				if type(meta) == "table" and MARKED[meta.name] and type(meta.done) == "boolean" then
+					text = (meta.done and ns.UI.MARK.done or ns.UI.MARK.todo) .. " " .. text
+				end
 				lines[#lines + 1] = text
 			end
 		end

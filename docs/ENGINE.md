@@ -77,7 +77,7 @@ directive = { name = "accept", args = parsedArgs, text = "the >> text or nil", l
 target = {
 	map = 1411, x = 42.1, y = 68.7,
 	kind = "goto" | "accept" | "turnin" | "objective" | "waypoint" | "taxi" | "dock" | "inn" | "trainer" | "vendor"
-		| "fish" | "gather",
+		| "fish" | "gather", -- "objective" only in a step that is not a doing step (Conditions)
 	label = "text for the tooltip", radius = 10, -- yards, optional
 	npc = 3143, object = nil, questID = 787, quests = { 787, ... }, -- optional; quests lists every quest of a merged pin
 	objective = 2, -- the quest log objective an objective pin is for, when known
@@ -184,8 +184,10 @@ else the client's `isPrimaryProfession`, else the slot.
     being called again on the same state, and a state restored from SavedVariables must keep working without it
     (Progress does not repeat it after a reload);
   - `kind` — `"quest"`, `"travel"`, `"profession"`, `"misc"` (icon hint; Progress reads `"quest"` for dungeon chapters);
-  - `pin` — the target kind the step's first `.goto` pin takes when the directive has no position of its own;
-  - `progress(args, context, state)` → extra lines under the directive's line (objective progress);
+  - `pin` — the target kind the step's first `.goto` pin takes when the directive has no position of its own. Any kind but
+    `"objective"`, like `kind = "travel"`, makes the directive a *place directive* (Conditions "Step kinds");
+  - `progress(args, context, state)` → extra lines under the directive's line (`.train`'s class quest line; `.complete` has
+    none: the quest log shows the progress of a quest's objectives);
   - `locationOnly` — the line shows only when the step has no other line (`.goto`, `.fish`); `usage` — the syntax.
 - `context` is `ns.Context`; `state` is a per-step, per-directive table owned by `ns.Progress` (plain data: it is saved).
 - Registers every core directive of GUIDE-FORMAT. Travel directives come from `Engine/Travel.lua`, class and profession
@@ -206,9 +208,15 @@ else the client's `isPrimaryProfession`, else the slot.
   sticky directives is complete at once.
 - `:Targets(step, context, states)` → targets of the step's directives (sticky ones marked `sticky = true`), without
   those of satisfied directives (a `.goto` keeps its pin); an NPC/object pin within a `.goto`'s radius merges into it,
-  same-NPC pins merge, a directive with a `pin` kind and no position marks the first `.goto` pin.
+  same-NPC pins merge, a directive with a `pin` kind and no position marks the first `.goto` pin. A **doing step** has
+  none: its `.goto` and `.complete` are not asked for pins (a sticky place directive keeps its own).
+- `:IsDoingStep(step)` → boolean: the step has a `.complete` and no place directive (any directive but `.goto` and
+  `.complete` that is a travel directive, `def.kind == "travel"`, or whose def has a `pin` other than `"objective"`; only
+  the step's own directives count, not its sticky ones). GUIDE-FORMAT "Step kinds" has the rule and the directives.
 - `:Describe(step, context, states)` → `lines, info`: the step's own lines (each followed by its progress lines), then
-  the sticky ones; `info[i] = { directive = index, sticky = true|nil, progress = true|nil, done = bool }`.
+  the sticky ones; `info[i] = { directive = index, name = the directive's name, sticky = true|nil, progress = true|nil,
+  done = bool }`. A `.complete` line is the quest (`Complete "<quest>"`) with no objective lines; `done` is whether the
+  quest is complete, for the step frame's done mark.
 - `:StickyComplete(step, context, states)` → done, detail; `:Start(step, context, states)` → states (every `onStart`);
   `:Kind(step)` → icon-hint kind.
 - `states` is `ns.Progress:State(step.id)`: `states[i]` for `step.directives[i]`, `states.sticky[j]` for `step.sticky[j]`.
@@ -281,6 +289,51 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
 - Fires `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED`, `DUNGEON_SKIP_OFFER`. Registers `/signpost next|back|skip
   [chapter]|step [n|id]`. With `SignpostDB.debug.chat` it prints every step change (the Phase 2 acceptance walk).
 
+### Engine/Tracking.lua — `ns.Tracking`
+
+The quest log's tracked quests follow the current step (user, 2026-10-20): the quest tracker and the minimap then show the
+quests of the step, and the tracker shows their progress (which is why the step frame lists the quests and leaves their
+objectives to the quest log).
+
+- **When it acts:** `Tracking:Active()`: the setting is on (`Tracking:Enabled()`), a guide is active (`ns.Progress:Guide()`),
+  the step card is shown and the client has not refused a step's quests this session (`Tracking.failed`). The card's flag is
+  the saved one, `SignpostDB.stepFrame.shown` (`/signpost hide`, the Journal's "Show the step card"), not the hides the card
+  does by itself in combat, when dead or while the Journal is open. Otherwise it does nothing at all: no client call, not even
+  for a change of the quest log. Showing the card again takes effect at the next step or change of the quest log's quests.
+- **A step becomes current** (`STEP_CHANGED` for another step id; `Tracking:SetEnabled(true)` forces it): the quests the step
+  is about are tracked first, those of its `.complete` and `.turnin` directives (`Tracking.NamedQuests(step)`: in directive
+  order, each once) that are in the quest log (`ns.Context:QuestInLog`, which also finds a quest under a collapsed header).
+  Only when the client tracks at least one of them are all the other tracked quests untracked, and the step's quests a full
+  tracker refused are added again. If none got tracked (AddQuestWatch raised or refused it: a full tracker looks the same) it
+  changes nothing else, records one entry in the error log ("Signpost: quest tracking stopped: ...", `ns.Errors`) and stops
+  until the setting is toggled either way. A step that names no quest in the log (a pick-up, a trip) changes nothing and makes
+  no client call. The first successful application for the step also gives the first of its quests that is not complete to
+  `C_SuperTrack.SetSuperTrackedQuestID`, unless `GetSuperTrackedQuestID` already returns one of them; later applications for
+  the same step do not move the focus.
+- **The same step announced again** (the engine parsed the guide again: `PROFESSION_PLAN_CHANGED`, `GUIDE_SELECTED`) is not a
+  new start: when the module stayed hands off it still does, otherwise it sets the tracking again without the focus. A reload
+  or login is a new session and a new start.
+- **The quest log changes while the step is current** (`CONTEXT_CHANGED("quests")`): only when the *set* of quests changed (a
+  quest accepted or removed; progress inside a quest, or a header collapsed or expanded, changes nothing and costs no call)
+  the tracking is set again for the step, without the focus. Unless one of the quests the log already had has been tracked or
+  untracked since the module last set it (by the player, or by the game tracking a quest as its progress changes: the module
+  cannot tell them apart): then `Tracking.state.manual` is true and the module leaves the tracking alone until the next step,
+  even if the change is put back.
+- The player's earlier tracking is not remembered and not given back when the step ends or the setting is turned off (v1).
+- `Tracking:Enabled()`, `Tracking:SetEnabled(on)`: `SignpostDB.settings.trackStepQuests` holds only the player's own choice
+  (Journal > Settings > Quest tracker); until they choose, `Tracking.DEFAULT_ENABLED` (true, the user's choice) is the answer
+  and the one place the default lives.
+- Client API, all through `Util.Call` so a missing or failing function costs this feature and never the step engine.
+  Retail shape: `C_QuestLog.GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`, `GetQuestWatchType(questID)` (any value
+  but nil and false is tracked, `Enum.QuestWatchType.Automatic` (0) too; the watch list answers when it is missing),
+  `AddQuestWatch(questID, Enum.QuestWatchType.Manual)`, `RemoveQuestWatch(questID)`; `C_SuperTrack.GetSuperTrackedQuestID()`
+  and `SetSuperTrackedQuestID(questID)`. Where `C_QuestLog` lacks `AddQuestWatch` or `RemoveQuestWatch`, the Classic shape on
+  quest log numbers: `AddQuestWatch(number)`, `RemoveQuestWatch(number)`, `IsQuestWatched(number)`, `GetNumQuestWatches()`,
+  `GetQuestIndexForWatch(i)` (a quest's number from `C_QuestLog.GetLogIndexForQuestID`, else a walk of `C_QuestLog.GetInfo`;
+  the quest at a number from `GetQuestIDForLogIndex`, else `GetInfo`). Unverified on Forever (API notes, "Open probes";
+  `/signpost probe` lists which names exist). `QUEST_WATCH_LIST_CHANGED` is probed but not used: the watch list is compared when
+  it matters.
+
 ### Core/Learn.lua — `ns.Learn`
 
 Always on (cheap), recording into `SignpostDB.learned` as the player plays; never a player or a pet, no quest or gossip
@@ -300,9 +353,11 @@ route touches.
 - React to `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED` (at once), `CONTEXT_CHANGED`, `TRANSPORT_STATE` (coalesced,
   0.2 s); read `ns.Progress:Current()`/`:Sticky()`/`:ActiveSticky()`/`:State()`, `ns.Conditions:Describe`/`:Targets`
   and `ns.Travel:TransportState`.
-- The step frame's body is Describe's non-sticky lines; every active sticky directive (the current step's too) is an
-  "Ongoing:" line; an in-transit line while boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out
-  of combat) uses the step's `.use` item (`args.itemID`).
+- The step frame's body is Describe's non-sticky lines, up to ten (a step lists all of its quests); a `.complete` line
+  starts with its done mark (`ns.UI.MARK`: `[x]` done, `[ ]` not yet, the Journal's own marks), never with objective
+  counters; every active sticky directive (the current step's too) is an "Ongoing:" line; an in-transit line while
+  boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out of combat) uses the step's `.use` item
+  (`args.itemID`).
 - Settings via `RegisterDefaults("account", "stepFrame", { shown, locked, scale, alpha, hideInCombat, hideWhenDead,
   hideWithJournal, pos })` and `("account", "pins", { minimap, worldMap, showNext, nextCount })`.
 - `/signpost show|hide|lock [on|off]|reset|scale <n>|alpha <n>`. Pins through HereBeDragons-Pins-2.0 (minimap + world
@@ -311,7 +366,8 @@ route touches.
   `SetShown/SetLocked/SetScale/SetAlpha/Reset`; `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`,
   `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`, `Collect()`, `IconFor(kind, override)`. Phase 4 hooks,
   no-ops until the journal exists: right-click → `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`,
-  `ns.Journal:IsShown()` for `hideWithJournal`.
+  `ns.Journal:IsShown()` for `hideWithJournal`. A step with no targets (a doing step) draws nothing, and the pins and edge
+  arrows of the step before are cleared.
 
 ### UI/Journal.lua — `ns.Journal`
 
@@ -390,7 +446,7 @@ directives of `ns.Progress:Current()` (never sticky ones, never the player's unr
 Core\Init.lua, Core\Errors.lua, Libs\..., Core\Util.lua, Core\SavedVars.lua, Core\Player.lua, Data\Schema.lua,
 Core\Slash.lua, Core\Debug.lua, Core\Probe.lua, Core\MapDump.lua, Core\Learn.lua,
 Engine\Registry.lua, Engine\Directives.lua, Engine\Context.lua, Engine\Parser.lua, Engine\Professions.lua,
-Engine\Conditions.lua, Engine\Travel.lua, Engine\Progress.lua,
+Engine\Conditions.lua, Engine\Travel.lua, Engine\Progress.lua, Engine\Tracking.lua,
 Classes\*.lua, Automation\*.lua, Professions\*.lua, Guides\Travel\Borders.lua, Guides\Chapters\*.lua, Guides\Professions\*.lua,
 Guides\*.lua, UI\Widgets.lua, UI\StepFrame.lua, UI\Pins.lua
 ```

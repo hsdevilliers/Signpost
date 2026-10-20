@@ -98,10 +98,10 @@ Core directives (`Engine/Directives.lua`):
 
 | Directive | Satisfied when | Pin |
 |---|---|---|
-| `.goto <map>,<x>,<y>[,<radius>]` | the player is within radius yards (default 10) — only if it is the step's only completable directive; otherwise it just places the pin | yes |
+| `.goto <map>,<x>,<y>[,<radius>]` | the player is within radius yards (default 10) — only if it is the step's only completable directive; otherwise it just places the pin | yes (none in a doing step: see "Step kinds") |
 | `.accept <questID>` | the quest is in the log, or flagged completed | quest giver (data pack) or the step's `.goto` |
 | `.turnin <questID>` | the quest is flagged completed | quest ender |
-| `.complete <questID>[,<objective>]` | that objective (its number in the quest log, from 1) or all are finished, or the quest is complete or turned in | objective area |
+| `.complete <questID>[,<objective>]` | that objective (its number in the quest log, from 1) or all are finished, or the quest is complete or turned in | objective area (none in a doing step: see "Step kinds") |
 | `.optional <questID>` | — (modifier: this quest's directives don't block completion) | |
 | `.reward <questID>,<choice\|itemID>` | — (read by automation); a value up to 10 is a choice index, a larger one an item ID | |
 | `.train <spellID>` / `.train class` | the spell is known; `class` = every spell the class module lists at or below the player's level | trainer |
@@ -117,10 +117,14 @@ Core directives (`Engine/Directives.lua`):
 | `.sticky <directive line>` | the inner directive, which must be one that can be satisfied (never a gate, `.sticky`, `.optional`, `.hub`, `.note`, ...); it stays active beside later steps until satisfied once. A step with nothing but sticky directives completes at once | per inner |
 | `.hub <name>` | — (marks a visit to a town for profession tracks; one per step) | |
 
-`.complete` pins: the data pack's objective records are references in the source's own order, not the quest log's;
-each quest log objective is paired with the pack objective whose NPC, object or item its text names, else with the
-next one of its kind (`monster` → kill, `item`, `object`). Kill-credit objectives pin the creatures that give the
-credit, item objectives the creatures and objects the item drops from, explore objectives their area.
+`.complete` pins (in a step that is not a doing step: see "Step kinds"): the data pack's objective records are
+references in the source's own order, not the quest log's; each quest log objective is paired with the pack objective
+whose NPC, object or item its text names, else with the next one of its kind (`monster` → kill, `item`, `object`).
+Kill-credit objectives pin the creatures that give the credit, item objectives the creatures and objects the item drops
+from, explore objectives their area.
+
+A `.complete` line shows the quest and nothing else (`Complete "<quest>"`, or `Complete objective 2 of "<quest>"` for the
+per-objective form): never an objective's counters ("Mottled Boar slain: 3/10"), in any step. The quest log has them.
 
 Travel directives (`Engine/Travel.lua`):
 
@@ -137,10 +141,66 @@ Travel directives (`Engine/Travel.lua`):
 Class directives come from class modules (`Classes/<CLASS>.lua`): e.g. `.tame <npcID>`, `.ammo ...`. Using one in a
 chapter without a `.class` gate is a lint error.
 
+## Step kinds
+
+A step is built around one activity, and its kind is **inferred from its directives**: there is no syntax for it. A route
+is any sequence of any number of each kind (three places to pick up, five to do, one to hand in, ...). Nothing else
+changes: a step completes when every completable directive in it is satisfied.
+
+| Kind | What it holds | Done when | Markers (map pin, minimap pin, edge arrow) |
+|---|---|---|---|
+| **Pick up** | one area, N `.accept` | every quest is in the log (or done already) | the quest givers |
+| **Doing** | N `.complete <questID>` (with `.goto`, `.use`, `.note`, ...) | every one of those quests is complete in the quest log | none |
+| **Hand in** | N `.turnin` | every quest is turned in | the quest enders |
+| **Hand in + pick up** | `.turnin` and `.accept` at one place | all of them | both |
+
+The guide's markers exist to steer the player **to a place**: where to pick up, where to hand in, and travel. The quest
+log already marks, on the map and the minimap, where each quest's objectives are, so the guide does not repeat it: a
+**doing step** draws no markers at all. It is a step with at least one `.complete` and no *place directive*:
+
+- A **place directive** is any directive other than `.goto` and `.complete` that sends the player somewhere: a travel
+  directive (`.path`, `.zone`, `.fp`, `.fly`, `.boat`, `.zeppelin`, `.hs`, `.home`: `def.kind == "travel"`) or one whose
+  def pins something other than quest objectives (`def.pin` set and not `"objective"`: `.accept`, `.turnin`, `.train`,
+  `.trainprof`, `.buy`, `.collect`, `.fish`, and a class or profession module's directive by the same test).
+  The directives that mark no place (`.use`, `.skill`, `.craft`, `.level`, `.todo`, `.note`, `.text`, `.link`, `.hub`,
+  `.reward`, `.optional`) leave a step a doing step. Only a step's own directives decide, not its `.sticky` ones.
+- In a doing step, `.complete` and `.goto` produce no pins. The `.goto` stays in the text because the authoring tools
+  (the drafter, the planner, the simulator, the travel generator) read it as the step's position; the step frame shows no
+  line for it (as for any step that has other lines, unless the `.goto` carries a `>> text`). The player opens the map and
+  looks where the quest log marks.
+- Any other step keeps its markers as they always were, including an old hand-written step that mixes a `.complete`
+  with a `.turnin` or an `.accept` (its `.complete` still pins the objective area).
+
+The step frame lists the quests of a doing step: one line per `.complete`, naming the quest, with a done mark (`[x]` or
+`[ ]`) and no objective counters. A step of one quest reads like a step of five. The step completes when every
+`.complete` quest in it is complete in the quest log (all its objectives finished, or the quest is ready to hand in, or it
+is handed in already); the `.goto` neither holds it up nor ends it.
+
+`.complete <questID>` is for a quest that is done within the step (all of its objectives). `.complete <questID>,<objective>`
+(the objective's number in the quest log) stays for a quest whose objectives are spread over several steps: each step
+names the objective it is about and completes when that one is finished. Its line says which objective of which quest, with
+no counters either.
+
+**Quest tracking follows the step** (engine behaviour, no syntax; `Engine/Tracking.lua`). When a step becomes current, the
+quest log's tracker is set to the quests the step is about, the quests of its `.complete` and `.turnin` directives that are
+in the quest log (a quest under a collapsed header is in it): they are tracked first, and only once the client has tracked at
+least one of them is every other tracked quest untracked, so the minimap and the quest tracker show only those quests, and
+the tracker shows their progress (the step frame does not). If the client tracks none of them (it raises or refuses, a full
+tracker looks the same) the tracker is left as it was and the module stops until the setting is toggled. A step that names no
+quest in the log (a pick-up, a trip) leaves the tracking as it is. It acts only while all of these hold: the player has not
+turned it off (Journal > Settings > Quest tracker; on until they do), a guide is active, and the step card is shown (the
+saved setting, `/signpost hide` and the Journal's "Show the step card"; with the card hidden it does nothing at all, while
+the card's own hides in combat, when dead or with the Journal open do not count). It does not fight the player: a quest the
+log already had that is tracked or untracked by hand (or by the game) during the step stays so until the step changes, even
+if the change is put back, and the step announced again after the guide is parsed again keeps that. The tracker is pointed
+once at the first quest of the step that is not complete, when the step begins. The player's earlier tracking is not
+restored afterwards.
+
 ## Display text
 
 Each directive generates a description (`Accept "The Basics"`; names from the data pack, else `Quest #787`). `>> text`
-replaces that line's description; `.text`/`.note` add lines of their own.
+replaces that line's description; `.text`/`.note` add lines of their own. A `.goto` (or `.fish`) without `>> text` has a
+line only when the step has no other (`Go to Razor Hill 42.1, 68.7`), so a doing step lists its quests only.
 
 ## Stable step ids
 

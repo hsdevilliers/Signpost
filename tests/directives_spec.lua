@@ -766,17 +766,17 @@ describe("describe", function()
 		assert.are.equal('Turn in "Quest #788"', describe_(ns, "turnin", "788"))
 	end)
 
-	it("adds objective progress lines from the quest log", function()
+	it(".complete names the quest and leaves the objectives' progress to the quest log", function()
 		local ns = mocks.load()
 		local context = mocks.context()
 		context.objectives[787] = {
 			{ text = "Boar slain: 3/10", finished = false },
 			{ text = "", finished = false, have = 1, need = 4 },
 		}
-		local def = ns.Directives:Get("complete")
-		assert.are.same({ "- Boar slain: 3/10", "- 1/4" }, def.progress(parsed(ns, "complete", "787"), context))
-		assert.are.same({ "- 1/4" }, def.progress(parsed(ns, "complete", "787,2"), context))
-		assert.are.same({}, def.progress(parsed(ns, "complete", "790"), context))
+		-- no objective lines ("- Boar slain: 3/10"), whatever the quest log holds, in either form of the directive
+		assert.is_nil(ns.Directives:Get("complete").progress)
+		assert.are.equal('Complete "Quest #787"', describe_(ns, "complete", "787", context))
+		assert.are.equal('Complete objective 2 of "Quest #787"', describe_(ns, "complete", "787,2", context))
 	end)
 
 	it("places: map names from the client, then the pack", function()

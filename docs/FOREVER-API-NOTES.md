@@ -314,6 +314,25 @@ Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.
   `UIPanelButtonTemplate` buttons look right at 20 px; `GetStringHeight` right after `SetText` gives the wrapped height (no
   clipped last line at 5 lines); waypoint numbers readable on `TaxiNode_Neutral`; minimap pins above the minimap's layers;
   world-map lines (3 px gold) above the map art and below the pins.
+- [ ] **Doing steps** (a `.complete` and nothing that sends the player to a place; user, 2026-10-20): in the real client the guide draws
+  no pin, minimap pin or edge arrow for such a step while the quest log's own marks show the objectives (and the step before's pins
+  are gone); the step frame lists one line per quest with a green `[x]` or a plain `[ ]` (colour escapes in the body font string)
+  and no counters; up to ten lines (`MAX_BODY_LINES`) of `GameFontHighlight` at 260 px lay out without clipping a line or
+  covering more than the old five did.
+- [ ] **Quest tracking follows the step** (`Engine/Tracking.lua`, user 2026-10-20; built on the mock, none of it seen in the client;
+  `/signpost probe` now lists the names, and the Classic ones as expected-absent): do `C_QuestLog.AddQuestWatch(questID[, watchType])`,
+  `RemoveQuestWatch(questID)`, `GetQuestWatchType(questID)` (nil for a quest nobody tracks?), `GetNumQuestWatches()`,
+  `GetQuestIDForQuestWatchIndex(i)`, `C_SuperTrack.GetSuperTrackedQuestID()`, `SetSuperTrackedQuestID(questID)` and
+  `Enum.QuestWatchType.Manual` exist on Forever, and does `AddQuestWatch` take the watch type? Or is it the Classic shape (global
+  `AddQuestWatch(logIndex)`, `IsQuestWatched`, `GetQuestIndexForWatch`, which the module falls back to, with
+  `C_QuestLog.GetLogIndexForQuestID` and `GetQuestIDForLogIndex` for the numbers)? Does the watch list read back an add or a
+  remove at once, before `QUEST_WATCH_LIST_CHANGED` (the module compares right after, and stops for the session if no quest of
+  a step shows as tracked)? How many quests can be tracked: a full tracker refuses the add, which the module takes for a broken
+  `AddQuestWatch` (it then leaves the tracker alone and stops). Does `C_QuestLog.GetInfo` list the quests under a collapsed
+  header (the module asks `Context:QuestInLog` either way)? Does the game's own auto-tracking (on accept, on progress) leave the module's result
+  alone (a quest accepted mid-step is untracked at the next change of the quest log's set of quests)? Do the minimap and the
+  objective tracker then show only the step's quests with their progress, and does the check box under "Quest tracker" in
+  Journal > Settings (second column) fit the pane?
 - [ ] The quest item button (`type = "item"`, `item = "item:<id>"`) uses the item by click and by `/click SignpostItemButton`,
   with `ActionButtonUseKeyDown` on and off; a step change in combat updates it after combat without `ADDON_ACTION_BLOCKED`.
 
