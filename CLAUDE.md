@@ -72,6 +72,7 @@ Signpost/                 PUBLIC repo, MIT
                Route Planner (`route_planner.py`, docs/PLANNER.md: its candidate routes go to the gitignored `plans/`), data diff
   tests/       busted specs for parser/engine with a mocked WoW API (tests/wow_mock.lua)
   docs/        PLAN.md, FOREVER-API-NOTES.md, PROGRESS.md, GUIDE-FORMAT.md
+  backlog/     what is left over, one Markdown file per item (backlog/README.md; `python tools/backlog.py`)
   .github/     CI: luacheck, busted, guide lint, release zip (public addon only)
 
 Signpost_Data/            PRIVATE repo — never pushed anywhere public
@@ -154,6 +155,13 @@ positions learned in game.
   CI green, the full local suite (`tools/check.ps1`) passing, and the diff reviewed. Merge with a merge commit, pull `main`, delete the
   merged branch. Still ask first for anything that is not an ordinary merge: force-pushes, rewriting history, deleting anything that
   is not a merged branch, changing the repository's settings or secrets, and publishing a release (e.g. to CurseForge).
+- **Backlog (user, 2026-10-20, standing): nothing is left only in conversation.** Residuals live in `backlog/` (`python tools/backlog.py`,
+  rules in `backlog/README.md`): what the user tells you to note ("add this to the backlog"), written down in their words
+  (`--source user`), and every finding you make and do not fix in the same change (`--source claude`). **Before you push a PR and before a
+  session ends**, every question you asked the user and every problem still open is either closed (answered, fixed, verified) or written
+  up there first (a question nobody answered is an item of kind `question`); the PR description lists the items it adds and closes. Close an
+  item in the PR that resolves it (`close --resolution`), never delete one, and drop one the user raised only with their agreement. Items
+  follow this repository's data rules (no Wowhead-derived text, no pack tables). `python tools/backlog.py` shows what is open.
 - Anything that must be verified in the live client gets a `-- VERIFY(beta): ...` or `-- VERIFY(launch): ...` comment and an
   entry in `docs/FOREVER-API-NOTES.md` under "Open probes". Clear them only with evidence (paste the `/signpost probe` output).
 - Do not invent quest IDs, NPC IDs, spell IDs or coordinates. They come from `tools/` output or from an in-game dump. If data is
