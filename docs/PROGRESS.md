@@ -94,7 +94,10 @@ Tasks
 - [x] `tools/guide_travel.py` and the lint rule for uncovered transitions. — tools-lint 2f5081d; `tools/check.ps1` runs
   `guide_lint.py --strict --no-pack` as CI does.
 - [ ] `tools/guide_draft.py` (PLAN §7 "Quest selection and order"); quest XP in the data layers; group-quest tags; the `.group`
-  marker in GUIDE-FORMAT.
+  marker in GUIDE-FORMAT. — `tools/guide_draft.py` v1 written and tested (11 tests): candidate pool with a reason for every dropped
+  quest, prerequisite and exclusive handling, town loops, zone stickiness, `.todo` steps for objectives with no position, a
+  placeholder level estimate. Drafted Mulgore 1-12 for a Tauren Druid from the pack (41 quests, 53 steps). Still open: quest XP
+  (Wowhead's class quest listing has `xp`; the Forever pages are blocked, see API notes), group-quest tags, `.group`.
 - [x] `tests/`: busted specs for parser (every directive, error cases) and progress (auto-skip, sticky) with `tests/wow_mock.lua`.
   — `tests/parser_spec.lua` (64), `tests/progress_spec.lua` (32), plus every Wave 1 module's spec and
   `tests/integration_spec.lua`; 558 specs run together.
