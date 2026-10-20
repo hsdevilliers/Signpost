@@ -364,6 +364,57 @@ def sensitivity(runs: list, params: dict, factors=(0.5, 2.0)) -> list[str]:
     return out
 
 
+# Calibration (PLAN Phase 9, stage 3) ----------------------------------------------------------------------------------
+
+
+def read_pace(source: Path | None = None) -> dict[str, dict[int, float]]:
+    """{character: {level: seconds played when it was reached}} from SignpostCharDB.pace (Core/Pace.lua)."""
+    from signpost_tools import svfiles
+
+    found: dict[str, dict[int, float]] = {}
+    for sv in svfiles.find_files(source):
+        if sv.variable != svfiles.CHAR_VAR or not sv.path.is_file():
+            continue
+        records = svfiles.load_db(sv).get("pace")
+        records = records if isinstance(records, dict) else {}
+        levels = {
+            int(level): float(item["played"])
+            for level, item in records.items()
+            if isinstance(item, dict) and isinstance(item.get("played"), (int, float)) and str(level).isdigit()
+        }
+        if levels:
+            found[sv.owner] = levels
+    return found
+
+
+def calibrate(result: Result, played: dict[int, float]) -> tuple[list[tuple[int, float, float, float]], float | None]:
+    """(level, simulated clock, played, ratio) for the levels both have, and the median ratio: ONE overall pace
+    multiplier (more than 1: the player is slower than the model). Levels the character reached before the guide's
+    first step (its starting level) are left out."""
+    rows = []
+    for level, seconds in sorted(played.items()):
+        if level in result.levels and result.levels[level][0] > 0:
+            clock = result.levels[level][0]
+            rows.append((level, clock, seconds, seconds / clock))
+    if not rows:
+        return rows, None
+    ratios = sorted(row[3] for row in rows)
+    middle = len(ratios) // 2
+    median = ratios[middle] if len(ratios) % 2 else (ratios[middle - 1] + ratios[middle]) / 2
+    return rows, median
+
+
+def calibration_report(result: Result, owner: str, played: dict[int, float]) -> list[str]:
+    rows, factor = calibrate(result, played)
+    out = [f"   pace of {owner} against {result.guide}:"]
+    if not rows:
+        return out + ["     no level in common (the character has recorded levels the route does not reach)"]
+    for level, clock, seconds, ratio in rows:
+        out.append(f"     level {level}: model {hours(clock)}, played {hours(seconds)}, ratio {ratio:.2f}")
+    out.append(f"     overall pace multiplier (median of {len(rows)}): {factor:.2f}; the model's times x {factor:.2f}")
+    return out
+
+
 # Command line ---------------------------------------------------------------------------------------------------------
 
 
@@ -385,6 +436,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-tracks", action="store_true")
     parser.add_argument("--no-xp-file", action="store_true", help="ignore QuestieDB's quest XP seed")
     parser.add_argument("--steps", action="store_true", help="list every step's time")
+    parser.add_argument(
+        "--pace",
+        nargs="?",
+        const="",
+        metavar="DIR",
+        help="compare with the time played recorded by Core/Pace.lua (SavedVariables of the dev client, or DIR)",
+    )
     parser.add_argument("--sensitivity", action="store_true")
     parser.add_argument("--json", action="store_true")
     options = parser.parse_args(argv)
@@ -427,8 +485,13 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps([{"guide": r.guide, "variant": r.variant, "seconds": r.seconds, "travel": r.travel, "wait": r.wait,
                            "stall": r.stall, "level": r.level, "levels": {str(k): v[0] for k, v in r.levels.items()}} for r in results], indent=2))
         return 0
+    paces = read_pace(Path(options.pace) if options.pace else None) if options.pace is not None else {}
     for result in results:
         print("\n".join(report(result, options.steps)))
+        for owner, played in paces.items():
+            print("\n".join(calibration_report(result, owner, played)))
+    if options.pace is not None and not paces:
+        print("no pace recorded yet (Core/Pace.lua writes SignpostCharDB.pace at each level-up, on /reload or logout)")
     return 0
 
 

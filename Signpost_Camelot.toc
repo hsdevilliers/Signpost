@@ -32,6 +32,7 @@ Core\Probe.lua
 Core\MapDump.lua
 Core\Contribute.lua
 Core\Learn.lua
+Core\Pace.lua
 
 Engine\Registry.lua
 Engine\Directives.lua

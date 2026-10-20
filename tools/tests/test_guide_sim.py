@@ -142,5 +142,45 @@ class RunTest(TempProject):
         self.assertEqual(guide_sim.hours(3660), "1h01")
 
 
+NL = chr(10)
+TAB = chr(9)
+
+
+class CalibrationTest(unittest.TestCase):
+    def result(self):
+        result = guide_sim.Result("g", "v")
+        result.levels = {2: (600.0, "c"), 3: (1800.0, "c"), 4: (3600.0, "c")}
+        return result
+
+    def test_the_median_ratio_is_one_pace_multiplier(self):
+        rows, factor = guide_sim.calibrate(self.result(), {2: 1200.0, 3: 3600.0, 4: 9000.0, 9: 1.0})
+        self.assertEqual([row[0] for row in rows], [2, 3, 4])  # level 9 is not in the model
+        self.assertEqual(factor, 2.0)  # ratios 2, 2, 2.5
+        self.assertEqual(guide_sim.calibrate(self.result(), {9: 1.0}), ([], None))
+
+    def test_even_counts_average_the_middle_two(self):
+        _, factor = guide_sim.calibrate(self.result(), {2: 600.0, 3: 5400.0})
+        self.assertEqual(factor, 2.0)  # ratios 1 and 3
+
+    def test_pace_is_read_from_character_files_only(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "1" / "Zed-Realm" / "SavedVariables"
+            folder.mkdir(parents=True)
+            (folder / "Signpost.lua").write_text(
+                "SignpostCharDB = {" + NL + TAB + '["pace"] = {' + NL
+                + TAB + TAB + '[2] = { ["played"] = 700, ["at"] = 1 },' + NL
+                + TAB + TAB + '[3] = { ["played"] = 1900, ["at"] = 2 },' + NL + TAB + "}," + NL + "}" + NL,
+                encoding="utf-8",
+            )
+            found = guide_sim.read_pace(Path(tmp))
+            self.assertEqual(found, {"Zed-Realm": {2: 700.0, 3: 1900.0}})
+        report = guide_sim.calibration_report(self.result(), "Zed-Realm", {2: 1200.0, 3: 3600.0})
+        lines = NL.join(report)
+        self.assertIn("overall pace multiplier (median of 2): 2.00", lines)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -219,6 +219,9 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
 - [ ] The "Help improve Signpost" window (`UI/Contribute.lua`, `/signpost contribute`) in the real client: built from
   `ButtonFrameTemplate`, `UICheckButtonTemplate` and `UIPanelButtonTemplate` on specs only. Does it lay out (text not clipped, checkbox
   clickable on its label, Escape closes it, opens once by itself on a release build, not in combat)?
+- [ ] **Pace recorder** (`Core/Pace.lua`): do `RequestTimePlayed()`, the `TIME_PLAYED_MSG` event (total, atLevel) and the global
+  `ChatFrame_DisplayTimePlayed` exist? After a level-up: no "Total time played" chat line from Signpost's own request, a line from the
+  player's own `/played`, and `SignpostCharDB.pace[level].played` written (read it with `python tools/guide_sim.py --pace`).
 - [ ] The **Options entry** (`UI/Options.lua`): do `Settings.RegisterCanvasLayoutCategory(panel, name)` and `Settings.RegisterAddOnCategory(category)` exist
   and show the panel under Options > AddOns on Forever? Does the "Open the Journal" button work from there?
 - [ ] The **Journal window** (`UI/Journal.lua`, `/signpost`) in the real client: `WowStyle1DropdownTemplate` as a `DropdownButton` with `SetupMenu` and

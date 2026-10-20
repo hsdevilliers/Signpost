@@ -85,6 +85,7 @@ Slash:Register("export", function()
 		exported = time(),
 		learned = ns.db.learned,
 		reports = ns.db.reports,
+		pace = ns.char and ns.char.pace,
 	}
 	ns.UI:ShowTextDialog(L["Signpost export (Ctrl+C to copy)"], Util.ToJSON(payload, "  "))
 end, L["show learned data as JSON to copy"])
