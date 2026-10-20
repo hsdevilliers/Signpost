@@ -79,3 +79,5 @@ UI\Contribute.lua
 UI\StepFrame.lua
 UI\Pins.lua
 UI\Journal.lua
+UI\Report.lua
+UI\Options.lua

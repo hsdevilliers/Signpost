@@ -41,6 +41,7 @@ read_globals = {
 	"UIParent",
 	"DEFAULT_CHAT_FRAME",
 	"PanelTemplates_SetNumTabs",
+	"Settings",
 	"PanelTemplates_SetTab",
 	"UISpecialFrames",
 	"Minimap",
