@@ -78,7 +78,8 @@ stats or prices.
 game.
 - **QuestieDB**: used with its maintainers' permission (Questie Discord, 2026-10-17) as an input to the private pack only. Read its files
   as data (never execute them), keep only the facts above in our schema, never copy its code, formats, corrections or text, never put
-  any of it in the public repo.
+  its tables in the public repo. User decision (2026-10-20): the permission is taken to cover the quest IDs and coordinates that public
+  guides carry (the guides are the product); nothing else of it may be public. The data pack itself stays private.
 - **Wowhead is off-limits to Claude Code**: Wowhead's robots.txt disallows Anthropic's agents. Never fetch wowhead.com or
   nether.wowhead.com, never run `tools/wowhead_*.py` against the network, never read cached Wowhead pages. The user runs those tools;
   work from their structure-only diagnostics.

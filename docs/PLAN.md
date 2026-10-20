@@ -734,7 +734,7 @@ Acceptance
   `CF_API_KEY` repository secret; Claude Code never sees it); Claude Code adds `## X-Curse-Project-ID` to both TOCs, finishes `.pkgmeta`,
   and extends CI to build and upload the zip on a version tag with the BigWigs packager. First check that CurseForge offers a game
   version for WoW: Forever (Interface 16001); if it does not, release on GitHub first. The zip carries no Wowhead- or QuestieDB-derived
-  tables (the existing CI guard), only the guides, which carry their own IDs and coordinates (see PLAN §12 for the open licensing question).
+  tables (the existing CI guard), only the guides, which carry their own IDs and coordinates (the user covers them under QuestieDB's permission, 2026-10-20: PLAN §12).
 - [ ] **Release 1 scope gate:** Troll Hunter (all professions), Tauren Druid and Windshaper Druid hardcore guides each pass
   `guide_lint --strict` for the levels they claim; the addon loads cleanly with the data pack absent; README with install steps.
 
@@ -825,18 +825,19 @@ If the beta closes before Phase 2 is done, keep building against the captured pr
   needs a talent/Legacy choice to make sense, that is a sign the step is wrong, not that the scope should grow.
 
 ## 12. Open questions for the user
-Asked 2026-10-20 (answers go into §2):
-1. Are "Torin" and "Skyborne" the user's dictated spellings of **Tauren** and the new **Skyborne** race (Horde variant "Windshaper")?
-   Web guides (icy-veins, talentsforever, mobalytics, 2026-10-20; unverified against the client) say Horde druids are Tauren and Windshaper
-   Skyborne, and that Skyborne needs the Skyborne Heroic Pack and starts on Zephras Isle (levels 1-12). Check the client's race list in game.
-2. Those guides say the Hardcore ruleset arrives **after** launch (one source; unverified). Does the friend start on launch day on a normal
-   realm, or wait for hardcore? It decides when the hardcore guides can be tested.
-3. Licensing: QuestieDB's permission covers "an input to the private pack only". Guides written from it carry quest IDs and coordinates and
-   ship in the public zip. Does the permission extend to that, or must the public guides carry only what the user, the client dumps and
-   in-game learning produced?
-4. CurseForge: does the user want the project under their own account, and does CurseForge list a WoW: Forever game version yet?
+Answered 2026-10-20:
+1. **Races:** "Torin" = Tauren; "Skyborne" = the new Skyborne race, Horde variant "Windshaper". Both are Druid. Web guides (icy-veins,
+   talentsforever, mobalytics; unverified against the client) add that Skyborne needs the Skyborne Heroic Pack and starts on Zephras Isle
+   (levels 1-12). The client's race list is the authority; the user checks it in game.
+2. **Hardcore timing:** the user confirms hardcore exists **from launch day** (one web source said it comes after launch; the user's
+   word wins). The friend starts his druid on launch day.
+3. **Licensing:** the user considers QuestieDB's permission to cover quest IDs and coordinates in the public guides. The original wording
+   (Questie Discord, 2026-10-17, as relayed) was "an input to the private pack only"; this is the user's reading of it. Only IDs and
+   coordinates may ship: never its code, file formats, text, corrections or tables (CLAUDE.md "Data sources").
+4. **CurseForge:** under the user's account; the user creates the project and the API token. Claude Code prepares the TOCs, `.pkgmeta` and
+   CI, and checks whether CurseForge lists a WoW: Forever game version before the first upload (else GitHub first).
 
-Earlier: none. Repos live under `C:\Users\StephandeVilliers\Repos`; remotes go under `github.com/hsdevilliers` (Claude Code creates them with
+Open: none. New questions go below. Repos live under `C:\Users\StephandeVilliers\Repos`; remotes go under `github.com/hsdevilliers` (Claude Code creates them with
 `gh` after the user has run `gh auth login`). New questions go here as they arise; Claude Code stops and asks rather than guessing.
 
 Resolved: the addon name is **Signpost** (2026-10-17; web search found no WoW addon of that name — re-check CurseForge/Wago/WoWInterface
