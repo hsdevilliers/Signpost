@@ -400,3 +400,9 @@ prerequisite, the lint did not model prerequisites, and its 20 or so level warni
 - [ ] Install a planned route in the guides on purpose (compare, copy the chapters, `guide_lint --strict`); the drafted chapters for
   levels 12-30 of the druids and 20-30 of the hunter are regenerated from planner routes, not hand-drafted.
 
+## Backlog (user, 2026-10-20)
+
+- [x] `backlog/` and `tools/backlog.py` (add, list, show, status, close, drop, check), and the standing rule in CLAUDE.md: nothing is left only
+  in conversation; before a PR is pushed and before a session ends every open question and unresolved problem is closed or written up
+  there first. The tool tests check every item, so CI does. First items: the user's notes on activity steps, quest-level step state and
+  markers (and the tools that follow them), the planner's open question and limits, the first in-game session, `/signpost reset`.

@@ -69,10 +69,15 @@ far the full simulation is from the planner's estimate) - the first steps of the
   not a prediction of a player's clock. Forever's own tuning is unknown (CLAUDE.md, "Forever is not Classic"): quests and class
   quests Forever added that the pack lacks are not routed.
 - **The planner and the simulator price travel differently.** The simulator charges a flat few minutes for a border that is not
-  learned yet; the planner prices it by distance. The full simulation of a written route runs 10-20% below the planner's estimate.
-- **Nothing says when a class quest is due**: the planner does them when that is cheapest, which can be many levels after they
-  open (the report names how many). The guide drafts do them when they open.
-- **The quest log is not limited** (25 in Classic); the route may hold more at a moment than the game allows.
+  learned yet; the planner prices it by distance. The full simulation of a written route runs 10-20% below the planner's estimate
+  (backlog: `price-travel-differently`).
+- **Nothing says when a class quest is due**: the planner does them when that is cheapest, which in the druid routes is level 30 for
+  quests that open at 10, 14, 16 and 20 (the report names how many are late). The guide drafts do them when they open. This is a
+  question for the user (backlog: `when-is-a-class-quest-due`); until it is answered, planner routes are not installed in the guides.
+- **The quest log is not limited** (25 in Classic); the route may hold more at a moment than the game allows (backlog: `limit-the-quest-log`).
 - **Data holes become `.todo` steps**: an objective with no position in the pack is worked where its quest starts, and the step
   says so; a border with no route yet gets a travel step the lint reports.
 - **Group quests** in a normal route are tagged `.optional`, not yet shown as a line beside the step.
+- **Steps are written one NPC each**, kills and collecting as steps of their own (the rule of 2026-10-20). The user has since asked for
+  steps that group by activity (pick up, do, hand in) and for markers only where a place is to be reached; the emission follows when the
+  engine does (backlog: `steps-group-by`, `follow-the-activity`).
