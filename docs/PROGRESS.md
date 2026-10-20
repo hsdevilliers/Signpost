@@ -260,6 +260,20 @@ Acceptance
   each with a source and a confidence) and `tools/guide_draft.py --hardcore` (skips become `#skipquest`, notes become `.note`); 3 tests.
 - [ ] Dungeon chapters default to skipped in a hardcore guide (needs a chapter-header flag); the hardcore-ruleset probe; group/elite tags.
 
+## Icon (user, 2026-10-20)
+
+- [x] The addon icon (the user's Nano Banana 2 artwork, a wooden signpost with a rope coil and a lantern): `Media/Source/signpost-icon.jpg` is the
+  source; `tools/make_icons.py` builds `Media/icon.tga` (128x128, the TOC's `IconTexture`), `Media/icon-round.tga` (round edges, the minimap
+  button) and `Media/curseforge-logo.png` (512x512, for the CurseForge project, not shipped); `.pkgmeta` keeps the source art and the logo out of the zip.
+  Tests in `tools/tests/test_make_icons.py`. How it looks in the minimap ring in the real client is unverified.
+
+## First in-game look (user, 2026-10-20)
+
+- [x] The first look at a Troll Hunter found the guide sending a level-1 character in the Valley of Trials to Orgrimmar. Cause: the drafts began at
+  the lowest quest ID, not at the race's start. Fixed (`start_place` in `tools/guide_draft.py`: the race's own level-1 quest, else the lowest-level
+  quest in the first zone; the Troll chapter excludes the Orgrimmar-only "The New Horde"); both guides rebuilt. Forever's own starter quests (Wayward
+  Weapons) are missing from the pack: FOREVER-API-NOTES "Observed in the game".
+
 ## Notes
 
 - 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,

@@ -979,7 +979,7 @@ ns.Events:RegisterMessage("DB_READY", function()
 	local object = broker:NewDataObject("Signpost", {
 		type = "launcher",
 		text = "Signpost",
-		icon = "Interface\\Icons\\INV_Misc_Map_01",
+		icon = "Interface\\AddOns\\Signpost\\Media\\icon-round",
 		OnClick = function(_, button)
 			ns.SafeCall(function()
 				if button == "RightButton" then

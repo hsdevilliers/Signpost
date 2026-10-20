@@ -260,6 +260,37 @@ def class_gate(mask: int | None, class_token: str, gate_class: bool = True) -> s
     return " .class " + ",".join(names)
 
 
+# The pack's masks for "any Horde race" and "any Alliance race" (the Classic races of each side).
+FACTION_MASKS = {178, 77}
+
+
+def start_place(pool: dict[int, Quest], world: guide_travel.World, spec: argparse.Namespace) -> Coord | None:
+    """Where a character of this race begins: the giver of the lowest-level quest only this race gets (its own first quest,
+    not a class quest and not one every Horde or Alliance character may take), inside the first zone asked for. Without
+    one, the lowest-level quest in that zone; without that, the first quest there is. Starting at the lowest quest ID
+    instead sent a character standing in the Valley of Trials to Orgrimmar for a quest that breadcrumbs from there."""
+    zone = spec.zone[0]
+
+    def inside(q: Quest) -> list[Coord]:
+        return [c for c in q.starts if world.within(c.map, zone)]
+
+    own = [
+        q
+        for q in pool.values()
+        if q.race_mask is not None
+        and q.race_mask not in FACTION_MASKS
+        and q.class_mask is None
+        and q.required <= spec.min_level  # a race-only quest that needs level 3 is a village quest, not the start
+        and inside(q)
+    ]
+    chosen = own or [q for q in pool.values() if inside(q)] or list(pool.values())
+    # lowest required level, then lowest quest level (a level-6 quest a village away is not where a level-1 character begins)
+    first = min(chosen, key=lambda q: (q.required, q.level, q.id), default=None)
+    if first is None:
+        return None
+    return (inside(first) or first.starts)[0]
+
+
 def _clean(text: str) -> str:
     return text.replace("]]", "] ]").replace("\n", " ").strip()
 
@@ -526,12 +557,7 @@ def main(argv: list[str] | None = None) -> int:
     result = None
     pool, _ = candidates(pack, world, spec)
     if not spec.start:
-        first = min(pool.values(), key=lambda q: (q.required, q.id), default=None)
-        if first:
-            home = [c for c in first.starts if world.within(c.map, spec.zone[0])]
-            spec.start = (home or first.starts)[0]
-        else:
-            spec.start = None
+        spec.start = start_place(pool, world, spec)
     if spec.start is None:
         print("guide_draft: no quest in the pool to start from", file=sys.stderr)
         return 1

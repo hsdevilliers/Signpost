@@ -111,7 +111,12 @@
             1454
           ],
           "levels": "1-12",
-          "args": []
+          "args": [
+            "--exclude",
+            787,
+            "--exclude-reason",
+            "starts with Eitrigg in Orgrimmar: an intro for characters created there, not for the Valley of Trials"
+          ]
         },
         {
           "id": "barrens-10-20-hunter",
