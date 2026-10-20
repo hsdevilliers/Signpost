@@ -365,3 +365,4 @@ Acceptance
 - Route simulator, stage 4 in part (2026-10-20): a hardcore risk score per route (an elite or rare as a kill objective = 3, a quest more than
   `risk_gap` levels above the simulated character = the gap) and `--skip-quest ID` what-ifs (time, final level and risk against the route as
   written). Not done: reordering hubs and adding dungeons as variants.
+- `tools/guide_draft.py --xp-levels` (2026-10-20, opt-in): the drafter's level estimate comes from the simulator's XP model (reward + objective kills of the chapter's finished quests) instead of one level per N quests. Off by default so the shipped chapters do not move; use it when drafting levels 20-60.

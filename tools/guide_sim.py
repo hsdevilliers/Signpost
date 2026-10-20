@@ -134,6 +134,11 @@ class Model:
             xp *= max(0.1, 1 - self.p["quest_xp_penalty_per_level"] * over)
         return xp
 
+    def quest_xp_total(self, quest_id: int) -> float:
+        """The XP of doing a quest at its own level: the reward plus the kills its objectives need."""
+        level = (self.quests.get(quest_id) or {}).get("l") or 1
+        return self.reward_xp(quest_id, level) + self.objective(quest_id, None, level)[2]
+
     def rank_kind(self, npc: int | None) -> str:
         record = self.npcs.get(npc) or {}
         return RANK_KIND.get(record.get("rank", 0), "normal")
