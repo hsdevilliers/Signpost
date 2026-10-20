@@ -196,6 +196,24 @@ Acceptance
   training First Aid.
 - [ ] Walk 1–12 on a troll hunter with `/signpost debug on` (NPC positions at quest/gossip events, the Durotar → Barrens crossing).
 
+## Data contribution (user, 2026-10-20)
+
+- [x] `Core/Contribute.lua`: consent state in `SignpostDB.contribute`; `Core/Learn.lua` records only when it is on (dev builds always
+  record; the debug event log is never switched on by it); `/signpost contribute [on|off|status]`. 12 specs in `tests/contribute_spec.lua`.
+- [x] `UI/Contribute.lua`: the "Help improve Signpost" window (checkbox, what is recorded, counts, how to hand the file over), shown once
+  by itself on a release build. In-game layout is an open probe (FOREVER-API-NOTES).
+- [ ] Helper script that copies a clean `Signpost.lua` to the shared folder (the friend's main path); in-game export block as the fallback.
+- [ ] Options panel entry for the checkbox once `UI/Options.lua` exists.
+
+## Data contribution (user, 2026-10-20)
+
+- [x] `Core/Contribute.lua`: consent state in `SignpostDB.contribute`; `Core/Learn.lua` records only when it is on (dev builds always
+  record; the debug event log is never switched on by it); `/signpost contribute [on|off|status]`. 12 specs in `tests/contribute_spec.lua`.
+- [x] `UI/Contribute.lua`: the "Help improve Signpost" window (checkbox, what is recorded, counts, how to hand the file over), shown once
+  by itself on a release build. In-game layout is an open probe (FOREVER-API-NOTES).
+- [ ] Helper script that copies a clean `Signpost.lua` to the shared folder (the friend's main path); in-game export block as the fallback.
+- [ ] Options panel entry for the checkbox once `UI/Options.lua` exists.
+
 ## Notes
 
 - 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,

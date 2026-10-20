@@ -13,6 +13,7 @@ local RESET = {
 	"SLASH_SIGNPOST2",
 	"Signpost_OnAddonCompartmentClick",
 	"SignpostTextDialog",
+	"SignpostContributeWindow",
 	"BugGrabber",
 	"LibStub",
 	"C_Map",
