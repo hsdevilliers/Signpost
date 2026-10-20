@@ -362,3 +362,6 @@ Acceptance
   (`ChatFrame_DisplayTimePlayed` swapped for a no-op for up to 10 s, then restored: the one place the addon touches a Blizzard global;
   VERIFY(beta) that both exist). `/signpost export` includes it. `python tools/guide_sim.py --pace [DIR]` compares each character's played
   time per level with the model and prints ONE overall pace multiplier (median ratio). Specs: `tests/pace_spec.lua`.
+- Route simulator, stage 4 in part (2026-10-20): a hardcore risk score per route (an elite or rare as a kill objective = 3, a quest more than
+  `risk_gap` levels above the simulated character = the gap) and `--skip-quest ID` what-ifs (time, final level and risk against the route as
+  written). Not done: reordering hubs and adding dungeons as variants.
