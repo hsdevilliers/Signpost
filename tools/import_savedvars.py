@@ -1,11 +1,16 @@
-"""Turn Signpost's SavedVariables into files: JSON for inspection, and the data pack's client layer.
+"""Turn Signpost's SavedVariables into files: JSON for inspection, and the data pack's client and learned layers.
 
     python tools/import_savedvars.py --json --out savedvars.json   SignpostDB and every SignpostCharDB as JSON
     python tools/import_savedvars.py --maps                         client layer (maps) from SignpostDB.mapDump, then rebuild
+    python tools/import_savedvars.py --merge-learned                learned layer from SignpostDB.learned and eventLog, then
+                                                                    rebuild
+    python tools/import_savedvars.py --merge-learned --also incoming/play-machine   ... from both machines' SavedVariables
 
---from DIR reads a copied SavedVariables folder (the play machine's); --pack DIR is the data pack (default
-../Signpost_Data). The maps go into layers/client.json and the pack is rebuilt from every layer (datapack.build).
---merge-learned (learned NPC positions and zone crossings into the pack) arrives with Core/Learn.lua.
+--from DIR reads a copied SavedVariables folder (the play machine's) instead of the client's; --also DIR (repeatable)
+adds more learned data to --merge-learned; --pack DIR is the data pack (default ../Signpost_Data). The maps go into
+layers/client.json, the learned data (Core/Learn.lua, plus the NPC positions and zone crossings in the debug
+recorder's event log) into layers/learned.json (signpost_tools/learned.py), and the pack is rebuilt from every layer
+(datapack.build), learned last.
 """
 
 from __future__ import annotations
@@ -17,11 +22,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from signpost_tools import datapack, devconfig  # noqa: E402
+from signpost_tools import datapack, devconfig, learned  # noqa: E402
 from signpost_tools.savedvars import LuaParseError  # noqa: E402
 from signpost_tools.svfiles import find_files, load_db  # noqa: E402
 
 DEFAULT_PACK = devconfig.REPO_ROOT.parent / "Signpost_Data"
+DEFAULT_GUIDES = devconfig.REPO_ROOT / "Guides"
 CONTINENT = 2  # Enum.UIMapType.Continent
 
 
@@ -65,6 +71,17 @@ def maps_table(dump: dict) -> dict[int, dict]:
     return maps
 
 
+def account_db(source: Path | None, config: Path | None) -> dict:
+    """SignpostDB from the client's SavedVariables (source None) or a copied folder; exits when it is missing."""
+    try:
+        sv = find_files(source, config)[0]
+        if not sv.path.exists():
+            sys.exit(f"{sv.path} does not exist yet: log in, run the commands, then /reload")
+        return load_db(sv)
+    except (devconfig.ConfigError, LuaParseError) as exc:
+        sys.exit(str(exc))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--from", dest="source", type=Path, help="read a copied SavedVariables folder")
@@ -72,10 +89,26 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="write SignpostDB and the character DBs as JSON")
     parser.add_argument("--out", type=Path, help="with --json: the output file (default: print)")
     parser.add_argument("--maps", action="store_true", help="write Maps.lua into the data pack from mapDump")
+    parser.add_argument(
+        "--merge-learned",
+        action="store_true",
+        help="fold SignpostDB.learned and the event log's NPC positions and zone crossings into the learned layer",
+    )
+    parser.add_argument(
+        "--also",
+        type=Path,
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="with --merge-learned: also read the learned data in this copied SavedVariables folder (repeatable)",
+    )
     parser.add_argument("--pack", type=Path, default=DEFAULT_PACK, help="data pack folder (default ../Signpost_Data)")
+    parser.add_argument("--guides", type=Path, default=DEFAULT_GUIDES, help=argparse.SUPPRESS)
     options = parser.parse_args()
-    if not (options.json or options.maps):
-        parser.error("choose --json and/or --maps")
+    if not (options.json or options.maps or options.merge_learned):
+        parser.error("choose --json, --maps and/or --merge-learned")
+    if options.also and not options.merge_learned:
+        parser.error("--also only goes with --merge-learned")
 
     try:
         files = find_files(options.source, options.config)
@@ -96,6 +129,7 @@ def main() -> None:
         else:
             print(text)
 
+    written = []
     if options.maps:
         dump = databases["account"].get("mapDump")
         if not isinstance(dump, dict) or not dump.get("maps"):
@@ -103,8 +137,18 @@ def main() -> None:
         maps = maps_table(dump)
         origin = f"client dumpmaps, build {dump.get('build')}"
         datapack.write_layer(options.pack, "client", {"maps": maps}, origin)
+        written.append(f"client layer: {len(maps)} maps ({origin})")
+
+    if options.merge_learned:
+        sources = [databases["account"]] + [account_db(folder, None) for folder in options.also]
+        # No paths in the origin: it ends up in the pack's _meta.lua and data-gaps.md.
+        origin = f"in game: Core/Learn.lua and the debug event log, {len(sources)} SavedVariables file(s)"
+        stats = learned.merge_learned(options.pack, sources, origin, [options.guides])
+        written.append("learned layer: " + ", ".join(f"{count} {name}" for name, count in stats.items()))
+
+    if written:
         counts = datapack.build(options.pack, "import_savedvars.py")
-        print(f"client layer: {len(maps)} maps ({origin}); data pack rebuilt: {counts}")
+        print(f"{'; '.join(written)}; data pack rebuilt: {counts}")
 
 
 if __name__ == "__main__":

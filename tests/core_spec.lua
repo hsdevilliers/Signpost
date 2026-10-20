@@ -111,7 +111,10 @@ describe("SavedVariables", function()
 		assert.are.equal(SignpostDB, ns.db)
 		assert.are.equal(SignpostCharDB, ns.char)
 		assert.are.equal(1, ns.db.dbVersion)
-		assert.are.same({ npcs = {}, objects = {}, taxi = {}, crossings = {} }, ns.db.learned)
+		assert.are.same(
+			{ npcs = {}, objects = {}, quests = {}, taxi = {}, crossings = {}, trainers = {}, vendors = {} },
+			ns.db.learned
+		)
 		assert.are.same({}, ns.char.progress)
 		assert.are.same(
 			{ time = 1790000000, version = "dev", toc = "test", client = "1.60.1", build = "70450", interface = 16001 },
@@ -128,7 +131,10 @@ describe("SavedVariables", function()
 		assert.are.equal(2, ns.db.settings.scale)
 		assert.is_true(ns.db.debug.chat)
 		assert.are.same({}, ns.db.debug.counts)
-		assert.are.same({ npcs = {}, objects = {}, taxi = {}, crossings = {} }, ns.db.learned)
+		assert.are.same(
+			{ npcs = {}, objects = {}, quests = {}, taxi = {}, crossings = {}, trainers = {}, vendors = {} },
+			ns.db.learned
+		)
 	end)
 
 	it("runs the migrations newer than the stored version, in order", function()
@@ -369,6 +375,31 @@ describe("debug log", function()
 		assert.is_table(log[1].s.pos)
 		assert.are.equal(2, log[2].count)
 		assert.are.same({ n = 2, 1, "Boar slain: 2/10" }, log[3].a)
+	end)
+
+	it("never stores a player's name or GUID from the npc unit (a quest a party member shares)", function()
+		local guid = "Player-1465-0A1B2C3D"
+		local ns, mock = addon.load({
+			before = function()
+				G.UnitGUID = function(unit)
+					return unit == "npc" and guid or nil
+				end
+				G.UnitName = function(unit)
+					return unit == "npc" and "Someone" or nil
+				end
+			end,
+		})
+		SlashCmdList.SIGNPOST("debug on")
+		mock.fire("QUEST_DETAIL")
+		guid = "Creature-0-1465-1-47-3100-00004F2B3C"
+		mock.fire("GOSSIP_SHOW")
+		G.UnitGUID, G.UnitName = nil, nil
+		local log = ns.db.eventLog
+		assert.are.equal("QUEST_DETAIL", log[#log - 1].e)
+		assert.is_nil(log[#log - 1].s.npc.name)
+		assert.is_nil(log[#log - 1].s.npc.guid)
+		assert.is_table(log[#log - 1].s.npc.pos)
+		assert.are.same({ 3100, "Someone" }, { log[#log].s.npc.id, log[#log].s.npc.name })
 	end)
 
 	it("only counts the frequent events", function()

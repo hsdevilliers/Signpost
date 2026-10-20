@@ -195,9 +195,91 @@ Maps and travel
 - [ ] `C_TooltipInfo.GetTrainerService(i)` yields the spell ID of a trainer service. (`/signpost debug on` at a trainer.)
 - [ ] `PLAYER_INTERACTION_MANAGER_FRAME_SHOW/HIDE` payloads at each NPC type (`Enum.PlayerInteractionType` name is logged).
 - [ ] The main addon loads cleanly with `Signpost_Data` disabled in the AddOns list.
-- [ ] Memory/CPU of loading the full data pack (target < 10 MB); if high, split per continent with `## LoadOnDemand`.
+- [ ] Memory/CPU of loading the full data pack (target < 10 MB); if high, split per continent with `## LoadOnDemand`. The Horde
+  questie layer (2710 quests, 3704 NPCs, 552 objects, 2023 items) takes about 7.1 MB in desktop Lua 5.1; in the client:
+  `GetAddOnMemoryUsage("Signpost_Data")` after `UpdateAddOnMemoryUsage()`, and no Lua errors from the generated files.
+- [ ] Whether QuestieDB's instance uiMapIDs exist on Forever (`C_Map.GetMapInfo(279)`, say): 374 pack quests use one as
+  `quests[].zone`.
+
+Added by the Wave 1 modules (each has a matching `VERIFY(beta)`/`VERIFY(launch)` comment in the code; `/signpost context`
+saves Engine/Context's view to `SignpostDB.context` for comparison):
+
+Quests and spells (Engine/Context.lua, Engine/Directives.lua, Engine/Progress.lua)
+- [ ] What `C_QuestLog.IsComplete` returns for a quest without objectives (talk-to, delivery); until known such a quest is
+  "ready" only when it says so. (Accept one, `/signpost context`, `/reload`, read `context`.)
+- [ ] Whether `C_QuestLog.GetInfo` lists the quests under a collapsed quest log header (`collapsedHeaders` in the snapshot).
+- [ ] `C_QuestLog.GetQuestObjectives` text names the creature, item or object as the data pack does, and `type` is
+  `monster`/`item`/`object` for them (`.complete` pairs the log's objectives with the pack's that way).
+- [ ] Which of `IsPlayerSpell`, `C_SpellBook.IsSpellKnown`, `IsSpellKnown` report a trained spell rank, and whether a lower
+  rank stays known once a higher one is learned (`.train class` checks every listed rank).
+- [ ] `C_Item.GetItemNameByID` exists (`C_Item.GetItemInfo` does).
+- [ ] At login on a character with turned-in quests: does auto-skip happen at once (STEP_CHANGED "load") or only at the first
+  `CONTEXT_CHANGED("quests")` ("auto")? Ties to the `GetAllCompletedQuestIDs` probe above.
+
+Professions (Core/Player.lua, Engine/Professions.lua, Engine/Directives.lua, Core/Learn.lua)
+- [ ] `GetProfessionInfo` keeps the retail return order (skill line 7th); the first two `GetProfessions` values are the
+  primaries; `GetProfessions` already answers at `PLAYER_LOGIN`. (Train a primary and First Aid, `/signpost probe`.)
+- [ ] `SKILL_LINES_CHANGED` fires on learning, unlearning and every skill-up (rank 1 → 2), else `CHAT_MSG_SKILL` does
+  (`/signpost debug on`, skin once, read `eventLog`).
+- [ ] Two primary professions per character on Forever.
+- [ ] `UNIT_SPELLCAST_SUCCEEDED("player", castGUID, spellID)` fires once per crafted item with the recipe's spell ID (`.craft`).
+- [ ] `GetTrainerServiceSkillLine(i)` names the profession as `GetProfessionInfoBySkillLineID` does (Learn's trainer skill).
+- [ ] VERIFY(launch): profession rank-up thresholds (Classic trains the next rank at max − 25: 50/75, 125/150, 200/225).
+
+Travel (Engine/Travel.lua, Engine/Context.lua, Core/Learn.lua, tools/guide_travel.py, tools/wowhead_export.py)
+- [ ] Boarding signals on a boat or zeppelin, each an assumption (with the transport probe above): the map position or
+  `UnitPosition` going away on board, a continent-level best map over open sea, another instance, a loading screen or
+  `PLAYER_ENTERING_WORLD(false, false)` mid-crossing; `GetUnitSpeed("player")` is 0 standing on a moving deck.
+- [ ] At a flight master: `TaxiNodeGetType` values (`CURRENT`/`REACHABLE`/`DISTANT`/`NONE`), `C_TaxiMap.GetAllTaxiNodes(map)`
+  `.state` (`Enum.FlightPathState`) and `isUndiscovered` for unknown nodes, whether `GetTaxiMapID` exists, which API marks
+  the current node, and that node names equal the map dump's (`.fp`/`.fly` and the exporter's `node` match them).
+- [ ] `Enum.FlightPathFaction` exists with the faction tokens as keys (0 neutral, as the probe shows).
+- [ ] After a flight the player lands within 200 yd of the node position `C_TaxiMap.GetTaxiNodesForMap` reports.
+- [ ] Hearthstone: `C_Item.GetItemSpell(6948)` returns its spell, named like the item; `GetBindLocation()` names a town inn
+  (Razor Hill) and a city inn (Orgrimmar) as `GetSubZoneText`/`GetZoneText` do; `HEARTHSTONE_BOUND` exists; the cooldown
+  (the travel planner assumes 60 min).
+- [ ] `MERCHANT_UPDATE` registers (Learn's vendor items; `MERCHANT_SHOW` alone is enough otherwise).
+- [ ] Each flight master stands in the map `guide_travel.py` picks from the taxi pin (the city map for "Orgrimmar, Durotar").
+
+Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.lua's lists)
+- [ ] Atlases `Waypoint-MapPin-Tracked`, `Waypoint-MapPin-Untracked`, `Objective-Header`; files
+  `Interface\DialogFrame\UI-DialogBox-Background-Dark`, `Interface\Minimap\ROTATING-MINIMAPGUIDEARROW` (pointing up at
+  rotation 0), `Interface\Buttons\UI-Quickslot2`, `UI-Quickslot-Depress`, `ButtonHilight-Square`; template
+  `CooldownFrameTemplate`; events `PLAYER_DEAD`, `PLAYER_ALIVE`, `PLAYER_UNGHOST`, `BAG_UPDATE_COOLDOWN`; APIs
+  `C_Item.GetItemIconByID`, `C_Container.GetItemCooldown`, `GetPlayerFacing`.
+- [ ] Look and placement: the frame at TOPRIGHT −300,−220 is clear of the minimap and the objective tracker; the
+  `UIPanelButtonTemplate` buttons look right at 20 px; `GetStringHeight` right after `SetText` gives the wrapped height (no
+  clipped last line at 5 lines); waypoint numbers readable on `TaxiNode_Neutral`; minimap pins above the minimap's layers;
+  world-map lines (3 px gold) above the map art and below the pins.
+- [ ] The quest item button (`type = "item"`, `item = "item:<id>"`) uses the item by click and by `/click SignpostItemButton`,
+  with `ActionButtonUseKeyDown` on and off; a step change in combat updates it after combat without `ADDON_ACTION_BLOCKED`.
 
 ## Wowhead Forever data environment (fill in Phase 1)
+Filled from the user's `python tools/wowhead_env.py` report (Claude Code never accesses Wowhead). Until that report
+confirms them, the page structures `tools/wowhead_export.py` parses are assumptions:
+- `zones`: a Listview with template `zone`; rows `id`, `name`, `minlevel`, `maxlevel`, `category` (0 Eastern Kingdoms,
+  1 Kalimdor).
+- `quests=<category>.<zoneID>`: template `quest`; rows `id`, `name`, `level`, `reqlevel`, `side` (1 Alliance, 2 Horde,
+  3 both), `reqclass`/`reqrace` bitmasks (bit = ID − 1).
+- `quest=<id>`: Quick Facts through `WH.markup.printHtml("…", "infobox-contents…")` with `Start:`/`End:` links
+  (`/npc=`, `/object=`, `/item=`), `Level:`, `Requires level`, `Side:`; a `<table class="series">` with the quest itself in
+  `<b>`; names from `WH.Gatherer.addData(1|2, env, {id: {name_enus}})`.
+- `npc=<id>`, `object=<id>`: `g_mapperData = {zone: {floor: {coords, uiMapId}}}`; the `<h1>` holds the name.
+- `class=<classID>`: a `spell` Listview (`id`, `level`, `cat` 7 = class ability, `source` 6 = trainer or `trainingcost`;
+  fallback `spells=7.<classID>`) and an `npc` Listview whose id contains "train" (`react` [Alliance, Horde]: 1/0/−1).
+- `quests=4.-<QuestSort>` lists a class's quests (HUNTER 261 is sampled; the other classes' QuestSort IDs are from memory).
+- `/classic/quest=<id>`: a 404 means the quest is new in Forever; a page without Quick Facts is inconclusive.
+- `skill=<skillLine>`: `spell` rows with `skill[]`, `colors[4]`, `learnedat`, `creates[item, min, max]`,
+  `reagents[[item, count]]`, `source` (6 trainer, 5 vendor, 4 quest, 2 drop); fallback `spells=11.<id>` (primary) /
+  `spells=9.<id>` (secondary); trainers as for classes.
+- `zone=<zoneID>`: `npc` rows with `id`, `name`, `react`, `tag` (flight master, "Bat Handler", "Innkeeper", "Zeppelin
+  Master", "Dockmaster", "Harbormaster").
+
+The user's run, from the Signpost checkout (each step re-runs with `--offline` after a parser fix, without requests):
+`python tools/wowhead_env.py` (paste the JSON) → `python tools/wowhead_export.py --max-level 32` →
+`--stages class --class HUNTER` → `--stages professions` → `--stages travel --max-level 60` → `--stages travel --max-level
+60 --offline --transport zeppelin:<npcID>,<npcID>` per route (IDs from data-gaps.md) → paste data-gaps.md's "Problems
+reported by the wowhead source" → commit in `../Signpost_Data` with the export date.
 - Base path: `TODO` (candidate `https://www.wowhead.com/forever/`).
 - `dataEnv` id for `nether.wowhead.com/tooltip/...`: `TODO`.
 - `?xml` endpoint availability: `TODO`.

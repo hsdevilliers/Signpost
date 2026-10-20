@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-Runs every check CI runs, locally: busted, luacheck, StyLua, the repository guards and the Python tool tests.
+Runs every check CI runs, locally: busted, luacheck, StyLua, the repository guards, the Python tool tests and the
+guide lint.
 Works in the main checkout and in git worktrees: .venv and tools/bin are gitignored, so a worktree uses the main
 checkout's toolchain. Setup is described in README "Development". Exits non-zero when any check fails.
 #>
@@ -28,7 +29,9 @@ $checks = @(
     @{ Name = 'luacheck';   Run = { & $luacheck . --quiet } },
     @{ Name = 'stylua';     Run = { & $stylua --check . } },
     @{ Name = 'check_repo'; Run = { python "$repo\tools\check_repo.py" } },
-    @{ Name = 'tool tests'; Run = { python -m unittest discover -s "$repo\tools\tests" -t "$repo\tools" } }
+    @{ Name = 'tool tests'; Run = { python -m unittest discover -s "$repo\tools\tests" -t "$repo\tools" } },
+    # Without the data pack, as in CI (run `python tools/guide_lint.py --strict` for the pack's ID checks too).
+    @{ Name = 'guide lint'; Run = { python "$repo\tools\guide_lint.py" --strict --no-pack } }
 )
 
 $failed = @()

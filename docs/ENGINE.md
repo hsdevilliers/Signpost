@@ -1,20 +1,26 @@
 # Engine and UI contracts
 
-The interfaces the addon's modules code against. Wave 1 builds these modules in parallel (one track each), so a
-module may add functions but must not change or drop anything listed here without updating this file first (tracks
-propose changes in their report; the integrator decides). The guide language is `docs/GUIDE-FORMAT.md`; the
+The interfaces the addon's modules code against. Wave 1 built these modules in parallel (one track each) and was
+integrated on `integration/wave1` (2026-10-17): this file now records the integrated contract, including what the
+tracks added. A module may add functions but must not change or drop anything listed here without updating this file
+first (propose the change; the integrator or the user decides). The guide language is `docs/GUIDE-FORMAT.md`; the
 architecture is PLAN §4.
 
 ## Conventions
 
 - Every Lua file starts with `local ADDON_NAME, ns = ...`; each module is a table on `ns` (`ns.Parser`, ...). No new
-  globals (CLAUDE.md).
+  globals (CLAUDE.md); the one frame name added in Wave 1 is `SignpostItemButton` (so a binding or macro can `/click` it).
 - Modules call each other **at call time** (`ns.Context:...` inside functions), never at file load; TOC order only
   matters for registration (a registry loads before the files that register into it).
 - Game events through `ns.Events:Register`, internal messages through `ns.Events:RegisterMessage`/`ns.Events:Fire`
-  (both already run handlers under `ns.SafeCall`). Timer callbacks wrap their work in `ns.SafeCall`.
+  (both already run handlers under `ns.SafeCall`, in registration order). Timer callbacks wrap their work in
+  `ns.SafeCall`.
 - Defaults for saved settings: call `ns.SavedVars:RegisterDefaults(scope, key, value)` at file load (`scope` is
   `"account"` for `SignpostDB` or `"char"` for `SignpostCharDB`); never edit `Core/SavedVars.lua`'s defaults table.
+- The guide, chapter, class and profession registries return registration problems (a bad id, a duplicate) as
+  `false, problem`, keep them in their `problems` list and record them with `ns.Errors:Record`; they never throw.
+  `ns.Directives:Register` raises on a malformed def (a bug in the registering file); the registries call it under
+  `ns.SafeCall`, one directive at a time.
 - User-facing strings through `ns.L[...]`. Class, race, faction and profession names only in `Classes/`,
   `Professions/`, `Guides/` (tools/check_repo.py). Never arithmetic on secret values (`ns.Util.IsSecret`).
 - Lua 5.1, StyLua-formatted, luacheck-clean.
@@ -25,163 +31,286 @@ architecture is PLAN §4.
 |---|---|---|
 | `DB_READY` | Core/SavedVars | — |
 | `PLAYER_PROFESSIONS_CHANGED` | Core/Player | `ns.Player.professions` |
-| `PROFESSION_PLAN_CHANGED` | Engine/Professions | plan |
-| `CONTEXT_CHANGED` | Engine/Context | what: `"quests"`, `"spells"`, `"skills"`, `"bags"`, `"level"`, `"zone"`, `"position"`, `"taxi"`, `"bind"` |
+| `GUIDE_SELECTED` | Engine/Registry (`ns.Guides:Select`) | the newly selected def (or nil); Progress starts it |
+| `PROFESSION_PLAN_CHANGED` | Engine/Professions | plan (synchronously, from `Decline`/`Restore` too) |
+| `CONTEXT_CHANGED` | Engine/Context; Engine/Directives (`"casts"`) | what: `"quests"`, `"spells"`, `"skills"`, `"bags"`, `"level"`, `"zone"`, `"position"`, `"taxi"` (also known flight nodes), `"bind"`, `"casts"` (a `.craft` cast counted) |
 | `GUIDE_LOADED` | Engine/Progress | guide |
 | `STEP_CHANGED` | Engine/Progress | step, index, reason (`"load"`, `"auto"`, `"manual"`) |
-| `TRANSPORT_STATE` | Engine/Travel | stepId, state |
+| `STICKY_CHANGED` | Engine/Progress | the steps with active sticky directives (`ns.Progress:Sticky()`), after STEP_CHANGED |
+| `DUNGEON_SKIP_OFFER` | Engine/Progress | chapterIndex, chapter (once per dungeon chapter, 5+ levels above it) |
+| `TRANSPORT_STATE` | Engine/Travel | stepId, state (`.fly`, `.boat`, `.zeppelin`; on changes, not for the initial `"waiting"`) |
+
+`CONTEXT_CHANGED` fires only when a refresh found a difference, never synchronously inside a query or event handler
+(the earliest is the next frame), at most once per 0.2 s per `what`.
 
 ## Data shapes
 
 ```lua
 guide = {
-	id = "horde-troll-hunter-1-60", name = "Troll Hunter 1-60",
+	id = "horde-troll-hunter-1-60", name = "Troll Hunter 1-60", -- name: Register's, else #guide, else the id
 	def = registerTable, -- what Guides:Register received
-	headers = { professions = { "skinning", ... }, author = "...", version = "..." },
-	chapters = { { id = sourceId, name = "Valley of Trials", levels = { 1, 6 }, dungeon = false, first = 1, last = 12 } },
+	headers = { professions = { "skinning", ... }, guide = "...", author = "...", version = "...",
+		class = { ... }, race = { ... }, faction = "..." }, -- professions is always a list
+	chapters = { { id = "durotar-1-6", name = "Valley of Trials", levels = { 1, 6 }, dungeon = false, first = 1, last = 12,
+		source = "durotar-1-6", line = 1, implicit = nil } }, -- the k-th #chapter of a source: id "<sourceId>#<k>"
 	steps = { step, ... }, -- route order after gating and track merging
 	byId = { [stepId] = step },
 	skipQuests = { [questID] = reason },
-	errors = { { source = sourceId, line = 12, message = "..." } },
+	plan = plan, -- the plan the tracks were merged with
+	errors = { { source = sourceId, line = 12, message = "..." } }, -- line 0: the source as a whole
 }
 
 step = {
 	id = "durotar-1-6:3", -- GUIDE-FORMAT "Stable step ids"
 	index = 3, -- position in guide.steps
-	chapter = 1, -- index into guide.chapters
+	chapter = 1, -- index into guide.chapters (always valid; empty chapters are dropped)
 	source = "durotar-1-6", line = 14,
-	directives = { directive, ... }, -- in line order, without the sticky ones
-	sticky = { directive, ... }, -- from .sticky lines
+	directives = { directive, ... }, -- in line order; never .sticky, .optional, .hub or a gate
+	sticky = { directive, ... }, -- the inner directives of .sticky lines, each with sticky = true
 	optional = { [questID] = true },
 	hub = "razorhill", -- from .hub, or nil
-	track = "skinning", anchor = { kind = "hub" | "level" | "zone", value = "orgrimmar" }, -- track steps only
+	track = "skinning", anchor = { kind = "hub" | "level" | "zone", value = "orgrimmar" | 12 | 1413 }, -- track steps only
 }
 
-directive = { name = "accept", args = parsedArgs, text = ">> override or nil", line = 15, def = directiveDef }
+directive = { name = "accept", args = parsedArgs, text = "the >> text or nil", line = 15, def = directiveDef }
 
 target = {
 	map = 1411, x = 42.1, y = 68.7,
 	kind = "goto" | "accept" | "turnin" | "objective" | "waypoint" | "taxi" | "dock" | "inn" | "trainer" | "vendor"
 		| "fish" | "gather",
 	label = "text for the tooltip", radius = 10, -- yards, optional
-	index = 2, -- waypoint number, optional
-	npc = 3143, object = nil, questID = 787, -- optional
+	npc = 3143, object = nil, questID = 787, quests = { 787, ... }, -- optional; quests lists every quest of a merged pin
+	objective = 2, -- the quest log objective an objective pin is for, when known
+	index = 2, count = 4, next = true, reached = false, minimap = true, -- .path waypoints: only the next one is on the minimap
+	sticky = true, -- a target of a sticky directive
+	icon = "Profession", -- optional atlas (or a path with a slash) overriding the kind's icon
 }
 
-plan = { primary = { "skinning", "leatherworking" }, secondary = { "firstaid", "cooking", "fishing" }, declined = { [key] = true } }
+plan = { primary = { "skinning", "leatherworking" }, secondary = { "firstaid", "cooking", "fishing" },
+	declined = { [key] = true }, -- declined and not learned
+	learned = { [key] = true }, unknown = { key, ... } } -- unknown: suggestions without a profession module
 ```
+
+Parsed directive arguments (what `def.parse` returns; other modules read them):
+
+| Directive | args |
+|---|---|
+| `.goto`, `.fish` | `{ map, x, y, radius? }` (fish: no radius) |
+| `.accept`, `.turnin`, `.optional` | `{ questID }` |
+| `.complete` | `{ questID, objective? }` |
+| `.reward` | `{ questID, choice }` for a value up to 10, else `{ questID, itemID }` |
+| `.train` | `{ spellID }` or `{ class = true }` |
+| `.trainprof` | `{ key }`; `.skill` `{ key, value }`; `.craft` `{ spellID, count }` |
+| `.buy`, `.collect` | `{ itemID, count }`; `.use` `{ itemID }`; `.level` `{ level }`; `.todo` `{ reason }` |
+| `.note`, `.text` | `{ text }`; `.link` `{ url }`; `.hub` `{ name }`; `.sticky` `{ directive = inner directive }` |
+| `.path` | `{ points = { { map, x, y }, ... } }` (named fields) |
+| `.zone` | `{ map }`; `.fp` `{ map, name }`; `.fly`, `.hs` `{ name }`; `.home` `{}` |
+| `.boat`, `.zeppelin` | `{ kind, from = { map, x, y }, to = { map, x, y } }` |
 
 ## Modules
 
 ### Core/Player.lua — `ns.Player`
 
 Existing identity fields (`className`, `classFile`, `classID`, `classBase`, `raceName`, `raceFile`, `raceID`, `faction`,
-`factionName`, `level`), plus `professions = { [skillLineID] = { key = professionKey | nil, name, rank, max } }`,
-refreshed at `PLAYER_LOGIN` and `SKILL_LINES_CHANGED`; fires `PLAYER_PROFESSIONS_CHANGED` when it changes.
+`factionName`, `level`), plus `professions = { [skillLineID] = { key = professionKey | nil, name, rank, max, primary,
+slot, skillLine } }` (every value `GetProfessions` returns: 7 on Forever), refreshed at `PLAYER_LOGIN`,
+`SKILL_LINES_CHANGED` and `CHAT_MSG_SKILL`; fires `PLAYER_PROFESSIONS_CHANGED` only when something changed.
+`:RefreshProfessions()` → changed; `:Profession(key)` → the entry or nil. Primary or secondary: the profession module,
+else the client's `isPrimaryProfession`, else the slot.
 
 ### Engine/Registry.lua — `ns.Guides`, `ns.Chapters`, `ns.Classes`
 
-- `ns.Guides:Register(def)` (GUIDE-FORMAT "Files"); `:Get(id)`; `:All()` (sorted by name).
-- `ns.Guides:Compatible(def, player)` → `ok, reason` (faction, race, class; `"*"` matches all).
-- `ns.Guides:Best(player)` → def or nil: exact race + class, then class only, then faction only (PLAN §3.5); ties by id.
-- `ns.Guides:Selected()` → `SignpostCharDB.guide` when still compatible, else `Best`; `:Select(id)` stores the choice.
-- `ns.Chapters:Register(id, text)`; `:Get(id)` → text.
+- `ns.Guides:Register(def)` (GUIDE-FORMAT "Files") → `true` or `false, problem`; `:Get(id)`; `:All()` (by name, then id).
+- `ns.Guides:Compatible(def, player)` → `ok, reason, kind` (`"faction"`, `"race"`, `"class"` or `"invalid"`; `reason` is
+  display text). `"*"`, a list holding `"*"`, an empty list or no value match everyone; a single token works as a list.
+- `ns.Guides:Best(player)` → def or nil, by tier: race and class, class only, race only, faction only, open to
+  everyone (PLAN §3.5); within a tier a named faction before `"*"`, then by id.
+- `ns.Guides:Selected(player)` → `SignpostCharDB.guide` while registered and compatible, else `Best`;
+  `:Select(id, player)` → `ok, reason` (refuses unknown and incompatible ids; `nil` returns to automatic selection);
+  fires `GUIDE_SELECTED` when the selected guide changes. Only explicit choices are stored.
+- `ns.Chapters:Register(id, text)` (ids `^[a-z0-9-]+$`); `:Get(id)` → text.
 - `ns.Classes:Register(classFile, module)`; `:Get(classFile)`. A module may hold `trainerSpells = { [level] = { spellIDs } }`,
-  `classQuests`, `directives = { [name] = directiveDef }` (registered into `ns.Directives`), `classTab`, `automation`,
-  `onLevelUp`.
+  `classQuests = { { name, level, quests = { questIDs }, offeredBy = "trainer" | npcID | nil }, ... }`,
+  `directives = { [name] = directiveDef }` (registered into `ns.Directives` for every class, one by one, so one bad def
+  does not stop the rest), `classTab`, `automation`, `onLevelUp(level)` (called by Registry at `PLAYER_LEVEL_UP` for the
+  player's class, after `ns.Player.level` is updated; nothing else calls it).
 
 ### Engine/Professions.lua — `ns.Professions`
 
 - `:Register(key, module)` — `module = { skillLine = id, primary = bool, gathering = bool, ranks = { 75, 150, 225, 300 },
-  directives = {...} }`; `:Get(key)`; `:ForSkillLine(id)` → key, module.
+  rankUpWindow = 25?, directives = {...} }`; `:Get(key)`; `:ForSkillLine(id)` → key, module.
 - `:RegisterTrack(key, text)`; `:Track(key)` → text.
 - `:Plan(suggestions)` → plan, detected per PLAN §3.8 from `ns.Player.professions`, the guide's `#professions`
-  suggestions and `SignpostCharDB.declinedProfessions`.
-- `:Decline(key)`, `:Restore(key)` — persist; fire `PROFESSION_PLAN_CHANGED`.
-- `:Merge(guide, plan, opts)` — inserts the plan's tracks into a parsed guide (GUIDE-FORMAT "Track merging"), using
-  `ns.Parser:ParseTrack`; re-numbers `step.index`, rebuilds `guide.byId`, appends errors.
-- Fires `PROFESSION_PLAN_CHANGED(plan)` whenever the detected plan changes.
+  suggestions and `SignpostCharDB.declinedProfessions` (two primary slots; learned professions always in the plan;
+  plan order = suggestion order, then learned professions the guide does not suggest, by key). It never fires a
+  message: it sets the baseline. `:Current()` → the last plan; `:IsDeclined(key)`.
+- `:Decline(key)`, `:Restore(key)` — persist; `PROFESSION_PLAN_CHANGED` fires synchronously when primary, secondary or
+  declined differ from the baseline (also on learn and unlearn, via `PLAYER_PROFESSIONS_CHANGED`).
+- `:Merge(guide, plan, opts)` — inserts the plan's tracks (`ns.Parser:ParseTrack` with a copy of opts plus plan,
+  player, guideId) at their anchors (GUIDE-FORMAT "Track merging"); replaces earlier track steps, so merging again is
+  fine; rebuilds `index`, `byId`, chapter ranges; sets `guide.plan`; appends errors (missing track, unmatched or bad
+  anchor, duplicate track step id). `@zone` reads the first `.goto`/`.path` of a route step from `args.map` or
+  `args.points[1].map` (else `def.targets(args, ns.Context, {})[1].map`).
 
 ### Engine/Parser.lua — `ns.Parser`
 
-- `:Headers(def)` → headers, read without a full parse (so the plan can be detected first).
+- `:Headers(def)` → headers, read without a full parse (so the plan can be detected first); first valid one wins.
 - `:ParseGuide(def, opts)` → guide. `opts = { player = ns.Player, plan = plan }`. Resolves `#include` through
-  `ns.Chapters:Get`, applies gates, builds chapters and steps, then `ns.Professions:Merge(guide, opts.plan)` when a
-  plan is given.
-- `:ParseTrack(key, text, opts)` → `steps, errors` (with `anchor`; gates applied with `opts.player`/`opts.plan`).
-- Directive arguments are parsed by `ns.Directives:Get(name).parse(argString, ctx)` with
-  `ctx = { source, line, guideId }`; an unknown directive or a parse failure becomes an error entry.
+  `ns.Chapters:Get` (cycles, unknown ids and a chapter included twice are errors), applies gates for `opts.player` and
+  `opts.plan`, builds chapters and steps, then `ns.Professions:Merge(guide, opts.plan, opts)` when a plan is given, and
+  `:Reindex` before and after it.
+- `:ParseTrack(key, text, opts)` → `steps, errors`: ids `track:<key>:<n>`, `source = "track:<key>"`, `track`, `anchor`
+  (`value` a number for `@level`/`@zone`), no chapter; gates with `opts.player`/`opts.plan`; `opts.guideId` reaches ctx.
+- `:Reindex(guide)` — idempotent: `step.index`, `guide.byId`, each step's chapter (a step without one joins the previous
+  step's chapter for an `@hub` anchor, else the next step's), chapter `first`/`last`; chapters without steps dropped.
+- Directive arguments are parsed by `ns.Directives:Get(name).parse(argString, ctx)` with `ctx = { source, line,
+  guideId }`, after the parser stripped `>> text` and trailing gates; an unknown directive or a parse failure becomes an
+  error entry. `.sticky`, `.optional`, `.hub` and the gates are the parser's own: never looked up in `ns.Directives`. A
+  `.sticky` whose inner def has `completable == false` is an error. Guide text never makes the parser throw.
 
 ### Engine/Directives.lua — `ns.Directives`
 
-- `:Register(name, def)`, `:Get(name)`, `:Names()`.
-- `def = { parse, isSatisfied, targets, describe, onStart, kind, completable }`:
+- `:Register(name, def)` (names `^%l[%l%d]*$`; sets `def.name`, defaults `kind` to `"misc"` and `completable` to
+  `isSatisfied ~= nil`), `:Get(name)`, `:Names()` (sorted).
+- `:Parse(name, argString, ctx)` → args, or `nil, message` (never raises); `:ParseLine(text, ctx)` → `{ name, args, text,
+  line, def }` or `nil, message` for one `.name args >> text` line (gates already stripped).
+- `def = { parse, isSatisfied, targets, describe, onStart, kind, completable, pin, progress, locationOnly, usage }`:
   - `parse(argString, ctx)` → args, or `nil, message`;
   - `isSatisfied(args, context, state)` → boolean (absent: not completable);
   - `targets(args, context, state)` → `{ target, ... }`;
-  - `describe(args, context)` → string;
-  - `onStart(args, context, state)` — when the step becomes current (e.g. remember the skill maximum);
-  - `kind` — `"quest"`, `"travel"`, `"profession"`, `"misc"` (icon hint); `completable` defaults to `isSatisfied ~= nil`.
-- `context` is `ns.Context`; `state` is a per-step, per-directive table owned by `ns.Progress`.
+  - `describe(args, context, state)` → string (state optional: a `.craft` count, a boarded transport);
+  - `onStart(args, context, state)` — when the step becomes current (e.g. remember the skill maximum); must tolerate
+    being called again on the same state, and a state restored from SavedVariables must keep working without it
+    (Progress does not repeat it after a reload);
+  - `kind` — `"quest"`, `"travel"`, `"profession"`, `"misc"` (icon hint; Progress reads `"quest"` for dungeon chapters);
+  - `pin` — the target kind the step's first `.goto` pin takes when the directive has no position of its own;
+  - `progress(args, context, state)` → extra lines under the directive's line (objective progress);
+  - `locationOnly` — the line shows only when the step has no other line (`.goto`, `.fish`); `usage` — the syntax.
+- `context` is `ns.Context`; `state` is a per-step, per-directive table owned by `ns.Progress` (plain data: it is saved).
 - Registers every core directive of GUIDE-FORMAT. Travel directives come from `Engine/Travel.lua`, class and profession
   directives from their modules.
+- Helpers for other modules: `ns.Directives.Pack` (every read of `ns.DB` and `SignpostDB.learned`: `Positions(kind, id)`,
+  `Name`, `Side`, `QuestName`, `QuestStarters`, `QuestEnders`, `QuestObjectives`, `ItemName`, `ItemVendors`, `ItemDrops`,
+  `ItemObjectDrops`, `MapName`, `ProfessionName`, `ProfessionTrainers`, `ClassTrainers`; the learned record fills in
+  where the pack has nothing) and `ns.Directives.Label` (`Quest`, `Item`, `Spell`, `Map`, `Profession` display names).
+  Constants `DEFAULT_GOTO_RADIUS` 10, `MAX_PINS` 6, `MAX_REWARD_CHOICE` 10, `RANK_UP_WINDOW` 25.
+- `.complete` pairs the quest log's objectives with the pack's objective records (which are in the source's order, not
+  the log's) by name, then by kind (GUIDE-FORMAT "Directives"). `.craft` counts the player's `UNIT_SPELLCAST_SUCCEEDED`
+  casts into started states and fires `CONTEXT_CHANGED("casts")`.
 
 ### Engine/Conditions.lua — `ns.Conditions`
 
-- `:IsComplete(step, context, states)` → `complete, detail` (`detail[i]` per directive).
-- `:Targets(step, context, states)` → targets of the step's directives (sticky ones included, marked `sticky = true`).
-- `:Describe(step, context)` → `{ line, ... }` (descriptions, `>>` overrides, `.text`/`.note`, objective progress).
-- `states` maps directive index → state table (from `ns.Progress:State(step.id)`).
+- `:IsComplete(step, context, states)` → `complete, detail`: `detail[i]` is a boolean per completable
+  `step.directives[i]`; `detail.manual = true` when only the player's `>` can complete it. A step with nothing but
+  sticky directives is complete at once.
+- `:Targets(step, context, states)` → targets of the step's directives (sticky ones marked `sticky = true`), without
+  those of satisfied directives (a `.goto` keeps its pin); an NPC/object pin within a `.goto`'s radius merges into it,
+  same-NPC pins merge, a directive with a `pin` kind and no position marks the first `.goto` pin.
+- `:Describe(step, context, states)` → `lines, info`: the step's own lines (each followed by its progress lines), then
+  the sticky ones; `info[i] = { directive = index, sticky = true|nil, progress = true|nil, done = bool }`.
+- `:StickyComplete(step, context, states)` → done, detail; `:Start(step, context, states)` → states (every `onStart`);
+  `:Kind(step)` → icon-hint kind.
+- `states` is `ns.Progress:State(step.id)`: `states[i]` for `step.directives[i]`, `states.sticky[j]` for `step.sticky[j]`.
 
 ### Engine/Context.lua — `ns.Context`
 
-Cached player state, refreshed by events, cheap to query:
+Cached player state, refreshed by events (a burst costs one re-read on the next frame), cheap to query:
 
-- `:QuestInLog(id)`, `:QuestCompleted(id)` (flagged), `:QuestReady(id)` (in log, objectives done), `:Objectives(id)` →
-  `{ { text, type, finished, have, need } }`;
-- `:SpellKnown(spellID)`; `:Skill(skillLineID)` → rank, max; `:ItemCount(itemID)`; `:Level()`;
-- `:Position()` → `{ map, x, y, wx, wy, instance, taxi }` or nil; `:InMap(mapID, rootMapID)` (map tree via
-  `C_Map.GetMapInfo` parents, cached); `:Distance(map, x, y)` → yards or nil (HereBeDragons); `:OnTaxi()`;
-- `:BindLocation()`; `:TaxiNodeKnown(name)` → true/false/nil; `:NoteTaxiNodes(nodes)` (fed at `TAXIMAP_OPENED`);
-- `:Now()`.
-- Fires `CONTEXT_CHANGED(what)`, at most once per 0.2 s per `what`.
+- `:QuestInLog(id)`, `:QuestCompleted(id)` (flagged, or turned in this session), `:QuestReady(id)` (in the log, not
+  failed, objectives done or `IsComplete`), `:Objectives(id)` → `{ { text, type, finished, have, need } }` (nil when not
+  in the log, `{}` without objectives), `:QuestLog()` → `{ [questID] = entry }`, `:QuestEntry(id)`;
+- `:SpellKnown(spellID)` (any of `IsPlayerSpell`, `C_SpellBook.IsSpellKnown`, `IsSpellKnown`); `:Skill(skillLineID)` →
+  rank, max or nil (from `ns.Player.professions`); `:ItemCount(itemID)` (bags only); `:Level()`;
+- `:Position()` → `{ map, x, y, wx, wy, instance, taxi }` or nil (any field but `taxi` may be nil in instances and on
+  transports); `:Map()`; `:InMap(mapID, rootMapID)` (map tree via `C_Map.GetMapInfo` parents, else the pack's maps;
+  `mapID` nil = the player's); `:MapInfo(mapID)` → `{ id, parent, type, name }`; `:Continent(mapID)`;
+  `:Distance(map, x, y)` → yards or nil (HereBeDragons; nil across instances); `:OnTaxi()`;
+- `:BindLocation()`; `:TaxiNodeKnown(name)` → true (known; never downgraded) / false (listed as unknown) / nil (never
+  seen), by full client name or the part before the comma, case-insensitive, `zz…` retired nodes ignored;
+  `:NoteTaxiNodes({ { name, known, id? }, ... })` → changed (Context feeds itself at `TAXIMAP_OPENED`; Travel feeds it
+  too); `:ReadTaxiMap()`; known nodes are kept per character in `SignpostCharDB.taxiNodes = { [name] = { known, id, t } }`;
+- `:Now()`; `:Invalidate(what)`; `:HBD()`; `:Snapshot()` (what `/signpost context` saves to `SignpostDB.context`).
+- Never reads `UnitHealth`/`UnitPower`. A 0.5 s ticker samples zone, taxi, position and bind location (the one poll PLAN
+  §3.3 allows); a kind whose events the client rejects is polled every 2 s (`Context.missingEvents`).
 
 ### Engine/Travel.lua — `ns.Travel`
 
-- Registers the travel directives (`.path`, `.zone`, `.fp`, `.fly`, `.boat`, `.zeppelin`, `.hs`, `.home`).
-- `:RegisterBorders(list)` — `Guides/Travel/Borders.lua` calls it with
-  `{ { name = "Durotar/The Barrens west road", from = { map, x, y }, to = { map, x, y } }, ... }`; `:Borders()`.
-- `:TransportState(stepId)` → `"waiting"`, `"boarded"`, `"arrived"`; fires `TRANSPORT_STATE`.
+- Registers the travel directives (`.path`, `.zone`, `.fp`, `.fly`, `.boat`, `.zeppelin`, `.hs`, `.home`); their state
+  machines run on `CONTEXT_CHANGED`, `STEP_CHANGED` and the travel events, for the current step and the sticky steps.
+- Targets: `.path` gives every waypoint (`kind = "waypoint"`, `index`, `count`, `reached`, `next`, `minimap` on the next
+  one only); `.boat`/`.zeppelin` one `"dock"` (departure until boarded, then arrival); `.fly` one `"taxi"` (the nearest
+  usable flight master while waiting, then the node); `.fp` `"taxi"`, `.hs` `"inn"` (with `npc` when known).
+- `:RegisterBorders(list)` — `Guides/Travel/Borders.lua` calls it with `{ { name, from = { map[, x, y] }, to = { map[, x,
+  y] }, side, todo }, ... }` (a point is `{ map }` until the crossing is learned; `todo` says why); `:Borders(mapA, mapB)`
+  → copies, the pack's learned crossings (`travel.crossings`) replacing hand entries for the same pair of zones; one map
+  gives the crossings touching it, two the ones between them.
+- `:TransportState(stepId)` → `"waiting"`, `"boarded"`, `"arrived"` (nil for a step without `.fly`/`.boat`/
+  `.zeppelin`); fires `TRANSPORT_STATE`; `:TransitText(stepId)` → "Sailing to X..." while boarded.
+- Also: `FindTaxiNode(name, mapHint, context)`, `NearestTaxiNode(context)`, `NodeKnown(name, mapHint, context)`,
+  `InnTarget(name, context)`, `WaypointRadius()` (`SignpostDB.settings.waypointRadius`, default 15), `Sample(context)`,
+  `Update()`; `facts` (recent loading screens, position jumps, taxi rides, hearthstone casts); the radii and windows as
+  constants (`WAYPOINT_RADIUS` 15, `DOCK_RADIUS` 50, `ARRIVAL_RADIUS` 200, `NODE_RADIUS` 200, `INN_RADIUS` 300,
+  `BOARD_WINDOW` 300, `JUMP_YARDS` 200, `JUMP_SPEED` 50, `GRACE` 120, `HEARTHSTONE_ITEM` 6948).
+- Directive states are plain data (path `{ next }`, fly `{ since, phase, announced, flew }`, boat/zeppelin `{ since,
+  phase, announced, away, dockAt, dockInstance, dockWorld, boardedAt }`, home `{ since, done }`); `GetTime()` stamps
+  saved before a computer restart are dropped. Reads `travel.inns[npcID].n` (an inn's bind-location name) when present.
 
 ### Engine/Progress.lua — `ns.Progress` (and the engine's start-up)
 
-- Start-up at `PLAYER_LOGIN` (after `ns.Player` refreshed): `ns.Guides:Selected()` → `ns.Parser:Headers` →
-  `ns.Professions:Plan` → `ns.Parser:ParseGuide` → `:SetGuide`. Re-parses on `PROFESSION_PLAN_CHANGED`.
-- `:SetGuide(guide)`, `:Guide()`, `:Current()` → step, index, `:Sticky()` → active sticky steps.
-- `:Next()`, `:Back()`, `:Skip()`, `:JumpTo(index)` — manual moves win for the session (PLAN §3.3).
+- Start-up at `PLAYER_LOGIN` (after `ns.Player` refreshed) and on `GUIDE_SELECTED`: `ns.Guides:Selected()` →
+  `ns.Parser:Headers` → `ns.Professions:Plan` → `ns.Parser:ParseGuide` → `:SetGuide` (`:Start()`). Re-parses on
+  `PROFESSION_PLAN_CHANGED`, keeping the current step by id (else the next step still there).
+- `:SetGuide(guide)`, `:Guide()`, `:Current()` → step, index, `:Sticky()` → the steps before the current one with an
+  active sticky directive, in route order; `:ActiveSticky(stepId)` → `{ { index, directive, state } }`.
+- `:Next()`, `:Back()`, `:Skip()`, `:JumpTo(index)`, `:JumpToId(stepId)` — manual moves win for the session (PLAN §3.3):
+  a step chosen with `<` or a jump is held until the player moves again, completes it, or a quest event completes a
+  later step that was open; behind the furthest step reached this session `>` moves one step; holds are not saved.
+  Skipping a track's first `.trainprof` step declines the profession; `<` right after restores it.
 - `:Evaluate()` — at most once per second, on `CONTEXT_CHANGED`: advance past completed steps, auto-skip upcoming steps
-  already satisfied, keep stickies.
-- `:State(stepId)` → per-directive state tables (calls `def.onStart` when a step becomes current).
-- Saves `SignpostCharDB.progress[guideId] = { current = stepId, skipped = { [stepId] = true }, done = { [stepId] = true } }`.
-- Fires `GUIDE_LOADED`, `STEP_CHANGED`. Registers `/signpost next|back|skip|step`. With `SignpostDB.debug.chat` it
-  prints every step change (the Phase 2 acceptance walk).
+  already satisfied, keep stickies (a sticky stays active until satisfied once; skipping its step dismisses it); a step
+  with no completable directive waits for `>` unless it only starts sticky directives. `:EvaluateNow(reason)`.
+- `:State(stepId)` → per-directive state tables: `[i]` for `step.directives[i]`, `sticky[j]` (also `[#directives + j]`)
+  for `step.sticky[j]`; `onStart` runs once per state when the step becomes current (or is passed by auto-advance).
+- Dungeon chapters: `:CurrentChapter()` → index, chapter; `:ChapterSkipped(index)`; `:SetChapterSkipped(index,
+  skipped)` (dungeon chapters only); a dungeon whose quest steps are all done is passed silently; a one-time chat offer
+  to skip at 5+ levels above it (`DUNGEON_SKIP_OFFER`). Also `:IsDone(stepId)`, `:IsSkipped(stepId)`, `:Describe(step)`.
+- Saves `SignpostCharDB.progress[guideId] = { current = stepId, skipped = { [stepId] = true }, done = { [stepId] = true },
+  sticky = { [stepId] = { [directive line] = active } }, states = { [stepId] = { started, d = { [line] = state } } },
+  offered = { [first step id of a dungeon chapter] = true } }` (states: the current step and steps with active stickies).
+- Fires `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED`, `DUNGEON_SKIP_OFFER`. Registers `/signpost next|back|skip
+  [chapter]|step [n|id]`. With `SignpostDB.debug.chat` it prints every step change (the Phase 2 acceptance walk).
 
 ### Core/Learn.lua — `ns.Learn`
 
-Always on (cheap), recording into `SignpostDB.learned` as the player plays:
-`npcs[npcID]` and `objects[objectID]` = `{ n = name, map, x, y, t, c = timesSeen }` at quest dialogs, gossip, trainers,
+Always on (cheap), recording into `SignpostDB.learned` as the player plays; never a player or a pet, no quest or gossip
+text, no item data beyond the IDs a vendor sells:
+`npcs[npcID]` and `objects[objectID]` = `{ n = name, map, x, y, t, c = visits }` at quest dialogs, gossip, trainers,
 vendors and flight masters; `quests[questID] = { start = { npc | obj = id }, finish = {...}, t }` at accept and turn-in;
-`taxi[nodeName] = { map, x, y, npc, t }`; `crossings = { { from = { map, x, y }, to = { map, x, y }, t }, ... }` at
-`ZONE_CHANGED_NEW_AREA`; `trainers[npcID] = { spells }`; `vendors[npcID] = { itemIDs }`. Bounded sizes.
-`tools/import_savedvars.py --merge-learned` turns it into `layers/learned.json` and rebuilds the data pack.
+`taxi[nodeName] = { map, x, y, npc, id = nodeID, faction, t, c }`; `crossings = { { from = { map, x, y }, to = { map, x,
+y }, t, c }, ... }` for zone borders walked across (not on a taxi, transport or teleport); `trainers[npcID] = { spells =
+{ spellIDs }, skill = skillLineID?, t }`; `vendors[npcID] = { items = { itemIDs }, t }`. Bounded sizes (`Learn.LIMITS`;
+the record seen longest ago goes). `:Get(table, key)`, `:Counts()`, `:Count(name)`, `/signpost learned`.
+`tools/import_savedvars.py --merge-learned [--also DIR]` turns it into `layers/learned.json` and rebuilds the data pack:
+positions override the other layers, quest/vendor/trainer links are unioned with them, vendor items only for items the
+route touches.
 
 ### UI/StepFrame.lua and UI/Pins.lua — `ns.StepFrame`, `ns.Pins`
 
-- React to `GUIDE_LOADED`, `STEP_CHANGED`, `CONTEXT_CHANGED`, `TRANSPORT_STATE`; read `ns.Progress:Current()`/`:Sticky()`
-  and `ns.Conditions:Describe`/`:Targets`.
-- Settings via `RegisterDefaults("account", "stepFrame", ...)` and `("account", "pins", ...)`.
-- `/signpost show|hide|lock|reset`. Pins through HereBeDragons-Pins-2.0 (minimap + world map, waypoint lines);
-  atlases per FOREVER-API-NOTES (there is no `Vendor` atlas).
+- React to `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED` (at once), `CONTEXT_CHANGED`, `TRANSPORT_STATE` (coalesced,
+  0.2 s); read `ns.Progress:Current()`/`:Sticky()`/`:ActiveSticky()`/`:State()`, `ns.Conditions:Describe`/`:Targets`
+  and `ns.Travel:TransportState`.
+- The step frame's body is Describe's non-sticky lines; every active sticky directive (the current step's too) is an
+  "Ongoing:" line; an in-transit line while boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out
+  of combat) uses the step's `.use` item (`args.itemID`).
+- Settings via `RegisterDefaults("account", "stepFrame", { shown, locked, scale, alpha, hideInCombat, hideWhenDead,
+  hideWithJournal, pos })` and `("account", "pins", { minimap, worldMap, showNext, nextCount })`.
+- `/signpost show|hide|lock [on|off]|reset|scale <n>|alpha <n>`. Pins through HereBeDragons-Pins-2.0 (minimap + world
+  map, waypoint lines on zone maps); atlases per FOREVER-API-NOTES (there is no `Vendor` atlas).
+- APIs: `StepFrame:Render()`, `DescribeLines(step)`, `DescribeSticky(step)`, `DescribeActiveSticky(step)`,
+  `SetShown/SetLocked/SetScale/SetAlpha/Reset`; `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`,
+  `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`, `Collect()`, `IconFor(kind, override)`. Phase 4 hooks,
+  no-ops until the journal exists: right-click → `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`,
+  `ns.Journal:IsShown()` for `hideWithJournal`.
 
 ## TOC order (integration adds the lines; tracks never edit the TOCs)
 
@@ -194,16 +323,15 @@ Classes\*.lua, Professions\*.lua, Guides\Travel\Borders.lua, Guides\Chapters\*.l
 Guides\*.lua, UI\Widgets.lua, UI\StepFrame.lua, UI\Pins.lua
 ```
 
-## Wave 1 tracks and file ownership
+## Wave 1 tracks and file ownership (integrated 2026-10-17)
 
-A track creates and edits only its own files. Shared files — the TOCs, `docs/PROGRESS.md`, `docs/PLAN.md`,
+A track created and edited only its own files. Shared files — the TOCs, `docs/PROGRESS.md`, `docs/PLAN.md`,
 `CLAUDE.md`, this file, `docs/GUIDE-FORMAT.md`, `tests/wow_mock.lua`, `tests/helpers/addon.lua`,
-`Core/SavedVars.lua` — belong to the integrator: put what you need from them in your report. `.luacheckrc`: add any
-missing read globals in alphabetical position (the integrator resolves merges).
+`Core/SavedVars.lua` — belong to the integrator. `.luacheckrc`: add any missing read globals in alphabetical position.
 
 | Track | Owns |
 |---|---|
-| data-questie | `tools/questie_import.py`, its tests, `Data/Schema.lua` (field docs), the private pack (`../Signpost_Data`) |
+| data-questie | `tools/questie_import.py`, `tools/signpost_tools/geo.py`, their tests, `Data/Schema.lua` (field docs), the private pack (`../Signpost_Data`) |
 | data-wowhead | `tools/wowhead_export.py`, `tools/wowhead_env.py`, `tools/signpost_tools/wowhead.py`, their tests |
 | engine-parser | `Engine/Parser.lua`, `tests/parser_spec.lua` |
 | engine-directives | `Engine/Directives.lua`, `Engine/Conditions.lua`, `tests/directives_spec.lua`, `tests/conditions_spec.lua` |
@@ -212,14 +340,17 @@ missing read globals in alphabetical position (the integrator resolves merges).
 | engine-travel | `Engine/Travel.lua`, `Guides/Travel/Borders.lua`, `tests/travel_spec.lua` |
 | engine-registry | `Engine/Registry.lua`, `Engine/Professions.lua`, `Core/Player.lua`, `tests/registry_spec.lua`, `tests/professions_spec.lua` |
 | tools-lint | `tools/guide_lint.py`, `tools/guide_travel.py`, `tools/signpost_tools/guidefile.py`, their tests |
-| learn | `Core/Learn.lua`, `tests/learn_spec.lua`, `--merge-learned` in `tools/import_savedvars.py`, its tests |
+| learn | `Core/Learn.lua`, `tests/learn_spec.lua`, `--merge-learned` in `tools/import_savedvars.py`, `tools/signpost_tools/learned.py`, their tests |
 | ui | `UI/StepFrame.lua`, `UI/Pins.lua`, `tests/ui_spec.lua` |
 
 ## Testing
 
-- busted specs in `tests/<area>_spec.lua`. Load modules that are not in the TOC yet with
-  `addon.load({ extra = { "Engine/Parser.lua", ... } })`; set client globals through `addon.G`.
-- Extra mocks go in your own `tests/mocks/<area>.lua`. Other modules a spec needs can be stubbed in the spec (each track
-  is built in parallel; integration then runs everything together).
+- busted specs in `tests/<area>_spec.lua`; every module is in the TOC now, so `addon.load()` loads them all (`extra`
+  still works for files that are not). Set client globals through `addon.G`; `tests/wow_mock.lua` resets the globals the
+  module mocks install at every load, so install them in `addon.load`'s `before`.
+- Extra mocks in `tests/mocks/<area>.lua`; a spec may stub other modules. `tests/integration_spec.lua` runs the real
+  modules together on the scripted client of `tests/mocks/context.lua` (guide, chapter, track and profession module
+  registered as their files would; login; quest log, profession, level and position changes).
 - Python tool tests in `tools/tests/test_<tool>.py` (unittest, standard library only).
-- `pwsh -NoProfile -File tools/check.ps1` passes in your worktree before you finish.
+- `pwsh -NoProfile -File tools/check.ps1` passes before a task is done (busted, luacheck, StyLua, check_repo, the tool
+  tests and `guide_lint.py --strict --no-pack`).

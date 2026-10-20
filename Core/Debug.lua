@@ -80,8 +80,16 @@ local POSITION_EVENTS = {
 
 -- Snapshots ---------------------------------------------------------------------------------------------------------
 
+-- GUID kinds of world entities. A quest a party member shares opens its dialog with that player as "npc"; a player's
+-- (or a pet's) name and GUID are never stored, as in Core/Learn.lua.
+local ENTITY_GUIDS = { Creature = true, Vehicle = true, GameObject = true }
+
 local function npc()
 	local guid = call(UnitGUID, "npc")
+	local kind = type(guid) == "string" and not Util.IsSecret(guid) and guid:match("^(%a+)%-")
+	if not ENTITY_GUIDS[kind or ""] then
+		return { pos = Util.PlayerPosition() }
+	end
 	return { id = Util.NpcIDFromGUID(guid), name = call(UnitName, "npc"), guid = guid, pos = Util.PlayerPosition() }
 end
 

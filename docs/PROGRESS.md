@@ -46,50 +46,79 @@ Acceptance
 ## Phase 1 — Wowhead export (1–30 first)
 
 Tasks
-- [ ] `tools/wowhead_env.py` discovers base path + `dataEnv`; documented in API notes.
+- [ ] `tools/wowhead_env.py` discovers base path + `dataEnv`; documented in API notes. — Built (Wave 1 data-wowhead, a928390:
+  structure-only report, 11 sample pages); waits for the user's run (Claude Code never accesses Wowhead). The page structures
+  the exporter assumes are listed in the API notes' Wowhead section.
 - [ ] `wowhead_zones.py`, `wowhead_quests.py` (Horde + neutral quests, zones ≤ 32), `wowhead_entities.py`,
   `wowhead_professions.py` (every profession, primary and secondary), `wowhead_class.py --class HUNTER` (spells, trainers, all
-  hunter class quest chains with `newInForever` flags), `wowhead_travel.py`.
-- [ ] Data pack generated into `../Signpost_Data/`; `tools/report_gaps.py` output committed to the private repo as `data-gaps.md`.
+  hunter class quest chains with `newInForever` flags), `wowhead_travel.py`. — Built as one exporter with stages
+  (`tools/wowhead_export.py --stages zones,quests,class,professions,travel`, a928390; on the shared data-pack contract since
+  integration 6abf8b3), gap-only against the questie layer, tested offline on synthetic pages. Tick after the user's real run
+  (evidence: the env report and data-gaps.md).
+- [x] Data pack generated into `../Signpost_Data/`; `tools/report_gaps.py` output committed to the private repo as `data-gaps.md`.
+  — The QuestieDB Forever layer (`tools/questie_import.py`, QuestieDB b73b8cbc98 for client build 1.60.1.69893, `--faction
+  horde`): 2710 quests, 3704 NPCs, 552 objects, 2023 items, 57 maps; `data-gaps.md` is written by `datapack.build` (no separate
+  report_gaps.py); private-repo commit 48d9c6d (not pushed). Rebuilding its layers with the integrated `datapack.py` gives
+  byte-identical tables (only `_meta.lua` gains `classes = { count = 0 }`).
 
 Acceptance
 - [ ] Every Durotar/Barrens quest a Troll Hunter can take is in the pack's `Quests.lua` with start/end entity and ≥1 coordinate
   (or listed in gaps). Lua files load under `luac -p` and in-game; the main addon also loads cleanly with the pack disabled.
+  — Desktop part done (`questie_import.py --check-maps 1411,1413 --check-races 128 --check-classes 4`): 161 quests, all with a
+  start and an end entity, 160 with a coordinate, the one without (1144, its giver inside Razorfen Kraul) in data-gaps.md; all
+  pack files load in Lua 5.1 (about 7.1 MB) and pass luacheck. Remaining: the pack loading in the client (no Lua errors, memory)
+  and Signpost loading with the pack disabled.
 
 ## Phase 2 — DSL, parser, engine
 
 Tasks
-- [ ] Move PLAN §5 to `docs/GUIDE-FORMAT.md`; `Core/Player.lua`, `Engine/Directives.lua`, `Engine/Registry.lua` (guides,
+- [x] Move PLAN §5 to `docs/GUIDE-FORMAT.md`; `Core/Player.lua`, `Engine/Directives.lua`, `Engine/Registry.lua` (guides,
   chapters, `#include`, best-match selection), `Engine/Professions.lua` (profession registry, profession plan detection —
   learned professions + `#professions` suggestions for free slots − declined ones — parse-time `.prof` gating,
   `.hub`/`@level`/`@zone` anchors and track merging with stable step ids — PLAN §3.8), `Engine/Parser.lua` with line-numbered
   errors; `tools/guide_lint.py`
-  (incl. track anchors).
+  (incl. track anchors). — Wave 1: engine-registry b2798e3, engine-directives 999505b, engine-parser f760ae7, tools-lint
+  2f5081d; integrated on `integration/wave1` with `tests/integration_spec.lua`. The parser and the lint give the same merged step
+  ids for the same guide, and their shared rules are in GUIDE-FORMAT "Parsing rules".
 - [ ] `Classes/HUNTER.lua` with `trainerSpells`, `classQuests`, `.tame`/`.ammo` directives, the `.train class` expansion and the
-  "class quest available here" soft check. No other file references a class/race/faction (CI: `tools/check_repo.py`).
-- [ ] `Engine/Context.lua` (quest log by questID, completed set, spells, skills, taxi, bags).
-- [ ] `Engine/Conditions.lua` for every directive; `Engine/Progress.lua` with auto-advance, auto-skip, sticky, manual override,
-  persistence.
-- [ ] `Engine/Travel.lua`: `.path` waypoint progression, `.zone` subtree check, transport state machine for
+  "class quest available here" soft check. No other file references a class/race/faction (CI: `tools/check_repo.py`). — The
+  engine side is in (Engine/Directives.lua: `.train class` and the soft check read the module's `trainerSpells`/`classQuests`;
+  Engine/Registry.lua registers class directives); the module itself is Wave 2.
+- [x] `Engine/Context.lua` (quest log by questID, completed set, spells, skills, taxi, bags). — engine-context e136ded (32 specs).
+- [x] `Engine/Conditions.lua` for every directive; `Engine/Progress.lua` with auto-advance, auto-skip, sticky, manual override,
+  persistence. — engine-directives 999505b, engine-progress 3490094; integration fixes c768c3a, bbff295 (GUIDE_SELECTED, active
+  stickies, `.craft` counts and travel states after a reload).
+- [x] `Engine/Travel.lua`: `.path` waypoint progression, `.zone` subtree check, transport state machine for
   `.boat`/`.zeppelin`/`.fly`, in-transit detection per API-notes probe. `Guides/Travel/Borders.lua` seeded (coords `.todo`).
-- [ ] `tools/guide_travel.py` and the lint rule for uncovered transitions.
+  — engine-travel 854eab5 (50 specs; the boarding signals are VERIFY(beta) assumptions until the transport probe).
+- [x] `tools/guide_travel.py` and the lint rule for uncovered transitions. — tools-lint 2f5081d; `tools/check.ps1` runs
+  `guide_lint.py --strict --no-pack` as CI does.
 - [ ] `tools/guide_draft.py` (PLAN §7 "Quest selection and order"); quest XP in the data layers; group-quest tags; the `.group`
   marker in GUIDE-FORMAT.
-- [ ] `tests/`: busted specs for parser (every directive, error cases) and progress (auto-skip, sticky) with `tests/wow_mock.lua`.
+- [x] `tests/`: busted specs for parser (every directive, error cases) and progress (auto-skip, sticky) with `tests/wow_mock.lua`.
+  — `tests/parser_spec.lua` (64), `tests/progress_spec.lua` (32), plus every Wave 1 module's spec and
+  `tests/integration_spec.lua`; 558 specs run together.
 - [ ] `Guides/HordeTrollHunter.lua` chapters 1–12 (Durotar), incl. hunter pet chain and first profession trainers.
 
 Acceptance
 - [ ] Walking a fresh beta troll hunter through Durotar with only chat output (`/signpost debug`) advances steps correctly without
-  manual input, except at `.todo` steps.
+  manual input, except at `.todo` steps. — Needs the Durotar chapters (Wave 2) and the walk in the client; the same flow runs
+  on the mock client in `tests/integration_spec.lua`.
 - [ ] The Durotar → Barrens exit is written as `.path` + `.zone` steps and advances waypoint by waypoint;
-  `guide_lint.py --strict` reports 0 uncovered transitions for chapters 1–12.
+  `guide_lint.py --strict` reports 0 uncovered transitions for chapters 1–12. — Needs the chapters and the learned crossing.
 
 ## Phase 3 — Step frame + pins
 
 Tasks
-- [ ] `UI/StepFrame.lua` per §3.1; `UI/Pins.lua` with HBD; icon/atlas table verified via probe.
-- [ ] Waypoint paths on minimap and world map; transport steps swap departure/arrival pins; "in transit" text.
-- [ ] Options: lock, scale, alpha, hide-in-combat, show-next-steps, waypoint radius; stored in `SignpostDB.settings`.
+- [ ] `UI/StepFrame.lua` per §3.1; `UI/Pins.lua` with HBD; icon/atlas table verified via probe. — Code and 42 specs in (ui
+  4c037f1; integration: STICKY_CHANGED, "Ongoing:" lines for active stickies only, directive states into Describe). The
+  icon/atlas/template names still need the probe (API notes, "Step frame and pins").
+- [x] Waypoint paths on minimap and world map; transport steps swap departure/arrival pins; "in transit" text. — engine-travel
+  854eab5 (waypoint targets with next/reached/minimap, dock and taxi pins by phase) and ui 4c037f1 (next waypoint on the minimap,
+  numbered world-map waypoints joined by lines on zone maps, "In transit to X..."); travel_spec, ui_spec, integration_spec.
+- [ ] Options: lock, scale, alpha, hide-in-combat, show-next-steps, waypoint radius; stored in `SignpostDB.settings`. — Saved
+  settings exist (`SignpostDB.stepFrame`, `SignpostDB.pins.showNext`, `SignpostDB.settings.waypointRadius`) with slash commands
+  for lock, scale and alpha; the options UI comes with the Phase 4 Settings tab.
 
 Acceptance
 - [ ] Default screen shows exactly the step frame, minimap pin(s), world map pin(s). Pins update within 1 s of a step change. No
@@ -129,6 +158,9 @@ Tasks
 - [ ] §3.5 seam acceptance test (stub Orc Warrior guide + empty `Classes/WARRIOR.lua`), then delete the stub.
 - [ ] Travel steps for every zone change ≤ 30 generated with `guide_travel.py`, reviewed, pasted into the chapters.
 - [ ] `Core/Learn.lua` self-healing positions incl. zone crossings and docks; `--merge-learned` import; gap report shrinking.
+  — Built and tested in Wave 1 (learn e6282c4): NPC/object positions, quest givers and enders, flight nodes, walked zone
+  crossings, trainer spells and vendor items, and `tools/import_savedvars.py --merge-learned [--also DIR]`. Docks on boarding
+  and the gap report shrinking (real play) remain.
 
 Acceptance
 - [ ] `guide_lint.py --strict`: 0 unknown IDs, 0 uncovered transitions, 0 unrouted class quests for chapters ≤ 30; `.todo`s listed
@@ -190,6 +222,23 @@ Acceptance
   are still ticked in order, with evidence.
 - 2026-10-17, user decisions on route authoring (PLAN §2, §7): group quests optional with a revisit about 5 levels later; a
   drafting tool (`tools/guide_draft.py`) for chapters refined by hand; quest XP from QuestieDB's XP table plus Wowhead gaps.
+- 2026-10-17, Wave 1 integrated on `integration/wave1` (the eleven track branches plus main's route-authoring docs): every
+  module in both TOCs in ENGINE.md order; the integrated contract in `docs/ENGINE.md`, the parser/lint rules in
+  `docs/GUIDE-FORMAT.md` "Parsing rules", the modules' client assumptions under API notes "Open probes". Running the modules
+  together (`tests/integration_spec.lua`) found: Progress ignored `GUIDE_SELECTED`; `.complete` paired quest log objectives with
+  the pack's by index although the pack keeps QuestieDB's kind order; the parser kept a `.sticky .note` the lint rejects; the step
+  frame showed satisfied stickies; `.craft` stopped counting after a reload; travel states saved before a restart never completed.
+  On the tools side, any rebuild by another tool broke the wowhead layer's classes and numeric keys (fixed in `datapack.py`), the
+  exporter now shares `geo.cluster` and writes `preSingle`, and the debug recorder no longer stores other players' names.
+- Open decisions after Wave 1 (from the track reports; nothing here is decided yet): keep the item table at quest-related items
+  (names and sources only, as CLAUDE.md "Data sources" says) or drop items entirely; instance quests' `zone` (QuestieDB's
+  instance uiMapID, or the zone with the entrance); the 25-source drop limit; whether profession tracks may hold `#skipquest`;
+  an optional `.trainprof <key>,<max>` (additive DSL change); whether `.boat`/`.zeppelin` may complete on arrival without a
+  detected boarding (current) and whether `.path` stays lenient (current); a profession declined and later learned keeps its
+  declined flag; a step marked done by `>` stays done when its condition turns false again; track steps a plan change inserts
+  behind the pointer are not revisited (only their stickies start); transport routes from Learn, a hand list or `--transport`
+  pairs; keep `/signpost context` after the beta; step numbering per chapter in the step frame header; whether `/signpost hide`
+  also hides the pins.
 - Local toolchain (2026-10-17, approved by the user): WinLibs GCC (winget `BrechtSanders.WinLibs.POSIX.UCRT`), Lua 5.1.5 +
   LuaRocks 3.8.0 built with hererocks into the gitignored `.venv/lua51`, then busted 2.3.0 and luacheck 1.2.0 — the same
   versions as CI. Setup steps in README "Development". The earlier lupa-based stand-in runner is gone.
