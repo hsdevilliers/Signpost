@@ -68,7 +68,8 @@ Signpost/                 PUBLIC repo, MIT
   Automation/  quest accept/turn-in, gossip, taxi, trainer, vendor, hearth
   Libs/        LibStub, CallbackHandler-1.0, HereBeDragons-2.0, LibDataBroker-1.1, LibDBIcon-1.0
   Media/       textures/fonts we own (no copied Blizzard art files; reference Blizzard paths instead)
-  tools/       Python: Wowhead export (code only), map-ID bridge, SavedVariables import/merge, guide lint, data diff
+  tools/       Python: Wowhead export (code only), map-ID bridge, SavedVariables import/merge, guide lint, simulator,
+               Route Planner (`route_planner.py`, docs/PLANNER.md: its candidate routes go to the gitignored `plans/`), data diff
   tests/       busted specs for parser/engine with a mocked WoW API (tests/wow_mock.lua)
   docs/        PLAN.md, FOREVER-API-NOTES.md, PROGRESS.md, GUIDE-FORMAT.md
   .github/     CI: luacheck, busted, guide lint, release zip (public addon only)

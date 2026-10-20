@@ -390,6 +390,13 @@ prerequisite, the lint did not model prerequisites, and its 20 or so level warni
   replays recorded visits against the rules. On the first session: 3 of 3 visits agree, including the chain rule.
 - [ ] Group quests as an additional line beside the current step until completed or 5 levels below the character (user): the
   engine part, a `.group` modifier. The drafter emits `.optional` until then.
-- [ ] The route planner (PLAN Phase 9, user 2026-10-20): a weighted state graph searched with the simulator as the scorer; may skip
-  quests slower than grinding; any travel allowed. Version 1 of every guide stops at level 30.
+- [x] The route planner (PLAN Phase 9, user 2026-10-20): a weighted state graph searched with the simulator as the scorer; may skip
+  quests slower than grinding; any travel allowed. Version 1 of every guide stops at level 30. `tools/route_planner.py` (the tool and
+  its report) over `tools/planner.py` (the engine), docs/PLANNER.md. First runs, beam, model time to level 30, the route written as
+  guide steps and walked by the simulator and lint with 0 availability errors and 0 lint errors: Troll Hunter 18h17 (16.8% faster than
+  the greedy route), Tauren Druid (HARDCORE) 25h00 (18.5%), Skyborne Druid (HARDCORE) 25h20 (9.8%). Known limits, in PLANNER.md:
+  class quests are done when cheapest, not when they open; the quest log size is not modelled; the planner prices borders by distance
+  and the simulator flat, a 10-20% gap.
+- [ ] Install a planned route in the guides on purpose (compare, copy the chapters, `guide_lint --strict`); the drafted chapters for
+  levels 12-30 of the druids and 20-30 of the hunter are regenerated from planner routes, not hand-drafted.
 

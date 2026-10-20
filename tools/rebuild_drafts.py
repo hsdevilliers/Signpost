@@ -38,8 +38,8 @@ PROPOSAL = re.compile(r"-- insert after (\S+?):(\d+);.*?\n(step\n(?:  .*\n)+)")
 TRAVEL_PASSES = 12
 
 
-def chapter_path(chapter_id: str) -> Path:
-    return ROOT / "Guides" / "Chapters" / f"{chapter_id}.lua"
+def chapter_path(chapter_id: str, root: Path = ROOT) -> Path:
+    return root / "Guides" / "Chapters" / f"{chapter_id}.lua"
 
 
 def guide_includes(guide_id: str) -> list[str] | None:
@@ -63,22 +63,22 @@ def draft_chapter(guide: dict, chapter: dict, pack: Path, carry: dict) -> int:
     return guide_draft.main(args, carry=carry)
 
 
-def proposals(guide_id: str, pack: Path) -> list[tuple[str, int, str]]:
+def proposals(guide_id: str, pack: Path, root: Path = ROOT) -> list[tuple[str, int, str]]:
     import io
     from contextlib import redirect_stdout
 
     out = io.StringIO()
     with redirect_stdout(out):
-        guide_travel.main(["--guide", guide_id, "--pack", str(pack)])
+        guide_travel.main(["--guide", guide_id, "--pack", str(pack), "--root", str(root)])
     return [(f, int(after), text) for f, after, text in PROPOSAL.findall(out.getvalue())]
 
 
-def insert_proposals(found: list[tuple[str, int, str]]) -> int:
+def insert_proposals(found: list[tuple[str, int, str]], root: Path = ROOT) -> int:
     by_file: dict[str, list[tuple[int, str]]] = {}
     for name, after, text in found:
         by_file.setdefault(name, []).append((after, text))
     for name, items in by_file.items():
-        path = ROOT / name
+        path = root / name
         lines = path.read_text(encoding="utf-8").split("\n")
         for after, text in sorted(items, reverse=True):
             lines[after:after] = text.rstrip("\n").split("\n")

@@ -23,6 +23,14 @@
   "quest_xp_penalty_per_level": 0.2,
   "grind_overhead_seconds": 20,
   "rested_fraction": 0.0,
+  "uncertainty": {
+    "_note": "how wrong each assumed number may be: the relative spread (a log-normal sigma) a Monte Carlo run (--runs) draws from. walk and speed are the player's own pace for a whole run; kills, drops and respawn vary per objective",
+    "walk": 0.15,
+    "speed": 0.2,
+    "kills": 0.35,
+    "drops": 0.25,
+    "respawn": 0.3
+  },
   "over_levelled_gap": 4,
   "under_levelled_gap": 6,
   "risk_gap": 3,

@@ -17,3 +17,6 @@ __pycache__/
 # Build output
 dist/
 .release/
+
+# the route planner writes its candidate routes and reports here (tools/route_planner.py)
+plans/

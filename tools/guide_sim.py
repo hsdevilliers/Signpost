@@ -25,6 +25,7 @@ import argparse
 import copy
 import json
 import math
+import random
 import re
 import sys
 from dataclasses import dataclass, field
@@ -117,6 +118,23 @@ class Model:
         self.p = params
         self.quests, self.npcs, self.items = quests, npcs, items
         self.quest_xp = quest_xp or {}
+        self.rng: random.Random | None = None
+        self.walk_factor = 1.0  # a Monte Carlo run's own luck: how fast the player walks...
+        self.speed_factor = 1.0  # ...and how fast they kill, loot and talk
+
+    def shake(self, rng: random.Random) -> None:
+        """Make the model uncertain (--runs): this run draws the player's walking and working speed, and every objective draws
+        the kills it needs, from the spreads in the parameters' "uncertainty" (how wrong each assumed number may be)."""
+        spread = self.p.get("uncertainty", {})
+        self.rng = rng
+        self.walk_factor = rng.lognormvariate(0.0, spread.get("walk", 0.15))
+        self.speed_factor = rng.lognormvariate(0.0, spread.get("speed", 0.2))
+
+    def draw(self, name: str) -> float:
+        """A factor around 1 for one uncertain quantity (1 when the model is not shaken)."""
+        if self.rng is None:
+            return 1.0
+        return self.rng.lognormvariate(0.0, self.p.get("uncertainty", {}).get(name, 0.3))
 
     def to_next(self, level: int) -> float:
         table = self.p["xp_to_level"]
@@ -187,28 +205,30 @@ class Model:
                 source = (self.items.get(objective.get("id")) or {}).get("drops") or []
                 npc = source[0] if source else None
                 if source:
-                    kills = self.p["default_items"] / max(self.p["drop_rate"], 0.01)
+                    kills = self.p["default_items"] / max(self.p["drop_rate"], 0.01) * self.draw("kills") * self.draw("drops")
                 else:
                     kills = 0.0  # a ground item or a container: collecting it is not a fight
-                    seconds += self.p["default_items"] * self.p["object_seconds"]
+                    seconds += self.p["default_items"] * self.p["object_seconds"] * self.speed_factor
             elif kind == "kill":
-                npc, kills = objective.get("id"), float(self.p["default_kills"])
+                npc, kills = objective.get("id"), float(self.p["default_kills"]) * self.draw("kills")
             elif kind == "object":
-                seconds += self.p["object_seconds"] * self.p["default_items"] / 2
+                seconds += self.p["object_seconds"] * self.p["default_items"] / 2 * self.speed_factor
                 continue
             elif kind == "spell":
-                seconds += self.p["spell_seconds"]
+                seconds += self.p["spell_seconds"] * self.speed_factor
                 continue
             else:  # explore
-                seconds += self.p["explore_seconds"]
+                seconds += self.p["explore_seconds"] * self.speed_factor
                 continue
             if kills <= 0:
                 continue
-            each = (self.p["kill_seconds"] + self.p["loot_seconds"] + self.p["walk_between_mobs_seconds"]) * factor
+            if self.rng is not None:
+                kills = max(1.0, float(round(kills)))
+            each = (self.p["kill_seconds"] + self.p["loot_seconds"] + self.p["walk_between_mobs_seconds"]) * factor * self.speed_factor
             known = (self.npcs.get(npc) or {}).get("sp")
             spawns = max(1.0, float(min(known, self.p["spawns_in_reach"]) if known else self.p["spawns_in_reach"]))
             rounds = math.ceil(kills / spawns)
-            respawn = self.p["respawn_seconds"][self.rank_kind(npc)]
+            respawn = self.p["respawn_seconds"][self.rank_kind(npc)] * self.draw("respawn")
             waiting = (rounds - 1) * max(0.0, respawn - min(kills, spawns) * each)
             seconds += kills * each + waiting
             wait += waiting
@@ -249,6 +269,57 @@ class ChapterTime:
     stall: float = 0.0
     level_in: int = 1
     level_out: int = 1
+    steps: int = 0
+    xp: float = 0.0
+
+
+@dataclass
+class StepLog:
+    """What one step cost and gave, and what happened in it, for the verbose report."""
+
+    id: str
+    chapter: str
+    zone: int | None = None
+    coord: object | None = None
+    walk: float = 0.0
+    interact: float = 0.0
+    objective: float = 0.0  # killing, looting, collecting, using: respawn waits not included
+    wait: float = 0.0  # waiting for respawns
+    stall: float = 0.0  # grinding for a level the guide asks for
+    clock: float = 0.0  # when the step ends
+    level: int = 1  # after the step
+    xp: float = 0.0  # into that level
+    gained: float = 0.0
+    levels: list = field(default_factory=list)  # the levels reached in the step
+    events: list = field(default_factory=list)
+
+    @property
+    def seconds(self) -> float:
+        return self.walk + self.interact + self.objective + self.wait + self.stall
+
+
+@dataclass
+class QuestStat:
+    """What a quest cost (the time at its giver, its objectives and its turn-in; travel is not charged to it) and gave."""
+
+    name: str
+    level: int
+    xp: float = 0.0
+    objective: float = 0.0
+    interact: float = 0.0
+    wait: float = 0.0
+    accepted: float | None = None
+    turned_in: float | None = None
+    level_at_accept: int | None = None
+    level_at_turnin: int | None = None
+
+    @property
+    def seconds(self) -> float:
+        return self.objective + self.interact + self.wait
+
+    @property
+    def xp_per_minute(self) -> float:
+        return self.xp / (self.seconds / 60) if self.seconds else 0.0
 
 
 @dataclass
@@ -259,7 +330,10 @@ class Result:
     travel: float = 0.0
     wait: float = 0.0
     stall: float = 0.0
+    interact: float = 0.0
+    objective: float = 0.0
     level: int = 1
+    xp: float = 0.0
     levels: dict[int, tuple[float, str]] = field(default_factory=dict)  # level -> (clock when reached, chapter)
     chapters: list[ChapterTime] = field(default_factory=list)
     stalls: list[Stall] = field(default_factory=list)
@@ -269,6 +343,10 @@ class Result:
     risk: list[tuple[str, int, int, int]] = field(default_factory=list)  # (reason, quest, quest level, character level)
     skipped: int = 0
     violations: list[Violation] = field(default_factory=list)
+    log: list[StepLog] = field(default_factory=list)
+    quests: dict[int, QuestStat] = field(default_factory=dict)
+    by_zone: dict[int, float] = field(default_factory=dict)  # zone (uiMapID) -> seconds spent there
+    grind_xp: float = 0.0  # experience that came from grinding for a level gate, not from the route's own quests
 
 
 class Progress:
@@ -277,6 +355,7 @@ class Progress:
     def __init__(self, model: Model, level: int = 1, xp: float = 0.0) -> None:
         self.model, self.level, self.xp = model, level, xp
         self.reached: list[int] = []  # the levels gained since the list was last emptied
+        self.ground_xp = 0.0  # experience that came from grinding for a gate
 
     def _level_up(self) -> None:
         top = max(self.model.p["xp_to_level"]) + 1
@@ -285,9 +364,12 @@ class Progress:
             self.level += 1
             self.reached.append(self.level)
 
-    def gain(self, amount: float) -> None:
-        self.xp += amount * (1 + self.model.p["rested_fraction"])
+    def gain(self, amount: float) -> float:
+        """Add experience (with rested experience, if the parameters have any); returns what was credited."""
+        credited = amount * (1 + self.model.p["rested_fraction"])
+        self.xp += credited
         self._level_up()
+        return credited
 
     def grind_to(self, target: int) -> float:
         """Seconds of killing at the character's level for the experience still missing to reach `target` (0 if there)."""
@@ -296,8 +378,9 @@ class Progress:
         missing = sum(self.model.to_next(n) for n in range(self.level, target)) - self.xp
         if missing <= 0:
             return 0.0
-        seconds = missing / self.model.grind_xp_per_second(self.level)
+        seconds = missing / self.model.grind_xp_per_second(self.level) * self.model.speed_factor
         self.xp += missing
+        self.ground_xp += missing
         self._level_up()
         return seconds
 
@@ -311,6 +394,10 @@ def character_of(route: guidefile.Route, skill_lines: dict | None = None) -> ava
     return availability.Character(variant.faction, availability.race_bit(race, variant.faction), availability.class_bit(cls), skills)
 
 
+def minutes(seconds: float) -> str:
+    return f"{seconds / 60:.1f} min" if seconds >= 60 else f"{seconds:.0f} s"
+
+
 def run(
     route: guidefile.Route,
     world: guide_travel.World,
@@ -318,10 +405,12 @@ def run(
     start_level: int | None = None,
     skip: frozenset = frozenset(),
     rules: availability.Rules | None = None,
+    travel=None,
 ) -> Result:
     """Walk the route. `skip` is a what-if: the quests whose accept, objectives and turn-in are left out. With `rules` every
-    accept is checked against the availability rules at that point of the walk (level, quests turned in, quest log)."""
-    travel = guide_travel.simulate(route, world)
+    accept is checked against the availability rules at that point of the walk (level, quests turned in, quest log).
+    `travel` is guide_travel.simulate's walk of the route when the caller has it already (repeated runs share it)."""
+    travel = travel or guide_travel.simulate(route, world)
     p = model.p
     first = route.chapters[0].levels[0] if route.chapters else 1
     progress = Progress(model, start_level or max(1, first))
@@ -338,10 +427,12 @@ def run(
         if chapter is None:
             source = route.chapters[rs.chapter]
             chapter = chapters[rs.chapter] = ChapterTime(source.name, source.levels, level_in=progress.level, level_out=progress.level)
-        walk = max(0.0, state.clock - previous - guide_travel.STEP_SECONDS)
+        log = StepLog(rs.id, chapter.name, state.zone_out, state.coord_out)
+        walk = max(0.0, state.clock - previous - guide_travel.STEP_SECONDS) * model.walk_factor
         previous = state.clock
-        spent = walk
-        stalled = 0.0
+        log.walk = walk
+        if walk >= 30:
+            log.events.append(f"travel {minutes(walk)}")
         longest_wait = 0.0  # a step is done together: its objectives run side by side, so the longest wait counts once
         todo = False
         # `.level N` is the guide's own gate: the player gets there first, which costs grinding and is not a fault
@@ -349,19 +440,23 @@ def run(
         gated = max(gated, gate)
         if gate > progress.level:
             seconds = progress.grind_to(gate)
-            stalled += seconds
+            log.stall += seconds
             result.stalls.append(Stall(rs, f"needs level {gate}", gate, seconds))
+            log.events.append(f"reach level {gate} first: grinding {minutes(seconds)}")
         for d in rs.directives:
             quest = d.args.get("quest")
             if quest in skip and d.name in ("accept", "turnin", "complete"):
                 result.skipped += 1
                 continue
+            record = model.quests.get(quest) or {}
+            name = record.get("n") or ""
+            stat = result.quests.setdefault(quest, QuestStat(name, record.get("l") or 0)) if quest else None
             if d.name == "todo":
                 todo = True
+                log.events.append(f"TODO: {d.args.get('reason') or d.raw}")
             elif d.name == "accept":
-                need = (model.quests.get(quest) or {}).get("r") or 0
+                need = record.get("r") or 0
                 if rules is not None:
-                    name = (model.quests.get(quest) or {}).get("n") or ""
                     for reason in rules.unmet(quest, progress.level, done, active):
                         result.violations.append(Violation(rs, d.line, quest, reason, name))
                     if 1 < need > gated and need <= progress.level:
@@ -370,46 +465,100 @@ def run(
                 model.note_risk(result, quest, progress.level)
                 if need > progress.level:  # the guide never said so: the walk grinds, and the rules flag it
                     seconds = progress.grind_to(need)
-                    stalled += seconds
+                    log.stall += seconds
                     result.stalls.append(Stall(rs, f"needs level {need}", need, seconds, "quest"))
+                    log.events.append(f"level {need} needed for {quest}: grinding {minutes(seconds)}")
                 active.add(quest)
-                spent += p["interact_seconds"]
+                interact = p["interact_seconds"] * model.speed_factor
+                log.interact += interact
+                stat.interact += interact
+                stat.accepted, stat.level_at_accept = clock + log.seconds, progress.level
+                log.events.append(f'accept {quest} "{name}"' + (f" (level {record['l']})" if record.get("l") else ""))
             elif d.name == "turnin":
-                spent += p["interact_seconds"]
-                record = model.quests.get(quest) or {}
+                interact = p["interact_seconds"] * model.speed_factor
+                log.interact += interact
+                stat.interact += interact
                 if record.get("l"):
                     gap = record["l"] - progress.level
                     if gap >= p["over_levelled_gap"]:
                         result.gaps.append(("over", quest, record["l"], progress.level))
                     elif -gap >= p["under_levelled_gap"]:
                         result.gaps.append(("under", quest, record["l"], progress.level))
-                progress.gain(model.reward_xp(quest, progress.level))
+                reward = progress.gain(model.reward_xp(quest, progress.level))
+                log.gained += reward
+                stat.xp += reward
+                stat.turned_in, stat.level_at_turnin = clock + log.seconds, progress.level
                 active.discard(quest)
                 done.add(quest)
+                log.events.append(f'turn in {quest} "{name}": +{reward:.0f} XP')
             elif d.name == "complete":
                 seconds, wait, objective_xp = model.objective(quest, d.args["objective"], progress.level)
-                spent += seconds - wait
+                log.objective += seconds - wait
+                stat.objective += seconds - wait
+                stat.wait = max(stat.wait, wait)
                 longest_wait = max(longest_wait, wait)
-                progress.gain(objective_xp)
-        spent += longest_wait
+                credited = progress.gain(objective_xp)
+                log.gained += credited
+                stat.xp += credited
+                which = d.args["objective"]
+                text = f'objective {which if which else "all"} of {quest} "{name}": {minutes(seconds)}'
+                if wait:
+                    text += f" (of which {minutes(wait)} waiting for respawns)"
+                log.events.append(text + f", +{credited:.0f} XP from kills")
+        log.wait = longest_wait
         if todo:
             result.todo += 1
-        clock += spent + stalled
+        step_seconds = log.seconds
+        clock += step_seconds
         for level in progress.reached:
             result.levels[level] = (clock, chapter.name)
+            log.levels.append(level)
+            log.events.append(f"LEVEL {level}")
         progress.reached.clear()
-        chapter.seconds += spent + stalled
+        log.clock, log.level, log.xp = clock, progress.level, progress.xp
+        result.log.append(log)
+        spent = step_seconds - log.stall
+        chapter.seconds += step_seconds
         chapter.travel += walk
         chapter.wait += longest_wait
-        chapter.stall += stalled
+        chapter.stall += log.stall
         chapter.level_out = progress.level
+        chapter.steps += 1
+        chapter.xp += log.gained
         result.travel += walk
         result.wait += longest_wait
-        result.stall += stalled
-        result.steps.append((rs.id, spent + stalled, clock, progress.level))
-    result.seconds, result.level = clock, progress.level
+        result.stall += log.stall
+        result.interact += log.interact
+        result.objective += log.objective
+        if log.zone is not None:
+            result.by_zone[log.zone] = result.by_zone.get(log.zone, 0.0) + step_seconds
+        result.steps.append((rs.id, spent + log.stall, clock, progress.level))
+    result.seconds, result.level, result.xp = clock, progress.level, progress.xp
+    result.grind_xp = progress.ground_xp
     result.chapters = [chapters[key] for key in sorted(chapters)]
     return result
+
+
+def monte_carlo(route, world, quests, npcs, items, quest_xp, params, runs: int, seed: int = 1, travel=None, skip=frozenset()) -> list:
+    """The route walked `runs` times with an uncertain model (Model.shake): the same route, a different player and luck each
+    time. The travel walk is shared; run i draws from seed i, so two routes compared with the same seed meet the same luck."""
+    travel = travel or guide_travel.simulate(route, world)
+    results = []
+    for i in range(runs):
+        model = Model(params, quests, npcs, items, quest_xp)
+        model.shake(random.Random(seed * 100003 + i))
+        results.append(run(route, world, model, travel=travel, skip=skip))
+    return results
+
+
+def percentile(values: list, pct: float) -> float:
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    index = (len(ordered) - 1) * pct / 100
+    low = int(index)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (index - low)
 
 
 # Reports --------------------------------------------------------------------------------------------------------------
