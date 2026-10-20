@@ -689,6 +689,17 @@ local function useItem(step)
 	end
 end
 
+-- A `.home` step offers the Hearthstone on the same secure button; it is only offered, never cast by the addon.
+local HEARTHSTONE_ITEM = 6948
+
+local function homeItem(step)
+	for _, directive in ipairs(type(step.directives) == "table" and step.directives or {}) do
+		if type(directive) == "table" and directive.name == "home" then
+			return (ns.Travel and ns.Travel.HEARTHSTONE_ITEM) or HEARTHSTONE_ITEM
+		end
+	end
+end
+
 local function itemCount(itemID)
 	local context = ns.Context
 	local count
@@ -703,14 +714,14 @@ local function itemCount(itemID)
 	return 0
 end
 
--- The item the button should offer now: the current step's .use item while it is in the bags (and the frame is
--- enabled and the player alive, unless hideWhenDead is off).
+-- The item the button should offer now: the current step's .use item (or the Hearthstone for .home) while it is in
+-- the bags (and the frame is enabled and the player alive, unless hideWhenDead is off).
 function StepFrame:DesiredItem()
 	local s, step = settings(), self.step
 	if not (step and s.shown) or (s.hideWhenDead and isDead()) then
 		return nil
 	end
-	local itemID = useItem(step)
+	local itemID = useItem(step) or homeItem(step)
 	if itemID and itemCount(itemID) > 0 then
 		return itemID
 	end

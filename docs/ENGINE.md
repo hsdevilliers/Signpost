@@ -139,7 +139,7 @@ else the client's `isPrimaryProfession`, else the slot.
 ### Engine/Professions.lua — `ns.Professions`
 
 - `:Register(key, module)` — `module = { skillLine = id, primary = bool, gathering = bool, ranks = { 75, 150, 225, 300 },
-  rankUpWindow = 25?, directives = {...} }`; `:Get(key)`; `:ForSkillLine(id)` → key, module.
+  rankUpWindow = 25?, rankSpells = { spellIDs }?, directives = {...} }`; `:Get(key)`; `:ForSkillLine(id)` → key, module.
 - `:RegisterTrack(key, text)`; `:Track(key)` → text.
 - `:Plan(suggestions)` → plan, detected per PLAN §3.8 from `ns.Player.professions`, the guide's `#professions`
   suggestions and `SignpostCharDB.declinedProfessions` (two primary slots; learned professions always in the plan;
@@ -331,6 +331,49 @@ settings, the data sharing consent, the card's size and opacity, the detected pr
   the AddOn Compartment entry, the minimap button (LibDataBroker + LibDBIcon, registered at `DB_READY`; right-click opens Settings) and a
   right-click on the step card; a world-map pin click calls `:ShowStep`. It sets `SignpostDB.journal.tab` and `SignpostDB.minimapButton`.
 
+### Automation/ — `ns.Automation` (PLAN §3.4; built on the mock, not yet verified in the client)
+
+Every feature is a toggle in `SignpostCharDB.automation` (`RegisterDefaults("char", "automation", ...)`), all `false`: `quests`
+(accept), `turnIn`, `gossip`, `taxi`, `trainer`, `vendor`; the modes `acceptAll`, `turnInAll`, `rewardAsk` (also `false`);
+`goldReserve` (copper, default 0: the guide asks for these purchases, so they happen whenever affordable). Nothing acts on its own:
+each file registers its client event through `ns.Events:Register`, asks `ns.Automation:Allowed(feature)` and then reads only the
+directives of `ns.Progress:Current()` (never sticky ones, never the player's unrelated choices).
+
+- `Core.lua`: `:Settings()`, `:Enabled(f)`, `:SetEnabled(f, on)`, `:Reserve()`; the gate `:Blocked()` (Shift held, `InCombatLockdown`,
+  dead or ghost, `SettingsPanel` shown) and `:Allowed(f)`; step lookups `:Step()`, `:Directives(name)` →
+  `{ { directive, args, index } }`, `:Asks(names...)`, `:GuideSkips(questID)` (`guide.skipQuests`), `:Satisfied(entry)` (the
+  directive's own `isSatisfied`), `.Try(fn, ...)` (pcall, reports success). `/signpost automation [on|off|status|reserve <gold>]`
+  (`on`/`off` flip the six feature toggles, not the modes).
+- `Quests.lua`: `QUEST_DETAIL` → `AcceptQuest()` for a quest the step `.accept`s (`acceptAll`: any non-trivial one), never a
+  `#skipquest`; `QUEST_GREETING`/`GOSSIP_SHOW` select the guide's active (to turn in) or available quest first
+  (`Quests:OnGossip()` is called by Gossip.lua); `QUEST_PROGRESS` → `CompleteQuest()`; `QUEST_COMPLETE` → `GetQuestReward(idx)`:
+  no choice 0, one choice 1, else the guide's `.reward` (choice index or item ID; searched in the current step, then the whole
+  guide), else the highest `sellPrice × quantity`; uncached items → `C_Item.RequestLoadItemDataByID`, decided on
+  `ITEM_DATA_LOAD_RESULT` or, after `Quests.WAIT_SECONDS` (2), stop and leave the window open with a chat line. It also stops
+  when no choice has a vendor value, and always in `rewardAsk` mode (a `.reward` still wins). Turn-in covers the step's
+  `.turnin` quests unless `turnInAll`.
+- `Gossip.lua`: `GOSSIP_SHOW` → Quests first; then, during an unsatisfied `.hs`, the binder option (`BinderGossipIcon` file ID, else
+  the text "inn" + "home" through `ns.L`); else a single option when the step is an NPC visit (`.accept .turnin .train .trainprof
+  .buy .fly .hs`) and no quests are on offer. `CONFIRM_BINDER` (only after that, only during `.hs`) confirms at 0, 0.2 and 0.6 s
+  through the popup's accept button (`StaticPopup_FindVisible`), else `C_PlayerInteractionManager.ConfirmationInteraction(
+  Enum.PlayerInteractionType.Binder)`, else `ConfirmBinder()`.
+- `Taxi.lua`: `TAXIMAP_OPENED` during an unsatisfied `.fly` → `ns.Context:ReadTaxiMap()`, the node by full name or the part before
+  the comma, not the current or an unknown node; `TakeTaxiNode(index)` for the `NumTaxiNodes` shape, else `TakeTaxiNode(nodeID)`
+  then the slot index for the `C_TaxiMap` shape. One flight per opening of the map.
+- `Trainer.lua`: `TRAINER_SHOW` → `.train <id>`, `.train class` (the class module's `trainerSpells` at or below the player's level;
+  empty means nothing) and `.trainprof` (the profession module's optional **`rankSpells = { spellIDs }`**: the rank and learn
+  services; a module without them buys nothing) are matched by spell ID (service link, else `C_TooltipInfo.GetTrainerService`);
+  only "available" services, not known spells, only while money stays at or above the reserve; bought highest index first.
+- `Vendor.lua`: `MERCHANT_SHOW` → each `.buy itemID,count`: `count - C_Item.GetItemCount` missing, as bundles of the slot's stack
+  size, capped by stock, by gold above the reserve and per call by `GetMerchantItemMaxStack`; extended-cost slots are skipped.
+- Hearth: `UI/StepFrame.lua`'s `DesiredItem` offers item 6948 (`Travel.HEARTHSTONE_ITEM`) on a `.home` step through the same
+  secure button as `.use`; nothing ever casts it.
+- Settings: the Journal's Settings tab shows nine checkboxes in a second column (`def.column == 2` in `settingsList()`); the
+  gold reserve is only reachable through the slash command.
+- Specs: `tests/automation_spec.lua` (a scripted world of the quest, gossip, trainer, merchant and flight APIs; the step is a
+  stand-in whose directives come from the real `ns.Directives:ParseLine`), `tests/ui_spec.lua` (hearth button),
+  `tests/journal_spec.lua` (the toggles).
+
 ## TOC order (integration adds the lines; tracks never edit the TOCs)
 
 ```
@@ -338,7 +381,7 @@ Core\Init.lua, Core\Errors.lua, Libs\..., Core\Util.lua, Core\SavedVars.lua, Cor
 Core\Slash.lua, Core\Debug.lua, Core\Probe.lua, Core\MapDump.lua, Core\Learn.lua,
 Engine\Registry.lua, Engine\Directives.lua, Engine\Context.lua, Engine\Parser.lua, Engine\Professions.lua,
 Engine\Conditions.lua, Engine\Travel.lua, Engine\Progress.lua,
-Classes\*.lua, Professions\*.lua, Guides\Travel\Borders.lua, Guides\Chapters\*.lua, Guides\Professions\*.lua,
+Classes\*.lua, Automation\*.lua, Professions\*.lua, Guides\Travel\Borders.lua, Guides\Chapters\*.lua, Guides\Professions\*.lua,
 Guides\*.lua, UI\Widgets.lua, UI\StepFrame.lua, UI\Pins.lua
 ```
 

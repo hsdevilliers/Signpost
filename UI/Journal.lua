@@ -17,6 +17,7 @@ local NAME = "SignpostJournal"
 local WIDTH, HEIGHT = 800, 560
 local LEFT_WIDTH = 210
 local ROW = 22
+local AUTOMATION_X = 470 -- the Settings tab's second column, in pane coordinates
 local FAR_JUMP = 20 -- a click on a step further away than this needs Shift
 local HIGHLIGHT_SECONDS = 5
 local TABS = { "route", "class", "settings" }
@@ -454,6 +455,21 @@ local function settingsList()
 			p:Refresh(true)
 		end
 	end
+	-- Automation (Automation/*.lua): every toggle off by default, kept per character; shown in the second column.
+	local function automation(label, key)
+		return {
+			label = label,
+			column = 2,
+			get = function()
+				return ns.Automation ~= nil and ns.Automation:Settings()[key] == true
+			end,
+			set = function(value)
+				if ns.char and type(ns.char.automation) == "table" then
+					ns.char.automation[key] = value and true or false
+				end
+			end,
+		}
+	end
 	return {
 		{
 			label = L["Show the step card"],
@@ -523,6 +539,15 @@ local function settingsList()
 				end
 			end,
 		},
+		automation(L["Accept the guide's quests"], "quests"),
+		automation(L["Accept every non-trivial quest too"], "acceptAll"),
+		automation(L["Turn in the guide's quests"], "turnIn"),
+		automation(L["Turn in every completable quest too"], "turnInAll"),
+		automation(L["Never pick rewards: always let me choose"], "rewardAsk"),
+		automation(L["Gossip: single option, set the hearth"], "gossip"),
+		automation(L["Take the flights the guide asks for"], "taxi"),
+		automation(L["Train the spells the guide lists"], "trainer"),
+		automation(L["Buy the items the guide lists"], "vendor"),
 	}
 end
 
@@ -623,15 +648,25 @@ local function buildSettings(frame, host)
 	end)
 	pane.boxes = {}
 	local anchor = pane.guideInfo
+	-- The second column: Automation, to the right of the step card and pin settings (the pane is not tall enough for one).
+	pane.automationHeader = pane:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	pane.automationHeader:SetPoint("TOPLEFT", pane, "TOPLEFT", AUTOMATION_X, -36)
+	pane.automationHeader:SetText(L["Automation (off by default; Shift skips it)"])
+	local anchor2 = pane.automationHeader
 	for _, def in ipairs(settingsList()) do
 		local check = CreateFrame("CheckButton", nil, pane, "UICheckButtonTemplate")
-		check:SetPoint(
-			"TOPLEFT",
-			anchor,
-			"BOTTOMLEFT",
-			anchor == pane.guideInfo and -4 or 0,
-			anchor == pane.guideInfo and -12 or -2
-		)
+		if def.column == 2 then
+			check:SetPoint("TOPLEFT", anchor2, "BOTTOMLEFT", anchor2 == pane.automationHeader and -4 or 0, -2)
+			anchor2 = check
+		else
+			check:SetPoint(
+				"TOPLEFT",
+				anchor,
+				"BOTTOMLEFT",
+				anchor == pane.guideInfo and -4 or 0,
+				anchor == pane.guideInfo and -12 or -2
+			)
+		end
 		local label = pane:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 		label:SetPoint("LEFT", check, "RIGHT", 2, 1)
 		label:SetText(def.label)
@@ -642,7 +677,9 @@ local function buildSettings(frame, host)
 			end)
 		end)
 		pane.boxes[#pane.boxes + 1] = { check = check, def = def }
-		anchor = check
+		if def.column ~= 2 then
+			anchor = check
+		end
 	end
 	local scaleLabel
 	scaleLabel, pane.scaleValue = stepper(pane, anchor, L["Step card size"], function(delta)

@@ -45,6 +45,13 @@ Engine\Progress.lua
 Classes\DRUID.lua
 Classes\HUNTER.lua
 
+Automation\Core.lua
+Automation\Quests.lua
+Automation\Gossip.lua
+Automation\Taxi.lua
+Automation\Trainer.lua
+Automation\Vendor.lua
+
 Guides\Travel\Borders.lua
 Guides\Chapters\mulgore-1-12.lua
 Guides\Chapters\druid-bear-form-10.lua
