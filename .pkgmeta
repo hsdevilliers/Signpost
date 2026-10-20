@@ -15,6 +15,8 @@ ignore:
   - .github
   - .venv
   - docs
+  - Media/Source
+  - Media/curseforge-logo.png
   - incoming
   - tests
   - tools
