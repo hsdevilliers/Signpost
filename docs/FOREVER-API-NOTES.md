@@ -196,9 +196,13 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
 - [ ] The "Help improve Signpost" window (`UI/Contribute.lua`, `/signpost contribute`) in the real client: built from
   `ButtonFrameTemplate`, `UICheckButtonTemplate` and `UIPanelButtonTemplate` on specs only. Does it lay out (text not clipped, checkbox
   clickable on its label, Escape closes it, opens once by itself on a release build, not in combat)?
-- [ ] The "Help improve Signpost" window (`UI/Contribute.lua`, `/signpost contribute`) in the real client: built from
-  `ButtonFrameTemplate`, `UICheckButtonTemplate` and `UIPanelButtonTemplate` on specs only. Does it lay out (text not clipped, checkbox
-  clickable on its label, Escape closes it, opens once by itself on a release build, not in combat)?
+- [ ] **Druid forms in Forever** (sources disagree; the druid guide's Moonglade steps assume the first reading): is **Teleport: Moonglade**
+  a level-10 trainer spell as in Classic, or a reward of the Bear Form chain (one Forever guide lists it as a reward)? How does a druid
+  get back from Moonglade (hearthstone, a flight path, the spell)? Is **Cat Form** (level 20) a new quest chain ("The Great Cat Spirit",
+  three relics in the Stormrage Barrow Dens: ForeverChanges, beta) or a trainer spell (another guide)? Does the Windshaper Skyborne druid
+  have its own chain ("The Great Windborne Cat Spirit")? Record the quest IDs with `Core/Learn.lua` (docs/CLASS-QUESTS.md).
+- [ ] **Positions in the guides** come from QuestieDB's converted Classic Era coordinates (Mulgore's map was re-scaled in the conversion,
+  factor 0.835; the NPC and terrain world positions are assumed unchanged). Walk the first Mulgore and Durotar steps and confirm the pins.
 - [ ] `C_QuestLog.GetAllCompletedQuestIDs()` populated at `PLAYER_ENTERING_WORLD` or only after a `QUEST_LOG_UPDATE`? (A new character
   has none: re-run `/signpost probe` after turning in a few quests, relog, probe again.)
 - [ ] What each of the **7** `GetProfessions()` values holds once professions are learned, and which one is **First Aid** — the

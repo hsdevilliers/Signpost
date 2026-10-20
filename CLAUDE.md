@@ -20,6 +20,13 @@ Full plan: `docs/PLAN.md`. Client/API discoveries: `docs/FOREVER-API-NOTES.md`. 
   continues after launch. The user can only play in short sessions: keep in-game requests short and say what each one is for.
 - **A friend will play a druid on hardcore and run the addon in the background for data collection.** The recorder must be safe to
   hand to someone else (no player names, no chat) and the import path must take his SavedVariables.
+- **Forever is not Classic (user, 2026-10-20, standing).** WoW: Forever is its own game, built on top of Classic. It has things Classic
+  does not: new class quests (adopted in the manner of Season of Discovery, e.g. a level 24 group quest for a rogue's poisons, a Cat Form
+  quest chain for druids), new zones and a new race (Skyborne), reworked classes and abilities, different XP and dungeon tuning, a
+  Hardcore ruleset. Never treat Classic data, guides or behavior as Forever's truth. The data pack's QuestieDB layer is a *Classic
+  baseline*: use it as a starting point, say so wherever it is the source, look for the Forever additions (docs/CLASS-QUESTS.md,
+  FOREVER-API-NOTES) before calling a chapter or class module complete, and let anything shown by the Forever client, the Forever
+  community or in-game recording override it. A step or module built only on the baseline carries that caveat.
 
 Read `docs/PLAN.md` before doing anything. Work phase by phase; do not start a later phase until the current
 phase's acceptance criteria are checked off in `docs/PROGRESS.md`. Exception (user, 2026-10-17): Phases 1–3 are built in
@@ -74,8 +81,8 @@ starters, objective items with their drop sources, things a step buys or collect
 stats or prices.
 
 **Data sources (user, 2026-10-17):** the private pack is our own database, built in layers (`Signpost_Data/layers/`, merged by
-`tools/signpost_tools/datapack.py`): the client's own dumps, QuestieDB's Forever data, the Wowhead exporter, and positions learned in
-game.
+`tools/signpost_tools/datapack.py`): the client's own dumps, QuestieDB's data (a converted Classic Era baseline, not Forever content), the Wowhead exporter, and
+positions learned in game.
 - **QuestieDB**: used with its maintainers' permission (Questie Discord, 2026-10-17) as an input to the private pack only. Read its files
   as data (never execute them), keep only the facts above in our schema, never copy its code, formats, corrections or text, never put
   its tables in the public repo. User decision (2026-10-20): the permission is taken to cover the quest IDs and coordinates that public

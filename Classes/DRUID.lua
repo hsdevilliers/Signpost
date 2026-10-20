@@ -26,6 +26,9 @@ ns.Classes:Register("DRUID", {
 			races = { "Tauren" },
 		},
 		{ id = "aquatic-form", name = "Aquatic Form", level = 16, quests = { 26, 28, 30, 31 }, races = { "Tauren" } },
+		-- Forever's own chain (not in the Classic baseline, so no IDs yet; the lint wants a `.todo` naming it in the guide):
+		-- "The Great Cat Spirit" x3, "Blessings of the Great Cat Spirit", "To Thunder Bluff"; docs/CLASS-QUESTS.md
+		{ id = "cat-form", name = "Cat Form", level = 20, quests = {}, pending = true },
 		{ id = "torwa-pathfinder", name = "Torwa Pathfinder", level = 52, quests = { 9063, 9052, 9051, 9053 } },
 	},
 })

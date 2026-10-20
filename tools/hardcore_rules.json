@@ -56,6 +56,62 @@
       "text": "Summons Lunaclaw: be fully buffed and healed first; Entangling Roots buys distance for healing. Come back later if unsure.",
       "source": "joanasworld Tauren 1-12 Mulgore guide",
       "confidence": "medium"
+    },
+    {
+      "id": 898,
+      "name": "Free From the Hold",
+      "action": "skip",
+      "reason": "hardcore: escort quest (Gilthares); clear Northwatch's mobs first and two goblins spawn near the end",
+      "source": "Classic Wow Archive Barrens questing guide (northern Barrens), found by the adversarial review",
+      "confidence": "high"
+    },
+    {
+      "id": 863,
+      "name": "The Escape",
+      "action": "skip",
+      "reason": "hardcore: escort quest (Wizzlecrank's Shredder); two goblins spawn near the end",
+      "source": "Classic Wow Archive Barrens questing guide (northern Barrens), found by the adversarial review",
+      "confidence": "high"
+    },
+    {
+      "id": 891,
+      "name": "The Guns of Northwatch",
+      "action": "skip",
+      "reason": "hardcore: kills Captain Fairmount and two cannoneers inside Northwatch Hold; the data carries no elite flag for them",
+      "source": "adversarial review of the Tauren Druid guide (the targets, not a community list)",
+      "confidence": "medium"
+    },
+    {
+      "id": 851,
+      "name": "Verog the Dervish",
+      "action": "skip",
+      "reason": "hardcore: named Kolkar target with no position or elite flag in the data",
+      "source": "adversarial review of the Tauren Druid guide",
+      "confidence": "low"
+    },
+    {
+      "id": 852,
+      "name": "Hezrul Bloodmark",
+      "action": "skip",
+      "reason": "hardcore: named Burning Blade target with no elite flag in the data",
+      "source": "adversarial review of the Tauren Druid guide",
+      "confidence": "low"
+    },
+    {
+      "id": 4021,
+      "name": "Counterattack!",
+      "action": "skip",
+      "reason": "hardcore: the banner is guarded by Warlord Krom'zar, an elite the data does not link to the quest",
+      "source": "the data pack (NPC 9456 is rank elite) and the adversarial review",
+      "confidence": "medium"
+    },
+    {
+      "id": 5930,
+      "name": "Great Bear Spirit",
+      "action": "note",
+      "text": "VERIFY(beta): the real quest has you meet the Great Bear Spirit in Moonglade (west of Nighthaven); the pack has no objective for it.",
+      "source": "adversarial review (Wowpedia/Icy Veins as it cites them); not confirmed for Forever",
+      "confidence": "low"
     }
   ]
 }

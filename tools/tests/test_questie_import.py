@@ -365,12 +365,17 @@ class BuildTest(unittest.TestCase):
             importer, counts = qi.import_layer(root, pack, max_drops=3)
             self.assertEqual((counts["quests"], counts["npcs"], counts["objects"], counts["items"]), (7, 9, 2, 5))
             layer = json.loads((pack / "layers" / "questie.json").read_text(encoding="utf-8"))
-            self.assertEqual(layer["origin"], f"QuestieDB {SHA[:10]} (Forever build {BUILD}), horde")
+            self.assertIn(f"QuestieDB {SHA[:10]}: a Classic Era baseline", layer["origin"])
+            self.assertIn(f"geometry of build {BUILD}", layer["origin"])
+            self.assertIn("no Forever content", layer["origin"])  # the pack must never present the baseline as Forever's data
             quests = datapack.read_table(pack, "quests")  # the generated Lua parses back
             self.assertEqual(quests[1]["src"], "questie")
             self.assertEqual(quests[2]["s"], {"npc": [102]})
             gaps = (pack / "data-gaps.md").read_text(encoding="utf-8")
             self.assertIn("- quests whose start has no position (2): 5, 8", gaps)
+            self.assertIn("## Not in this pack: Forever's own content", gaps)
+            self.assertIn("Zephras Isle (2521): 0 quests, 0 NPCs (nothing)", gaps)
+            self.assertIn("Classic **baseline**", gaps)
             for text in TEXTS:
                 for path in pack.glob("*.lua"):
                     self.assertNotIn(text, path.read_text(encoding="utf-8"))

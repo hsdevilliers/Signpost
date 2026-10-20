@@ -231,12 +231,25 @@ Acceptance
   the guide now covers 1-20; `guide_lint --strict` with the pack: 0 errors, 30 `.todo` (travel gaps, objectives with no position).
   `guide_draft.py` gained `--hardcore` criteria (elite/boss kill, quest level too far above the chapter), `--class-only`, `--done`;
   the pack's NPCs carry QuestieDB's elite `rank` (808 elite, 35 rare elite, 76 boss).
-- [ ] Moonglade/Bear Form timing and the safe way there (design call, docs/HARDCORE.md); Windshaper guide (needs recorded data); levels 20-60.
+- [x] Adversarial review of the guide (independent agent, 2026-10-20): escorts, Northwatch kills, named elite-level targets, a profession-gated
+  chain (Kodo Hide Bag), Stonetalon-only eggs and level-6 kills at level 1 were all in the route. Fixed in the tools (profession-gated and
+  off-zone quests blocked, objectives wait for the level, tighter pinning, the hardcore margin is 1, exclusive alternatives get a
+  `#skipquest`) and in `hardcore_rules.json` (14 rules); `tools/rebuild_drafts.py` + `tools/drafts.json` rebuild every chapter.
+- [ ] Moonglade/Bear Form: where Teleport: Moonglade is learned and the way back (docs/HARDCORE.md); `.todo` semantics (open question there);
+  Cat Form (level 20, new in Forever, docs/CLASS-QUESTS.md) is a `.todo` until IDs are recorded; Windshaper guide (needs recorded data); levels 20-60.
+
+## Troll Hunter guide (Release 1)
+
+- [x] `Classes/HUNTER.lua` (hunter-only chains of the pack: Etched notes, the level-10 pet chain per race, The Hunter's Charm; trainer spells
+  empty; no `.tame`/`.ammo` directives: the pet chain is plain quest objectives) and `Guides/HordeTrollHunter.lua` with `durotar-1-12`
+  (drafted, hardcore rules applied). `guide_lint --strict` with the pack: 0 errors.
+- [ ] Orgrimmar and the Barrens for Trolls (levels 12-20+), the Forever-new hunter quests (docs/CLASS-QUESTS.md), profession tracks and the
+  `#professions` header, levels 20-60.
 
 ## Hardcore (user, 2026-10-20)
 
-- [x] Research and policy: `docs/HARDCORE.md` (sources with confidence, what is not known). `tools/hardcore_rules.json` (4 skips, 1 note,
-  each with a source) and `tools/guide_draft.py --hardcore` (skips become `#skipquest`, notes become `.note`); 3 tests.
+- [x] Research and policy: `docs/HARDCORE.md` (sources with confidence, what is not known). `tools/hardcore_rules.json` (now 14 rules,
+  each with a source and a confidence) and `tools/guide_draft.py --hardcore` (skips become `#skipquest`, notes become `.note`); 3 tests.
 - [ ] Dungeon chapters default to skipped in a hardcore guide (needs a chapter-header flag); the hardcore-ruleset probe; group/elite tags.
 
 ## Notes

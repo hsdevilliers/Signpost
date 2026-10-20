@@ -790,10 +790,12 @@ def import_layer(questie_dir: Path, pack: Path, **options: object) -> tuple[Impo
     questie = load(questie_dir)
     importer = Importer(questie, **options)  # type: ignore[arg-type]
     tables = importer.run()
-    origin = f"QuestieDB {questie.commit or 'unknown commit'}"
+    # QuestieDB's "Forever" tables are its Classic Era tables with the map coordinates converted to Forever's geometry
+    # (data/Forever/conversion.json: "a converted Era baseline, not complete Forever content"): say so wherever it shows.
+    origin = f"QuestieDB {questie.commit or 'unknown commit'}: a Classic Era baseline, coordinates converted to Forever's maps"
     if questie.build:
-        origin += f" (Forever build {questie.build})"
-    origin += f", {importer.faction}"
+        origin += f" (geometry of build {questie.build})"
+    origin += f", {importer.faction}; no Forever content (new quests, zones, race and class restrictions)"
     datapack.write_layer(pack, "questie", tables, origin, importer.problem_lines())
     for table, records in tables.items():
         importer.stats[f"{table} in the questie layer"] = len(records)

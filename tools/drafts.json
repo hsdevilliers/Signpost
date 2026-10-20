@@ -1,0 +1,131 @@
+{
+  "about": "Manifest for tools/rebuild_drafts.py: the drafted guide chapters, rebuilt from the data pack. Chapter files are generated; change this file, tools/hardcore_rules.json or the tools, not the chapter text.",
+  "guides": [
+    {
+      "guide": "horde-tauren-druid",
+      "faction": "Horde",
+      "chapters": [
+        {
+          "id": "mulgore-1-12",
+          "name": "Mulgore",
+          "race": "Tauren",
+          "class": "DRUID",
+          "zones": [
+            1412,
+            1456
+          ],
+          "levels": "1-12",
+          "args": [
+            "--exclude",
+            7820,
+            "--exclude-reason",
+            "no known source for the cloth; not worth a detour"
+          ]
+        },
+        {
+          "id": "druid-bear-form-10",
+          "name": "Druid: Moonglade and Bear Form",
+          "race": "Tauren",
+          "class": "DRUID",
+          "zones": [
+            1456,
+            1412,
+            1413,
+            1450
+          ],
+          "levels": "10-12",
+          "args": [
+            "--class-only",
+            "--done",
+            5926,
+            "--done",
+            5927,
+            "--done",
+            5928
+          ]
+        },
+        {
+          "id": "barrens-10-20",
+          "name": "The Barrens",
+          "race": "Tauren",
+          "class": "DRUID",
+          "zones": [
+            1413
+          ],
+          "levels": "10-20",
+          "args": []
+        },
+        {
+          "id": "druid-forms-14-20",
+          "name": "Druid: Lessons Anew and Aquatic Form",
+          "race": "Tauren",
+          "class": "DRUID",
+          "zones": [
+            1456,
+            1412,
+            1413,
+            1450
+          ],
+          "levels": "14-20",
+          "args": [
+            "--class-only",
+            "--done",
+            5926,
+            "--done",
+            5927,
+            "--done",
+            5928,
+            "--done",
+            5922,
+            "--done",
+            5930,
+            "--done",
+            5932,
+            "--done",
+            6002
+          ]
+        }
+      ],
+      "rewrites": [
+        {
+          "match": "\\.todo \"travel from [A-Za-z ]+ to Moonglade: the travel graph has no route yet\"",
+          "with": ".todo \"Go to Moonglade: cast Teleport: Moonglade (VERIFY(beta): where a druid learns it; docs/CLASS-QUESTS.md), else the way is not in the data\""
+        },
+        {
+          "match": "\\.todo \"travel from Moonglade to ([A-Za-z ]+): the travel graph has no route yet\"",
+          "with": ".todo \"Return from Moonglade to \\1 (VERIFY(beta): hearthstone or flight path; the way back is not in the data)\""
+        }
+      ]
+    },
+    {
+      "guide": "horde-troll-hunter",
+      "faction": "Horde",
+      "chapters": [
+        {
+          "id": "durotar-1-12",
+          "name": "Durotar",
+          "race": "Troll",
+          "class": "HUNTER",
+          "zones": [
+            1411,
+            1454
+          ],
+          "levels": "1-12",
+          "args": []
+        },
+        {
+          "id": "barrens-10-20-hunter",
+          "name": "The Barrens",
+          "race": "Troll",
+          "class": "HUNTER",
+          "zones": [
+            1413
+          ],
+          "levels": "10-20",
+          "args": []
+        }
+      ],
+      "rewrites": []
+    }
+  ]
+}

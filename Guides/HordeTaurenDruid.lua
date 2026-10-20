@@ -13,7 +13,7 @@ ns.Guides:Register({
 #include druid-bear-form-10
 #include barrens-10-20
 #include druid-forms-14-20
-#skipquest 5926 >> alternative start of the same chain; 5928 (Thunder Bluff) is routed
-#skipquest 5927 >> alternative start of the same chain; 5928 (Thunder Bluff) is routed
+step
+  .todo "Cat Form (level 20): a new quest chain in Forever (The Great Cat Spirit, then three relics in the Stormrage Barrow Dens); IDs and positions are pending, docs/CLASS-QUESTS.md"
 ]],
 })
