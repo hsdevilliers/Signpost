@@ -147,10 +147,16 @@ Acceptance
 ## Phase 5 — Automation
 
 Tasks
-- [ ] Quest accept/turn-in/gossip per §3.4; reward selection (guide `.reward` → highest vendor-sell value → stop if unknown);
-  Shift bypass; "guide quests only" mode.
-- [ ] Taxi (both API shapes), trainer (spell-ID matched, gold reserve), vendor (`.buy`), hearth set/use (secure button).
-- [ ] Settings tab + Options panel entries; every automation defaults off.
+- [x] Quest accept/turn-in/gossip per §3.4; reward selection (guide `.reward` → highest vendor-sell value → stop if unknown);
+  Shift bypass; "guide quests only" mode. — `Automation/Quests.lua`, `Gossip.lua`; built and tested on the generic client mock
+  (`tests/automation_spec.lua`), NOT verified in the client: every API shape is an open probe. Not built: the known values drawn
+  on the reward buttons when it stops (PLAN §3.4).
+- [x] Taxi (both API shapes), trainer (spell-ID matched, gold reserve), vendor (`.buy`), hearth set/use (secure button). —
+  `Taxi.lua`, `Trainer.lua`, `Vendor.lua`; `.home` offers the Hearthstone on the step card's secure button (`UI/StepFrame.lua`,
+  tested in `tests/ui_spec.lua`); the hearth is set by the gossip option plus the CONFIRM_BINDER popup (`Gossip.lua`). Mock only.
+- [x] Settings tab + Options panel entries; every automation defaults off. — Settings tab: an Automation column (nine
+  toggles, `tests/journal_spec.lua`) and `/signpost automation [on|off|status|reserve <gold>]`; defaults in
+  `SignpostCharDB.automation`, all false. No separate Blizzard Options panel entry (the Journal is the settings home).
 
 Acceptance
 - [ ] A Durotar run with all toggles on needs one NPC click per interaction and nothing else; multi-reward quests pick the highest

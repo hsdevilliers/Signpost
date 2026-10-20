@@ -392,6 +392,41 @@ describe("Journal", function()
 			assert.is_true(ns.db.contribute.enabled)
 		end)
 
+		it("lists the automation toggles, all off, and writes them to the character's settings", function()
+			local ns = start()
+			ns.Journal:Show("settings")
+			local boxes = {}
+			for _, box in ipairs(ns.Journal.frame.settings.boxes) do
+				if box.def.column == 2 then
+					boxes[#boxes + 1] = box
+				end
+			end
+			assert.are.equal(9, #boxes)
+			for _, box in ipairs(boxes) do
+				assert.is_false(box.def.get())
+			end
+			local byLabel = {}
+			for _, box in ipairs(boxes) do
+				byLabel[box.def.label] = box
+			end
+			for label, key in pairs({
+				["Accept the guide's quests"] = "quests",
+				["Turn in the guide's quests"] = "turnIn",
+				["Never pick rewards: always let me choose"] = "rewardAsk",
+				["Buy the items the guide lists"] = "vendor",
+			}) do
+				local box = byLabel[label]
+				assert.is_not_nil(box, label)
+				box.check.GetChecked = function()
+					return true
+				end
+				box.check.scripts.OnClick(box.check)
+				assert.is_true(ns.char.automation[key], key)
+				assert.is_true(box.def.get())
+			end
+			assert.is_false(ns.char.automation.taxi)
+		end)
+
 		it("changes the step card's size and opacity in steps of a tenth", function()
 			local ns = start()
 			ns.Journal:Show("settings")

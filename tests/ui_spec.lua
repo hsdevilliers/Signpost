@@ -514,6 +514,26 @@ describe("quest item button", function()
 		assert.are.equal("", button.count:GetText())
 	end)
 
+	it("offers the Hearthstone on a .home step, only from the bags, and never uses it by itself", function()
+		local ns, mock, _, engine = load({
+			setup = function(engine)
+				engine.items[6948] = 1
+			end,
+		})
+		engine.guide.steps[1].directives = { { name = "home", args = {} } }
+		go(ns, engine, 1)
+		local button = ns.StepFrame.itemButton
+		assert.are.equal("item:6948", button:GetAttribute("item"))
+		assert.is_true(button:IsShown())
+		assert.are.equal("item", button:GetAttribute("type")) -- a secure item button: the player's click casts it
+		-- not in the bags: not offered
+		engine.items[6948] = 0
+		go(ns, engine, 2)
+		go(ns, engine, 1)
+		assert.is_false(button:IsShown())
+		noErrors(ns, mock)
+	end)
+
 	it("goes away with the step", function()
 		local ns, _, _, engine = load({
 			setup = function(engine)

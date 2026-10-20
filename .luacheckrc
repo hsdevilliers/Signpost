@@ -177,6 +177,16 @@ read_globals = {
 	"WorldMapFrame",
 	"date",
 	"hooksecurefunc",
+	-- added for Automation/
+	"AcceptQuest",
+	"BuyMerchantItem",
+	"BuyTrainerService",
+	"CompleteQuest",
+	"GetMoney",
+	"GetQuestReward",
+	"SelectActiveQuest",
+	"SelectAvailableQuest",
+	"SettingsPanel",
 }
 
 -- Specs and the mock define the WoW globals they need.

@@ -296,6 +296,43 @@ Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.
 - [ ] The quest item button (`type = "item"`, `item = "item:<id>"`) uses the item by click and by `/click SignpostItemButton`,
   with `ActionButtonUseKeyDown` on and off; a step change in combat updates it after combat without `ADDON_ACTION_BLOCKED`.
 
+Automation (Automation/*.lua, UI/Journal.lua, UI/StepFrame.lua; all built on the mock, none seen in the client; each has a
+`VERIFY(beta)` comment where the code relies on it). Test with every toggle on in `/signpost automation on`, Shift released:
+- [ ] `AcceptQuest()`, `CompleteQuest()`, `GetQuestReward(i)`, `C_GossipInfo.SelectAvailableQuest/SelectActiveQuest`,
+  `SelectAvailableQuest(i)`, `SelectActiveQuest(i)`, `BuyTrainerService(i)`, `BuyMerchantItem(i, n)` and `TakeTaxiNode(x)` can be
+  called from an addon event handler without `ADDON_ACTION_BLOCKED` (the Phase 5 probe above covers the first and third).
+- [ ] `QUEST_DETAIL`: `QuestGetAutoAccept()` is true for quests that accept themselves (the addon then does not call AcceptQuest);
+  `C_QuestLog.IsQuestTrivial(questID)` exists (the wide accept mode treats a missing API as "not trivial").
+- [ ] `GetAvailableQuestInfo(i)` returns `isTrivial, frequency, isRepeatable, isLegendary, questID` (the fifth is what a
+  `QUEST_GREETING` selection is matched on), and `GetActiveQuestID(i)` exists; `C_GossipInfo.GetActiveQuests()` entries carry
+  `questID` and `isComplete`, `GetAvailableQuests()` entries `questID` and `isTrivial`.
+- [ ] Reward values: `C_Item.GetItemInfo(link)` returns `sellPrice` as the 11th value, `GetQuestItemInfo("choice", i)` the quantity
+  as the 3rd; `C_Item.RequestLoadItemDataByID` is answered by `ITEM_DATA_LOAD_RESULT(itemID, success)`; the wait is 2 s.
+  (Extends the "At QUEST_COMPLETE ..." probe.) `GetQuestReward(0)` is right for a quest with no choice, `1` for exactly one.
+- [ ] Gossip: `C_GossipInfo.GetOptions()` entries carry `gossipOptionID` (else `orderIndex` with `SelectOptionByIndex`), `name`,
+  `icon`; the innkeeper's bind option has the icon file ID of `Interface\GossipFrame\BinderGossipIcon` (or the words "inn" and
+  "home" in enUS); a single-option gossip at a trainer/vendor/flight master is selected by `SelectOption`.
+- [ ] Setting the hearth: after the bind option, `CONFIRM_BINDER` fires and a popup `CONFIRM_BINDER` shows; which of `StaticPopup_FindVisible`
+  + its `button1:Click()`, `C_PlayerInteractionManager.ConfirmationInteraction(Enum.PlayerInteractionType.Binder)` and `ConfirmBinder`
+  confirms it (the code tries them in that order at 0, 0.2 and 0.6 s). (Extends the "Setting the hearth without ConfirmBinder" probe.)
+- [ ] Flights: at a flight master, which node list is filled (`NumTaxiNodes` > 0, so the index form) and that `TakeTaxiNode(index)`
+  takes the flight; on the `C_TaxiMap` shape whether `TakeTaxiNode(nodeID)` or `TakeTaxiNode(slotIndex)` does. (Extends the taxi
+  probes above.)
+- [ ] Trainer: `GetTrainerServiceInfo(i)` returns `name, subText, serviceType` with `serviceType` "available"/"unavailable"/"used";
+  `GetTrainerServiceItemLink(i)` is a `spell:` link (else `C_TooltipInfo.GetTrainerService(i).id` is the spell ID); a trainer's
+  list is not hidden by a type filter ("available" shown); the spell IDs in `Classes/<CLASS>.lua` `trainerSpells` equal the
+  services' (they are empty today, so `.train class` buys nothing yet); a profession's rank services' spell IDs, to fill
+  `rankSpells` in the profession modules (until then `.trainprof` buys nothing).
+- [ ] Vendor: `C_MerchantFrame.GetItemInfo(i)` returns a table with `price`, `stackCount`, `numAvailable` (-1 unlimited),
+  `isPurchasable`, `hasExtendedCost`; `GetMerchantItemMaxStack(i)` exists; `BuyMerchantItem(i, n)` counts purchases (bundles of
+  `stackCount`), not items.
+- [ ] Hearth button: `type = "item"` on `SignpostItemButton` uses item 6948 on click for a `.home` step (extends the quest item
+  button probe), and the Hearthstone is in the bags of a new character.
+- [ ] Settings tab, second column: the nine Automation checkboxes at x = 470 neither overlap the first column's labels nor run off
+  the pane at 800 x 560 (the longest first-column label ends at about x = 450).
+- [ ] `InCombatLockdown` and `UnitIsDeadOrGhost("player")` are plain booleans (never secret) and `SettingsPanel` is the
+  Blizzard settings frame (an open panel blocks automation).
+
 ## Wowhead Forever data environment (fill in Phase 1)
 Filled from the user's `python tools/wowhead_env.py` report (Claude Code never accesses Wowhead). Until that report
 confirms them, the page structures `tools/wowhead_export.py` parses are assumptions:
