@@ -22,9 +22,12 @@ globals = {
 	"SLASH_SIGNPOST2",
 	"SlashCmdList",
 	"Signpost_OnAddonCompartmentClick",
+	-- Core/Pace.lua swaps it for a no-op while its own /played request is out (and restores it).
+	"ChatFrame_DisplayTimePlayed",
 }
 
 read_globals = {
+	"RequestTimePlayed",
 	-- Lua extensions in the client
 	"wipe",
 	"tinsert",
