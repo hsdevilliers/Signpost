@@ -127,6 +127,9 @@ local function load(opts)
 		opts.setup(engine, ui)
 	end
 	stubEngine(ns, engine)
+	-- These specs run on stand-ins for the engine, which the real Journal (UI/Journal.lua, covered by journal_spec.lua)
+	-- cannot read: the step frame's and the pins' Journal hooks are tested against a Journal the spec installs itself.
+	ns.Journal = nil
 	mock.fire("ADDON_LOADED", "Signpost")
 	mock.fire("PLAYER_LOGIN")
 	return ns, mock, ui, engine

@@ -112,7 +112,7 @@ Core directives (`Engine/Directives.lua`):
 | `.buy <itemID>,<count>` / `.collect <itemID>,<count>` | at least `count` in bags | vendor / source |
 | `.use <itemID>` | — (quest-item button; pair with `.complete`) | |
 | `.level <N>` | player level ≥ N | |
-| `.todo "<reason>"` | never (the step shows the reason; the lint counts it); the quotes are optional (the lint warns without them) | |
+| `.todo "<reason>"` | never by itself (the step shows the reason; the lint counts it); beside another completable directive it is only a note and the step completes on those (user decision 2026-10-20), a step that is only a `.todo` waits for `>`; the quotes are optional (the lint warns without them) | |
 | `.note <text>`, `.text <text>`, `.link <url>` | — (display; `.link` is copyable in the journal) | |
 | `.sticky <directive line>` | the inner directive, which must be one that can be satisfied (never a gate, `.sticky`, `.optional`, `.hub`, `.note`, ...); it stays active beside later steps until satisfied once. A step with nothing but sticky directives completes at once | per inner |
 | `.hub <name>` | — (marks a visit to a town for profession tracks; one per step) | |

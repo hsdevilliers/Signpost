@@ -313,6 +313,24 @@ route touches.
   no-ops until the journal exists: right-click → `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`,
   `ns.Journal:IsShown()` for `hideWithJournal`.
 
+### UI/Journal.lua — `ns.Journal`
+
+The big window (PLAN §3.2), built on `UI:CreateDialogFrame` (UI/Widgets.lua: `ButtonFrameTemplate`, movable, Esc closes it through
+`UISpecialFrames`; `UIPanelWindows` is not used, to keep the panel manager untainted). A guide dropdown (`WowStyle1DropdownTemplate`, only the
+guides `ns.Guides:Compatible` accepts, choosing one calls `ns.Guides:Select`), a `SearchBoxTemplate`, three `PanelTabButtonTemplate` tabs:
+**Route** (a chapter list with done/total counts and the current chapter marked, the selected chapter's steps with `[x]` done, `[-]` skipped,
+`>` current; a click goes to the step through `Progress:JumpToId`, more than 20 steps away needs Shift; a dungeon chapter has a "Skip this
+dungeon" box (`Progress:SetChapterSkipped`); a search replaces the step list with matching steps of the whole guide; a "Current step" button),
+**the class tab** (the class module's `classQuests` for the character's race, each with its status from `Context:QuestTurnedIn/QuestInLog`; a
+`pending` chain reads "new in Forever: quest IDs not known yet"; hidden when the class has no chains) and **Settings** (the step card and pins
+settings, the data sharing consent, the card's size and opacity, the detected profession plan with a Restore button per declined profession,
+"Choose the guide for me", a button for the data sharing window). Lists are plain scroll frames (`ScrollFrameTemplate`), one chapter at a time.
+- API: `:Show(tab)` (`"route"`, `"class"`, `"settings"`), `:Hide()`, `:Toggle(step)`, `:IsShown()`, `:ShowStep(step)` (opens the step's chapter
+  and flashes its row for 5 s), `:ShowCurrent()`, `:SelectTab(name)`, `:Refresh()`. Refreshes (coalesced, 0.2 s) on `GUIDE_LOADED`,
+  `STEP_CHANGED`, `GUIDE_SELECTED`, `CONTRIBUTE_CHANGED`, `PROFESSION_PLAN_CHANGED`. Opened by `/signpost` (no argument), `/signpost journal [tab]`,
+  the AddOn Compartment entry, the minimap button (LibDataBroker + LibDBIcon, registered at `DB_READY`; right-click opens Settings) and a
+  right-click on the step card; a world-map pin click calls `:ShowStep`. It sets `SignpostDB.journal.tab` and `SignpostDB.minimapButton`.
+
 ## TOC order (integration adds the lines; tracks never edit the TOCs)
 
 ```

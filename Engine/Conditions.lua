@@ -173,10 +173,19 @@ function Conditions:IsComplete(step, context, states)
 	local optional = optionalQuests(step)
 	local completable, stickies = 0, 0
 	local gotos, counted, optionals = {}, {}, {}
-	for _, entry in ipairs(entries(step, states)) do
+	local list = entries(step, states)
+	-- A .todo never completes a step by itself, but beside another completable directive it is only a note: the step
+	-- finishes when those are satisfied (a step that is nothing but a .todo still waits for ">").
+	local others = 0
+	for _, entry in ipairs(list) do
+		if not entry.sticky and entry.directive.name ~= "todo" and isCompletable(entry.def) then
+			others = others + 1
+		end
+	end
+	for _, entry in ipairs(list) do
 		if entry.sticky then
 			stickies = stickies + 1
-		elseif isCompletable(entry.def) then
+		elseif isCompletable(entry.def) and not (entry.directive.name == "todo" and others > 0) then
 			local ok = satisfied(entry, context)
 			detail[entry.index] = ok
 			completable = completable + 1

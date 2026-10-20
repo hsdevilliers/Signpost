@@ -105,10 +105,16 @@ describe("completion", function()
 		end
 	end)
 
-	it("a .todo holds the step until the player moves on", function()
+	it("a .todo beside another completable directive is only a note: the step completes on the other one", function()
 		local step = mocks.step(ns, { ".goto 1411,42.1,68.7", '.todo "Position not in the data pack yet"' })
+		assert.is_false(isComplete(ns, step, context)) -- not there yet
 		context:Near(1411, 42.1, 68.7, 0)
-		assert.is_false(isComplete(ns, step, context))
+		assert.is_true(isComplete(ns, step, context)) -- arrived: the todo does not hold it
+	end)
+
+	it("a step that is only a .todo still waits for the player", function()
+		local step = mocks.step(ns, { '.todo "Cat Form: IDs pending"' })
+		assert.is_false((ns.Conditions:IsComplete(step, context, {})))
 	end)
 
 	it("an empty step waits for the player", function()

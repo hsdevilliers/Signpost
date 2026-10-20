@@ -135,9 +135,11 @@ Acceptance
 ## Phase 4 — Journal window
 
 Tasks
-- [ ] `UI/Journal.lua` per §3.2 with Route, Class (from the active class module; hidden if none) and Settings tabs; guide dropdown;
-  inline dungeon chapters with Skip; profession-step hover details; `UIPanelWindows`; LibDBIcon + compartment entry.
-- [ ] Search; jump-to-step; 5 s highlight; guide dropdown.
+- [x] `UI/Journal.lua` (2026-10-20, 22 specs in `tests/journal_spec.lua`): Route, class and Settings tabs, guide dropdown, search, jump-to-step
+  (Shift beyond 20 steps), 5 s highlight, dungeon Skip box, LibDBIcon minimap button, compartment entry, `/signpost` opens it. Deviations from
+  §3.2: plain scroll frames instead of `ScrollBox`, no `UIPanelWindows` registration (taint), no profession-step hover details, no Blizzard
+  Options category yet. In-game layout and templates are an open probe.
+- [x] `.todo` completes with its step's other directives (user decision 2026-10-20; GUIDE-FORMAT, `Engine/Conditions.lua`).
 
 Acceptance
 - [ ] Indistinguishable in style from Blizzard's Spellbook/Quest map; Esc closes it; no taint warnings when opened in combat.

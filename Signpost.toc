@@ -59,3 +59,4 @@ UI\Widgets.lua
 UI\Contribute.lua
 UI\StepFrame.lua
 UI\Pins.lua
+UI\Journal.lua

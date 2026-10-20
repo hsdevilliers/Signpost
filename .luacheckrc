@@ -40,6 +40,8 @@ read_globals = {
 	-- frames, fonts, constants
 	"UIParent",
 	"DEFAULT_CHAT_FRAME",
+	"PanelTemplates_SetNumTabs",
+	"PanelTemplates_SetTab",
 	"UISpecialFrames",
 	"Minimap",
 	"TaxiFrame",

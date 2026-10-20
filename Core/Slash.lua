@@ -18,6 +18,12 @@ function Slash:Run(input)
 	local command, rest = (input or ""):match("^%s*(%S*)%s*(.-)%s*$")
 	command = command:lower()
 	if command == "" then
+		-- /signpost alone opens the Journal once it exists; /signpost help lists the commands
+		local journal = ns.Journal
+		if journal and journal.Toggle then
+			ns.SafeCall(journal.Toggle, journal)
+			return
+		end
 		command = "help"
 	end
 	local entry = self.commands[command]
