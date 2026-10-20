@@ -1,0 +1,919 @@
+{
+  "guide": "horde-troll-hunter",
+  "preset": "greedy",
+  "hardcore": false,
+  "cap": 30,
+  "seconds": 104246.5089310776,
+  "penalty": 5400.0,
+  "complete": true,
+  "levels": {
+    "2": 341.5917103841561,
+    "3": 1385.24533793464,
+    "4": 1385.24533793464,
+    "5": 1841.5923340368317,
+    "6": 3095.61476079195,
+    "7": 4183.512900483285,
+    "8": 6256.570050749651,
+    "9": 7553.742116654831,
+    "10": 8768.478593376563,
+    "11": 10514.10112691949,
+    "12": 13264.603330529691,
+    "13": 15342.55786045962,
+    "14": 17920.03089470764,
+    "15": 21046.961390128665,
+    "16": 23248.396868837775,
+    "17": 25945.50819876048,
+    "18": 29041.742772524416,
+    "19": 33776.50681228746,
+    "20": 35455.83731160614,
+    "21": 39452.432643570624,
+    "22": 42456.750322721025,
+    "23": 44980.38958592597,
+    "24": 50865.527427450244,
+    "25": 56230.861194178164,
+    "26": 59489.76299598658,
+    "27": 77325.27884652349,
+    "28": 81191.89597916376,
+    "29": 85753.5939176793,
+    "30": 104246.5089310776
+  },
+  "legs": [
+    {
+      "zone": "Durotar",
+      "seconds": 14177.182724375745,
+      "levels": [
+        1,
+        12
+      ],
+      "hubs": [
+        "Durotar: Foreman Thazz'ril",
+        "Durotar: Gornek",
+        "Durotar: Hana'zua",
+        "Durotar: 44,64",
+        "Durotar: 46,66",
+        "Durotar: Pal'juh",
+        "Durotar: Master Gadrin",
+        "Durotar: 54,84",
+        "Durotar: 52,62",
+        "Durotar: 44,57",
+        "Durotar: 44,53",
+        "Durotar: Cook Torka",
+        "Durotar: Orgnil Soulscar",
+        "Durotar: 48,49",
+        "Durotar: Brakk",
+        "Durotar: 43,39",
+        "Durotar: 57,52",
+        "Durotar: 59,57",
+        "Durotar: 62,43",
+        "Durotar: Rezlak",
+        "Durotar: 51,21",
+        "Durotar: Misha Tor'kren",
+        "Durotar: 36,25",
+        "Durotar: Heglan Shadeeye",
+        "Durotar: 59,28",
+        "Durotar: Margoz",
+        "Durotar: 52,27",
+        "Durotar: 59,17",
+        "Durotar: 65,83",
+        "Durotar: 67,86",
+        "Durotar: 64,95",
+        "Durotar: 69,72"
+      ]
+    },
+    {
+      "zone": "The Barrens",
+      "seconds": 27544.46968666023,
+      "levels": [
+        12,
+        21
+      ],
+      "hubs": [
+        "The Barrens: Ak'Zeloth",
+        "The Barrens: Gazlowe",
+        "The Barrens: Mebok Mizzyrix",
+        "The Barrens: 62,45",
+        "The Barrens: 64,46",
+        "The Barrens: 63,49",
+        "The Barrens: Sergra Darkthorn",
+        "The Barrens: Thork",
+        "The Barrens: Gur'ak",
+        "The Barrens: 55,26",
+        "The Barrens: 55,23",
+        "The Barrens: 60,22",
+        "The Barrens: Wizzlecrank's Shredder",
+        "The Barrens: 52,11",
+        "The Barrens: Vrang Wildgore",
+        "The Barrens: Walton",
+        "The Barrens: 41,15",
+        "The Barrens: 45,22",
+        "The Barrens: Regthar Deathgate",
+        "The Barrens: Nalpak",
+        "The Barrens: 47,39",
+        "The Barrens: 52,46",
+        "The Barrens: 55,43",
+        "The Barrens: 62,33",
+        "The Barrens: 58,27",
+        "The Barrens: 59,25",
+        "The Barrens: 58,24",
+        "The Barrens: 55,15",
+        "The Barrens: 61,4",
+        "The Barrens: Wenikee Boltbucket",
+        "The Barrens: 47,13",
+        "The Barrens: 40,16",
+        "The Barrens: 43,24",
+        "The Barrens: 48,34",
+        "The Barrens: 43,48",
+        "The Barrens: 48,53",
+        "The Barrens: 50,50",
+        "The Barrens: Jorn Skyseer",
+        "The Barrens: 43,55",
+        "The Barrens: 45,53",
+        "The Barrens: Gann Stonespire",
+        "The Barrens: 61,54",
+        "The Barrens: Gilthares Firebough",
+        "The Barrens: 63,57",
+        "The Barrens: 64,41",
+        "The Barrens: Seereth Stonebreak",
+        "The Barrens: 39,13",
+        "The Barrens: 44,71",
+        "The Barrens: 47,74",
+        "The Barrens: 49,77",
+        "The Barrens: 48,85",
+        "The Barrens: 44,83",
+        "The Barrens: 42,82"
+      ]
+    },
+    {
+      "zone": "Orgrimmar",
+      "seconds": 1093.0796455352163,
+      "levels": [
+        21,
+        22
+      ],
+      "hubs": [
+        "Orgrimmar: Thatog",
+        "Orgrimmar: Neeru Fireblade",
+        "Orgrimmar: Craven Drok",
+        "Orgrimmar: Borstan",
+        "Orgrimmar: Kor'geld",
+        "Orgrimmar: Sian'dur",
+        "Orgrimmar: Horde Warbringer",
+        "Orgrimmar: Thrall"
+      ]
+    },
+    {
+      "zone": "Durotar",
+      "seconds": 323.0918655777599,
+      "levels": [
+        22,
+        22
+      ],
+      "hubs": [
+        "Durotar: 53,9"
+      ]
+    },
+    {
+      "zone": "Orgrimmar",
+      "seconds": 143.09186557775996,
+      "levels": [
+        22,
+        22
+      ],
+      "hubs": [
+        "Orgrimmar: Thrall"
+      ]
+    },
+    {
+      "zone": "Ashenvale",
+      "seconds": 5063.046484434914,
+      "levels": [
+        22,
+        23
+      ],
+      "hubs": [
+        "Ashenvale: Senani Thunderheart",
+        "Ashenvale: Kuray'bin",
+        "Ashenvale: Locke Okarr",
+        "Ashenvale: Torek",
+        "Ashenvale: Alonso",
+        "Ashenvale: Va'xug Firefure",
+        "Ashenvale: 41,66",
+        "Ashenvale: 40,70",
+        "Ashenvale: Eye of Kilrogg",
+        "Ashenvale: Ruul Snowhoof",
+        "Ashenvale: Je'neu Sancrea",
+        "Ashenvale: 11,30",
+        "Ashenvale: 31,44",
+        "Ashenvale: 33,38",
+        "Ashenvale: 67,55",
+        "Ashenvale: 51,72"
+      ]
+    },
+    {
+      "zone": "The Barrens",
+      "seconds": 5320.025914070118,
+      "levels": [
+        23,
+        24
+      ],
+      "hubs": [
+        "The Barrens: Ak'Zeloth",
+        "The Barrens: Sergra Darkthorn",
+        "The Barrens: 48,20",
+        "The Barrens: 45,80",
+        "The Barrens: 44,83",
+        "The Barrens: 41,80",
+        "The Barrens: 48,85",
+        "The Barrens: Gann Stonespire",
+        "The Barrens: Jorn Skyseer",
+        "The Barrens: Thork"
+      ]
+    },
+    {
+      "zone": "Ashenvale",
+      "seconds": 810.020860944405,
+      "levels": [
+        24,
+        24
+      ],
+      "hubs": [
+        "Ashenvale: 67,82"
+      ]
+    },
+    {
+      "zone": "Stonetalon Mountains",
+      "seconds": 5893.776596378481,
+      "levels": [
+        24,
+        26
+      ],
+      "hubs": [
+        "Stonetalon Mountains: 83,86",
+        "Stonetalon Mountains: Kaya Flathoof",
+        "Stonetalon Mountains: Xen'Zilla",
+        "Stonetalon Mountains: Witch Doctor Jin'Zil",
+        "Stonetalon Mountains: 65,92",
+        "Stonetalon Mountains: 54,73",
+        "Stonetalon Mountains: Maggran Earthbinder",
+        "Stonetalon Mountains: 41,53",
+        "Stonetalon Mountains: 39,50",
+        "Stonetalon Mountains: 36,61",
+        "Stonetalon Mountains: 37,66",
+        "Stonetalon Mountains: 36,69",
+        "Stonetalon Mountains: 30,63",
+        "Stonetalon Mountains: Veenix",
+        "Stonetalon Mountains: Ziz Fizziks",
+        "Stonetalon Mountains: 63,55",
+        "Stonetalon Mountains: 66,57",
+        "Stonetalon Mountains: Piznik",
+        "Stonetalon Mountains: 48,40",
+        "Stonetalon Mountains: 59,91"
+      ]
+    },
+    {
+      "zone": "Mulgore",
+      "seconds": 9706.309319029857,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "Mulgore: Muln Earthfury",
+        "Mulgore: Lorekeeper Raintotem",
+        "Mulgore: Ancestral Spirit",
+        "Mulgore: Ahab Wheathoof",
+        "Mulgore: Baine Bloodhoof",
+        "Mulgore: Harken Windtotem",
+        "Mulgore: Kaga Wildhoof",
+        "Mulgore: 47,73",
+        "Mulgore: Grull Hawkwind",
+        "Mulgore: 41,72",
+        "Mulgore: 39,68",
+        "Mulgore: 41,66",
+        "Mulgore: 48,48",
+        "Mulgore: Morin Cloudstalker",
+        "Mulgore: Malah Longwind",
+        "Mulgore: 59,73",
+        "Mulgore: 61,79",
+        "Mulgore: 52,75",
+        "Mulgore: Greatmother Hawkwind",
+        "Mulgore: 52,53",
+        "Mulgore: 60,60",
+        "Mulgore: 63,61",
+        "Mulgore: 58,53",
+        "Mulgore: 58,47",
+        "Mulgore: 61,47",
+        "Mulgore: Perith Stormhoof",
+        "Mulgore: Seer Graytongue",
+        "Mulgore: 58,76",
+        "Mulgore: 56,88",
+        "Mulgore: 49,69",
+        "Mulgore: 52,69",
+        "Mulgore: Seer Wiserunner",
+        "Mulgore: 43,28"
+      ]
+    },
+    {
+      "zone": "The Barrens",
+      "seconds": 1366.9150737244322,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "The Barrens: Seereth Stonebreak",
+        "The Barrens: Jorn Skyseer",
+        "The Barrens: Feegly the Exiled",
+        "The Barrens: Mebok Mizzyrix"
+      ]
+    },
+    {
+      "zone": "Orgrimmar",
+      "seconds": 419.89816240445464,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "Orgrimmar: Borstan"
+      ]
+    },
+    {
+      "zone": "Ashenvale",
+      "seconds": 1130.964372413147,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "Ashenvale: Je'neu Sancrea",
+        "Ashenvale: 14,13"
+      ]
+    },
+    {
+      "zone": "Stonetalon Mountains",
+      "seconds": 1398.6976558224353,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "Stonetalon Mountains: Ziz Fizziks",
+        "Stonetalon Mountains: 64,40",
+        "Stonetalon Mountains: Kaya Flathoof"
+      ]
+    },
+    {
+      "zone": "The Barrens",
+      "seconds": 115.03808784068092,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "The Barrens: Seereth Stonebreak"
+      ]
+    },
+    {
+      "zone": "Thunder Bluff",
+      "seconds": 582.9476268423997,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "Thunder Bluff: Magatha Grimtotem",
+        "Thunder Bluff: Cairne Bloodhoof",
+        "Thunder Bluff: Boarton Shadetotem",
+        "Thunder Bluff: Horde Warbringer",
+        "Thunder Bluff: Apothecary Zamah"
+      ]
+    },
+    {
+      "zone": "Mulgore",
+      "seconds": 1103.612535412289,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "Mulgore: 33,32",
+        "Mulgore: Muln Earthfury",
+        "Mulgore: 51,25",
+        "Mulgore: 58,47"
+      ]
+    },
+    {
+      "zone": "Thunder Bluff",
+      "seconds": 233.5800099537297,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "Thunder Bluff: Cairne Bloodhoof",
+        "Thunder Bluff: Boarton Shadetotem"
+      ]
+    },
+    {
+      "zone": "Stonetalon Mountains",
+      "seconds": 462.6960702807138,
+      "levels": [
+        26,
+        26
+      ],
+      "hubs": [
+        "Stonetalon Mountains: 48,40"
+      ]
+    },
+    {
+      "zone": "Thunder Bluff",
+      "seconds": 436.8342892447059,
+      "levels": [
+        26,
+        27
+      ],
+      "hubs": [
+        "Thunder Bluff: Cairne Bloodhoof"
+      ]
+    },
+    {
+      "zone": "Mulgore",
+      "seconds": 1898.90640424827,
+      "levels": [
+        27,
+        27
+      ],
+      "hubs": [
+        "Mulgore: 33,15",
+        "Mulgore: 33,11",
+        "Mulgore: Muln Earthfury"
+      ]
+    },
+    {
+      "zone": "Thousand Needles",
+      "seconds": 7055.814929139624,
+      "levels": [
+        27,
+        29
+      ],
+      "hubs": [
+        "Thousand Needles: 12,14",
+        "Thousand Needles: Motega Firemane",
+        "Thousand Needles: 23,25",
+        "Thousand Needles: Pao'ka Swiftmountain",
+        "Thousand Needles: Brave Moonhorn",
+        "Thousand Needles: Lakota Windsong",
+        "Thousand Needles: Cliffwatcher Longhorn",
+        "Thousand Needles: 51,54",
+        "Thousand Needles: 46,40",
+        "Thousand Needles: 41,39",
+        "Thousand Needles: 28,48",
+        "Thousand Needles: 27,53",
+        "Thousand Needles: 35,39",
+        "Thousand Needles: Dorn Plainstalker",
+        "Thousand Needles: Wizzle Brassbolts",
+        "Thousand Needles: 84,84",
+        "Thousand Needles: 82,89",
+        "Thousand Needles: 79,85",
+        "Thousand Needles: 71,74"
+      ]
+    },
+    {
+      "zone": "The Barrens",
+      "seconds": 1294.2961806594772,
+      "levels": [
+        29,
+        29
+      ],
+      "hubs": [
+        "The Barrens: 49,84",
+        "The Barrens: Feegly the Exiled",
+        "The Barrens: Jorn Skyseer",
+        "The Barrens: Thork",
+        "The Barrens: Horde Warbringer"
+      ]
+    },
+    {
+      "zone": "Mulgore",
+      "seconds": 736.3931950772657,
+      "levels": [
+        29,
+        29
+      ],
+      "hubs": [
+        "Mulgore: 33,7",
+        "Mulgore: Muln Earthfury"
+      ]
+    },
+    {
+      "zone": "Thunder Bluff",
+      "seconds": 130.80080984963746,
+      "levels": [
+        29,
+        29
+      ],
+      "hubs": [
+        "Thunder Bluff: Magatha Grimtotem"
+      ]
+    },
+    {
+      "zone": "Orgrimmar",
+      "seconds": 789.183230451364,
+      "levels": [
+        29,
+        29
+      ],
+      "hubs": [
+        "Orgrimmar: Horde Warbringer"
+      ]
+    },
+    {
+      "zone": "Undercity",
+      "seconds": 933.08637688055,
+      "levels": [
+        29,
+        29
+      ],
+      "hubs": [
+        "Undercity: Master Apothecary Faranell",
+        "Undercity: Owen Thadd",
+        "Undercity: Bethor Iceshard"
+      ]
+    },
+    {
+      "zone": "Tirisfal Glades",
+      "seconds": 12273.257560433738,
+      "levels": [
+        29,
+        29
+      ],
+      "hubs": [
+        "Tirisfal Glades: Deathguard Linnea",
+        "Tirisfal Glades: Executor Zygand",
+        "Tirisfal Glades: Junior Apothecary Holland",
+        "Tirisfal Glades: 65,49",
+        "Tirisfal Glades: 59,43",
+        "Tirisfal Glades: 56,42",
+        "Tirisfal Glades: 58,35",
+        "Tirisfal Glades: 59,28",
+        "Tirisfal Glades: 49,36",
+        "Tirisfal Glades: 46,40",
+        "Tirisfal Glades: 44,33",
+        "Tirisfal Glades: 47,30",
+        "Tirisfal Glades: Deathguard Simmer",
+        "Tirisfal Glades: Calvin Montague",
+        "Tirisfal Glades: 36,50",
+        "Tirisfal Glades: Bareth Dawnstone",
+        "Tirisfal Glades: Leonid Barthalomew the Revered",
+        "Tirisfal Glades: 14,66",
+        "Tirisfal Glades: 10,68",
+        "Tirisfal Glades: Novice Elreth",
+        "Tirisfal Glades: Executor Arren",
+        "Tirisfal Glades: 29,57",
+        "Tirisfal Glades: 26,59",
+        "Tirisfal Glades: 36,66",
+        "Tirisfal Glades: 54,30",
+        "Tirisfal Glades: 52,28",
+        "Tirisfal Glades: 76,61",
+        "Tirisfal Glades: 31,50",
+        "Tirisfal Glades: 51,67",
+        "Tirisfal Glades: 79,56",
+        "Tirisfal Glades: 84,45"
+      ]
+    },
+    {
+      "zone": "Undercity",
+      "seconds": 134.70664393252622,
+      "levels": [
+        29,
+        29
+      ],
+      "hubs": [
+        "Undercity: Bethor Iceshard",
+        "Undercity: Owen Thadd"
+      ]
+    },
+    {
+      "zone": "Silverpine Forest",
+      "seconds": 1359.1019895312481,
+      "levels": [
+        29,
+        29
+      ],
+      "hubs": [
+        "Silverpine Forest: Deathstalker Erland",
+        "Silverpine Forest: Rane Yorick",
+        "Silverpine Forest: 56,23",
+        "Silverpine Forest: Dalar Dawnweaver",
+        "Silverpine Forest: 50,60",
+        "Silverpine Forest: Deathstalker Faerleia",
+        "Silverpine Forest: 59,69"
+      ]
+    },
+    {
+      "zone": "Hillsbrad Foothills",
+      "seconds": 315.6827643504069,
+      "levels": [
+        29,
+        30
+      ],
+      "hubs": [
+        "Hillsbrad Foothills: Deathstalker Masoj"
+      ]
+    }
+  ],
+  "quests_done": [
+    8,
+    25,
+    216,
+    354,
+    355,
+    356,
+    358,
+    359,
+    360,
+    362,
+    365,
+    370,
+    371,
+    374,
+    376,
+    380,
+    381,
+    382,
+    383,
+    398,
+    404,
+    405,
+    407,
+    408,
+    426,
+    427,
+    435,
+    449,
+    452,
+    477,
+    590,
+    743,
+    744,
+    745,
+    747,
+    749,
+    750,
+    751,
+    752,
+    753,
+    755,
+    757,
+    761,
+    763,
+    764,
+    765,
+    766,
+    767,
+    771,
+    772,
+    773,
+    775,
+    776,
+    780,
+    784,
+    788,
+    789,
+    790,
+    791,
+    792,
+    794,
+    804,
+    805,
+    806,
+    808,
+    809,
+    816,
+    817,
+    818,
+    823,
+    825,
+    826,
+    827,
+    828,
+    829,
+    833,
+    834,
+    835,
+    837,
+    840,
+    842,
+    843,
+    844,
+    845,
+    846,
+    848,
+    849,
+    850,
+    855,
+    857,
+    858,
+    861,
+    863,
+    865,
+    867,
+    868,
+    869,
+    870,
+    871,
+    872,
+    875,
+    876,
+    877,
+    878,
+    879,
+    880,
+    887,
+    891,
+    893,
+    894,
+    895,
+    896,
+    898,
+    899,
+    900,
+    901,
+    902,
+    903,
+    906,
+    924,
+    959,
+    1060,
+    1062,
+    1063,
+    1064,
+    1090,
+    1092,
+    1093,
+    1094,
+    1095,
+    1096,
+    1098,
+    1104,
+    1105,
+    1110,
+    1130,
+    1145,
+    1149,
+    1153,
+    1176,
+    1486,
+    1489,
+    1490,
+    1491,
+    3082,
+    3221,
+    3376,
+    3902,
+    3921,
+    3922,
+    3923,
+    4402,
+    4542,
+    4641,
+    4767,
+    4770,
+    4821,
+    4841,
+    4865,
+    4904,
+    4921,
+    5041,
+    5052,
+    5062,
+    5064,
+    5147,
+    5151,
+    5441,
+    5481,
+    5482,
+    5722,
+    5726,
+    5727,
+    6062,
+    6068,
+    6081,
+    6082,
+    6083,
+    6282,
+    6283,
+    6301,
+    6365,
+    6381,
+    6382,
+    6383,
+    6384,
+    6385,
+    6386,
+    6393,
+    6394,
+    6395,
+    6421,
+    6441,
+    6442,
+    6461,
+    6482,
+    6503,
+    6523,
+    6544,
+    6548,
+    6562,
+    6563,
+    6629,
+    6641,
+    7866,
+    65597,
+    65601,
+    65610,
+    76156,
+    78132,
+    78133,
+    78134,
+    78150,
+    78270,
+    79192,
+    79980,
+    86576,
+    86784,
+    91920,
+    92401,
+    92706,
+    95494,
+    95495,
+    95507,
+    95508,
+    95621,
+    95774,
+    95805,
+    95883,
+    95885,
+    96130,
+    96241,
+    96259,
+    96260,
+    96261,
+    96604,
+    96652,
+    96655,
+    96821,
+    96825,
+    96895,
+    96896,
+    96897,
+    96898,
+    96899,
+    97003,
+    97223,
+    97225,
+    97242,
+    97246,
+    97249,
+    97250,
+    97253,
+    97275,
+    97289,
+    97290,
+    97291,
+    97292,
+    97326,
+    97538,
+    97558,
+    97891,
+    98070,
+    98095,
+    98251,
+    98252,
+    98389,
+    98430,
+    98545,
+    98823,
+    99048,
+    99049,
+    99051,
+    99052,
+    99079,
+    99080,
+    99081,
+    99082,
+    99101,
+    99108,
+    99123,
+    99134,
+    99141,
+    99142,
+    99144,
+    99152,
+    99153,
+    99156,
+    99411
+  ],
+  "simulated_seconds": 95338.05383278351,
+  "lint_errors": []
+}

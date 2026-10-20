@@ -539,6 +539,28 @@ def run(
     return result
 
 
+def monte_carlo(route, world, quests, npcs, items, quest_xp, params, runs: int, seed: int = 1, travel=None, skip=frozenset()) -> list:
+    """The route walked `runs` times with an uncertain model (Model.shake): the same route, a different player and luck each
+    time. The travel walk is shared; run i draws from seed i, so two routes compared with the same seed meet the same luck."""
+    travel = travel or guide_travel.simulate(route, world)
+    results = []
+    for i in range(runs):
+        model = Model(params, quests, npcs, items, quest_xp)
+        model.shake(random.Random(seed * 100003 + i))
+        results.append(run(route, world, model, travel=travel, skip=skip))
+    return results
+
+
+def percentile(values: list, pct: float) -> float:
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    index = (len(ordered) - 1) * pct / 100
+    low = int(index)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (index - low)
+
+
 # Reports --------------------------------------------------------------------------------------------------------------
 
 
