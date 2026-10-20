@@ -162,6 +162,10 @@ positions learned in game.
   up there first (a question nobody answered is an item of kind `question`); the PR description lists the items it adds and closes. Close an
   item in the PR that resolves it (`close --resolution`), never delete one, and drop one the user raised only with their agreement. Items
   follow this repository's data rules (no Wowhead-derived text, no pack tables). `python tools/backlog.py` shows what is open.
+- **Game updates (user, 2026-10-20, standing): `docs/GAME-UPDATES.md` is the runbook.** When the user says a patch or a new build is out, or
+  sends errors, open a backlog item from it and work compatibility first (confirm the client's Interface number with `/signpost status`,
+  bump both TOCs, probe, errors), content second. Never write an Interface number from memory; never publish a release without the user's
+  go-ahead.
 - Anything that must be verified in the live client gets a `-- VERIFY(beta): ...` or `-- VERIFY(launch): ...` comment and an
   entry in `docs/FOREVER-API-NOTES.md` under "Open probes". Clear them only with evidence (paste the `/signpost probe` output).
 - Do not invent quest IDs, NPC IDs, spell IDs or coordinates. They come from `tools/` output or from an in-game dump. If data is
