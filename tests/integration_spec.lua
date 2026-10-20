@@ -333,7 +333,7 @@ step
 ]]
 	local HUNT_GUIDE = { id = "test-hunt", name = "Hunt", levels = { 1, 10 }, text = "#include hunt\n" }
 
-	it("walks a doing step of two quests: no markers, a line each, done only when both are complete", function()
+	it("walks a doing step of two quests: no markers, tracked, done only when both are complete", function()
 		local ns, world, mock = start(function()
 			local data = pack()
 			data.quests[9002] = {
@@ -346,6 +346,7 @@ step
 			G.Signpost_Data = data
 		end, { chapters = { hunt = HUNT }, guide = HUNT_GUIDE })
 		local DONE = "|cff40d040[x]|r "
+		ns.db.settings.trackStepQuests = true -- chosen here, so this walk does not depend on the module's default
 
 		-- pick up: one pin at the quest giver, for both quests
 		assert.are.equal("hunt:1", current(ns))
@@ -362,13 +363,17 @@ step
 			ns.StepFrame.DescribeLines(ns.Progress:Current())
 		)
 
-		-- do: nothing drawn, one line per quest with its mark, no objective counters
+		-- do: nothing drawn, one line per quest with its mark, no objective counters, and the quest tracker holds
+		-- exactly these two quests (an older quest the player was tracking is dropped)
 		world.log = {
 			quest(9001, { objectives = { objective("Test Boar slain", 0, 3) } }),
 			quest(9002, { objectives = { objective("Test Boar slain", 0, 3) } }),
+			quest(9003, { objectives = { objective("Older", 0, 3) } }),
 		}
+		world.watch = { 9003 }
 		event(world, mock, "QUEST_ACCEPTED", 9002)
 		assert.are.equal("hunt:2", current(ns))
+		assert.are.same({ 9001, 9002 }, world.watch)
 		assert.are.same({}, ns.Pins:Collect())
 		assert.are.same(
 			{ '[ ] Complete "Test Quest"', '[ ] Complete "Other Quest"' },
@@ -385,10 +390,11 @@ step
 		)
 		assert.are.same({}, ns.Pins:Collect())
 
-		-- both complete: on to the hand-in, which pins the quest giver again
+		-- both complete: on to the hand-in, which pins the quest giver again and keeps the two quests tracked
 		world.log[2].objectives = { objective("Test Boar slain", 3, 3) }
 		event(world, mock, "QUEST_LOG_UPDATE")
 		assert.are.equal("hunt:3", current(ns))
+		assert.are.same({ 9001, 9002 }, world.watch)
 		entries = ns.Pins:Collect()
 		assert.are.equal(1, #entries)
 		assert.are.same({ "turnin", 9101 }, { entries[1].target.kind, entries[1].target.npc })

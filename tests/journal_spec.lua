@@ -392,12 +392,39 @@ describe("Journal", function()
 			assert.is_true(ns.db.contribute.enabled)
 		end)
 
+		it("lists the quest tracker setting under its own header and saves only the player's choice", function()
+			local ns = start()
+			ns.Journal:Show("settings")
+			local pane = ns.Journal.frame.settings
+			local box
+			for _, candidate in ipairs(pane.boxes) do
+				if candidate.def.section then
+					box = candidate
+				end
+			end
+			assert.is_not_nil(box)
+			assert.are.equal("Quest tracker", box.def.section)
+			assert.are.equal("Track only the current step's quests", box.def.label)
+			assert.are.equal(2, box.def.column)
+			assert.are.equal(1, #pane.sectionHeaders)
+			-- until the player chooses, the setting is the module's default and nothing is saved
+			local default = ns.Tracking.DEFAULT_ENABLED
+			assert.are.equal(default, box.def.get())
+			assert.is_nil(ns.db.settings.trackStepQuests)
+			box.check.GetChecked = function()
+				return not default
+			end
+			box.check.scripts.OnClick(box.check)
+			assert.are.equal(not default, ns.db.settings.trackStepQuests)
+			assert.are.equal(not default, box.def.get())
+		end)
+
 		it("lists the automation toggles, all off, and writes them to the character's settings", function()
 			local ns = start()
 			ns.Journal:Show("settings")
 			local boxes = {}
 			for _, box in ipairs(ns.Journal.frame.settings.boxes) do
-				if box.def.column == 2 then
+				if box.def.column == 2 and not box.def.section then
 					boxes[#boxes + 1] = box
 				end
 			end

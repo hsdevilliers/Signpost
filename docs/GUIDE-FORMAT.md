@@ -181,6 +181,14 @@ is handed in already); the `.goto` neither holds it up nor ends it.
 names the objective it is about and completes when that one is finished. Its line says which objective of which quest, with
 no counters either.
 
+**Quest tracking follows the step** (engine behaviour, no syntax; `Engine/Tracking.lua`). When a step becomes current, the
+quest log's tracker is set to the quests the step is about, the quests of its `.complete` and `.turnin` directives that are
+in the quest log: every other tracked quest is untracked, so the minimap and the quest tracker show only those quests, and
+the tracker shows their progress (the step frame does not). A step that names no quest in the log (a pick-up, a trip) leaves
+the tracking as it is. It acts only while a guide is active and the player has not turned it off (Journal > Settings >
+Quest tracker). It does not fight the player: a quest tracked or untracked by hand during the step stays so until the step
+changes, and the player's earlier tracking is not restored afterwards.
+
 ## Display text
 
 Each directive generates a description (`Accept "The Basics"`; names from the data pack, else `Quest #787`). `>> text`

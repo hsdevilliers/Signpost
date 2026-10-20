@@ -315,6 +315,17 @@ Acceptance
   a step lists all of its quests. 22 new specs (708 in all), among them the whole directive registry classified as place or not
   (a new directive fails until someone decides) and the shipped guides' doing steps drawing nothing (48, 79 and 95 of their steps).
   GUIDE-FORMAT "Step kinds", ENGINE.md, PLAN §3.1. Unverified: the marks and ten lines in the real client (API notes, "Open probes").
+- [x] Quest tracking follows the step (backlog `track-the-quests-of-the-current-step`; `Engine/Tracking.lua`, in both TOCs). When a step
+  becomes current, every tracked quest the step is not about is untracked and the quests of its `.complete` and `.turnin` directives that
+  are in the quest log are tracked (the first unfinished one also super-tracked); a step naming no quest in the log (a pick-up, a trip)
+  changes nothing. The log is looked at again when its set of quests changes (a quest accepted or removed), not when only progress does,
+  and not once the player has tracked or untracked a quest by hand during the step. The player's earlier tracking is not restored (v1).
+  Setting `SignpostDB.settings.trackStepQuests` (Journal > Settings > Quest tracker, only the player's choice is saved); the default is
+  `Tracking.DEFAULT_ENABLED` in one place. Every client call goes through `Util.Call`; retail shape first (`C_QuestLog.AddQuestWatch`,
+  `RemoveQuestWatch`, `GetQuestWatchType`, `GetNumQuestWatches`, `GetQuestIDForQuestWatchIndex`, `C_SuperTrack`), the Classic functions on
+  quest log numbers as the fallback. 24 new specs (`tests/tracking_spec.lua` on the watch list in `tests/mocks/context.lua`, and the
+  Journal's check box; the walk of `tests/integration_spec.lua` follows the tracker too); 732 in all. Unverified in the client: every one
+  of those functions (API notes, "Open probes"; `/signpost probe` lists them).
 
 ## Notes
 

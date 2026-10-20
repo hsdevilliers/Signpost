@@ -289,6 +289,35 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
 - Fires `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED`, `DUNGEON_SKIP_OFFER`. Registers `/signpost next|back|skip
   [chapter]|step [n|id]`. With `SignpostDB.debug.chat` it prints every step change (the Phase 2 acceptance walk).
 
+### Engine/Tracking.lua — `ns.Tracking`
+
+The quest log's tracked quests follow the current step (user, 2026-10-20): the quest tracker and the minimap then show the
+quests of the step, and the tracker shows their progress (which is why the step frame lists the quests and leaves their
+objectives to the quest log).
+
+- When a step becomes current (`STEP_CHANGED`; also when the setting is turned on while a guide is active) every tracked quest
+  the step is not about is untracked and the quests it is about are tracked: those of its `.complete` and `.turnin`
+  directives (`Tracking.NamedQuests(step)`: in directive order, each once) that are in the quest log (`ns.Context`). A step
+  that names no quest in the log (a pick-up, a trip) changes nothing and makes no client call. The first of the step's
+  quests that is not complete is also given to `C_SuperTrack.SetSuperTrackedQuestID`, where the client has it.
+- While the step is current, on `CONTEXT_CHANGED("quests")` and only when the *set* of quests in the log changed (a quest
+  accepted or removed; progress inside a quest changes nothing and costs no call), the tracking is set again for the same
+  step, without the focus. Unless one of the quests the log already had has been tracked or untracked since the module last
+  set it (by the player, or by the game tracking a quest as its progress changes: the module cannot tell them apart): then
+  `Tracking.state.manual` is true and the module leaves the tracking alone until the next step.
+- The player's earlier tracking is not remembered and not given back when the step ends or the setting is turned off (v1).
+- `Tracking:Enabled()`, `Tracking:SetEnabled(on)`: `SignpostDB.settings.trackStepQuests` holds only the player's own choice
+  (Journal > Settings > Quest tracker); until they choose, `Tracking.DEFAULT_ENABLED` is the answer (the one place the
+  default lives). Nothing happens without an active guide (`ns.Progress:Guide()`).
+- Client API, all through `Util.Call` so a missing or failing function costs this feature and never the step engine.
+  Retail shape: `C_QuestLog.GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`, `GetQuestWatchType(questID)`,
+  `AddQuestWatch(questID, Enum.QuestWatchType.Manual)`, `RemoveQuestWatch(questID)`. Where `C_QuestLog` lacks
+  `AddQuestWatch` or `RemoveQuestWatch`, the Classic shape on quest log numbers: `AddQuestWatch(index)`,
+  `RemoveQuestWatch(index)`, `IsQuestWatched(index)`, `GetNumQuestWatches()`, `GetQuestIndexForWatch(i)` (a quest's number
+  from `C_QuestLog.GetLogIndexForQuestID`, else a walk of `C_QuestLog.GetInfo`). Unverified on Forever (API notes, "Open
+  probes"; `/signpost probe` lists which names exist). `QUEST_WATCH_LIST_CHANGED` is probed but not used: the watch list is
+  compared when it matters.
+
 ### Core/Learn.lua — `ns.Learn`
 
 Always on (cheap), recording into `SignpostDB.learned` as the player plays; never a player or a pet, no quest or gossip
@@ -401,7 +430,7 @@ directives of `ns.Progress:Current()` (never sticky ones, never the player's unr
 Core\Init.lua, Core\Errors.lua, Libs\..., Core\Util.lua, Core\SavedVars.lua, Core\Player.lua, Data\Schema.lua,
 Core\Slash.lua, Core\Debug.lua, Core\Probe.lua, Core\MapDump.lua, Core\Learn.lua,
 Engine\Registry.lua, Engine\Directives.lua, Engine\Context.lua, Engine\Parser.lua, Engine\Professions.lua,
-Engine\Conditions.lua, Engine\Travel.lua, Engine\Progress.lua,
+Engine\Conditions.lua, Engine\Travel.lua, Engine\Progress.lua, Engine\Tracking.lua,
 Classes\*.lua, Automation\*.lua, Professions\*.lua, Guides\Travel\Borders.lua, Guides\Chapters\*.lua, Guides\Professions\*.lua,
 Guides\*.lua, UI\Widgets.lua, UI\StepFrame.lua, UI\Pins.lua
 ```
