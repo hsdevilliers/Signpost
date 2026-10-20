@@ -435,10 +435,11 @@ def route_checks(route: Route, pack: guide_travel.Pack, world: guide_travel.Worl
 
 def class_chains(project: guidefile.Project, pack: guide_travel.Pack, cls: str) -> list[Chain]:
     chains = []
-    module = project.classes.get(cls)
+    # guides may spell the class in any case (the in-game parser lowercases tokens); modules and the pack use the token
+    module = next((m for token, m in project.classes.items() if token.lower() == cls.lower()), None)
     if module is not None:
         chains += _chains(module.quests, module.path)
-    record = pack.table("classes").get(cls)
+    record = next((r for token, r in pack.table("classes").items() if str(token).lower() == cls.lower()), None)
     if isinstance(record, dict):
         chains += _chains(record.get("quests"), "data pack")
     return chains
@@ -540,6 +541,12 @@ def lint(root: Path, pack_dir: Path | None, guide_ids=None, why_no_pack: str = "
     project = guidefile.load_project(root)
     pack = guide_travel.load_pack(pack_dir) if pack_dir else guide_travel.Pack(problems=[why_no_pack])
     report = Report()
+    # a pack that exists but cannot be read must not pass as an empty one: every ID check would silently find nothing
+    if pack_dir and pack.problems and (pack.present or (Path(pack_dir) / "_meta.lua").is_file()):
+        for message in pack.problems:
+            report.add(Problem("error", "pack-load", f"data pack: {message}"))
+    for gid in sorted(set(guide_ids or ()) - set(project.guides)):
+        report.add(Problem("error", "unknown-guide", f"--guide {gid}: no guide with that id (have: {', '.join(sorted(project.guides)) or 'none'})"))
     FileChecks(project, pack, report, skip).run()
     worlds: dict[str, guide_travel.World] = {}
 

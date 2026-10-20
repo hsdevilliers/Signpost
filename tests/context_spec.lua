@@ -675,6 +675,23 @@ describe("ns.Context", function()
 			assert.is_true(ns.Context:TaxiNodeKnown("Ratchet"))
 		end)
 
+		it("stores the node id from either the id or the nodeID field", function()
+			local ns, mock = addon.load({
+				login = false,
+				extra = { "Engine/Context.lua" },
+				before = function(m)
+					lastWorld = contextMock.install(m)
+				end,
+			})
+			mock.fire("ADDON_LOADED", "Signpost")
+			ns.Context:NoteTaxiNodes({
+				{ name = "A, Zone", known = true, id = 7 },
+				{ name = "B, Zone", known = true, nodeID = 9 },
+			})
+			assert.are.equal(7, ns.char.taxiNodes["A, Zone"].id)
+			assert.are.equal(9, ns.char.taxiNodes["B, Zone"].id)
+		end)
+
 		it("keeps nodes noted before SavedVariables are ready", function()
 			local ns, mock = addon.load({
 				login = false,

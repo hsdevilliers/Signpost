@@ -4,7 +4,7 @@ import unittest
 
 import guide_lint
 import guide_travel
-from signpost_tools import guidefile
+from signpost_tools import datapack, guidefile
 from signpost_tools.guidefile import OTHER, Gate, Variant
 from tests.guide_fixtures import (
     BORDERS_LUA,
@@ -454,6 +454,26 @@ class LintTest(LintCase):
         files["Guides/Test.lua"] = guide_lua(routed + "#skipquest 6062 >> x\n")
         report = self.lint(files, pack=True, classes=classes)
         self.assertEqual(self.codes(report), ["class-quest"])
+
+    def test_class_quest_coverage_ignores_the_case_of_the_class(self):
+        routed = "#chapter 1-12 West\nstep\n  .goto 10,1,1\n  .accept 6061\nstep\n  .goto 10,1,1\n  .turnin 6061\n"
+        files = {"Classes/HUNTER.lua": HUNTER_LUA, "Guides/Test.lua": guide_lua(routed, classes=("hunter",))}
+        self.assertEqual(self.codes(self.lint(files)), ["class-quest"])  # 6062 is neither routed nor skipped
+
+    def test_an_unreadable_data_pack_is_an_error(self):
+        files = {"Guides/Test.lua": guide_lua("step\n  .goto 10,1,1\n")}
+        self.assertEqual(self.codes(self.lint(files, pack=True)), [])
+        (self.pack_dir / datapack.TABLE_FILES["quests"]).write_text("garbage", encoding="utf-8")
+        report, _, pack = guide_lint.lint(self.root, self.pack_dir)
+        self.assertTrue(pack.problems)
+        self.assertIn("pack-load", report.codes("error"))
+        report, _, _ = guide_lint.lint(self.root, None, why_no_pack="--no-pack")
+        self.assertNotIn("pack-load", report.codes("error"))
+
+    def test_an_unknown_guide_id_is_an_error(self):
+        files = {"Guides/Test.lua": guide_lua("step\n  .goto 10,1,1\n")}
+        self.assertEqual(self.codes(self.lint(files, guides=["typo"])), ["unknown-guide"])
+        self.assertEqual(self.codes(self.lint(files, guides=["test-guide"])), [])
 
     def test_profession_quests_per_track(self):
         tables = {"maps": MAPS, "quests": QUESTS, "npcs": NPCS, "travel": TRAVEL, "professions": {393: {"n": "Skinning", "quests": [7001]}}}

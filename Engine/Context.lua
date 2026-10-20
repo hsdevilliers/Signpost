@@ -831,6 +831,7 @@ function Context:LoadTaxiNodes()
 end
 
 -- nodes = { { name = "Ratchet, The Barrens", known = true | false | nil, id = nodeID }, ... }, as :ReadTaxiMap returns
+-- them (Travel's reader names the field nodeID instead; either is stored as id).
 -- them. Returns true when something changed (and signals "taxi").
 function Context:NoteTaxiNodes(nodes)
 	if type(nodes) ~= "table" then
@@ -844,7 +845,7 @@ function Context:NoteTaxiNodes(nodes)
 			if known ~= true and known ~= false then
 				known = nil
 			end
-			if noteNode(self, store, name, known, plain(node.id)) then
+			if noteNode(self, store, name, known, plain(node.id ~= nil and node.id or node.nodeID)) then
 				changed = true
 			end
 		end
