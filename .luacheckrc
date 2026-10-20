@@ -3,8 +3,9 @@ std = "lua51"
 max_line_length = 120
 codes = true
 
--- .lua/, .luarocks/ and .install/ are where CI's Lua setup actions install the toolchain inside the checkout.
-exclude_files = { "Libs/", "tools/bin/", ".venv/", "dist/", ".release/", ".lua/", ".luarocks/", ".install/", "plans/" }
+-- .lua/, .luarocks/ and .install/ are where CI's Lua setup actions install the toolchain inside the checkout. .claude/ holds the git
+-- worktrees of other branches (StyLua skips them through .gitignore, luacheck does not): their files are not this checkout's.
+exclude_files = { "Libs/", "tools/bin/", ".venv/", "dist/", ".release/", ".lua/", ".luarocks/", ".install/", "plans/", ".claude/" }
 
 -- Guide text is one DSL statement per line (a .note cannot be wrapped): line length is not checked there.
 files["Guides/**/*.lua"] = { max_line_length = false }
