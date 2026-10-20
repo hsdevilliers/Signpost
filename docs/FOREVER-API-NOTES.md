@@ -174,7 +174,7 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
 - **Known:** the client map dump has **Zephras Isle = uiMapID 2521** (also Riverglades 2548, Shen'dralas 2652, Mount Hyjal 2482).
   QuestieDB's area table maps 28 Zephras subzone AreaIDs to 2521 (Thendal Grove, Shen'dar Highlands and Village, Windsong Lake,
   Gustberry Lowlands, Valanaar Skydocks, Shrine of Akir, Rohashi Spires, Shadowfang Forest ...).
-- **Not in QuestieDB:** its Forever quest data holds **0 quests** in those areas and no Skyborne NPCs: the area table was prepared,
+- **Not in QuestieDB's base tables (superseded by the update below):** its Forever quest data holds **0 quests** in those areas and no Skyborne NPCs: the area table was prepared,
   the content was not added. The pack therefore has no Zephras Isle quests, NPCs or objects.
 - **Not readable:** Wowhead's Forever zone, quest and NPC pages answer 403 to the exporter (see the Wowhead section above).
 - **Community descriptions (beta observations, names only, no IDs or coordinates, sources disagree):** the island is levels 1-12
@@ -197,9 +197,13 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
   Limits: QuestieDB says the delta base supplies no complete objectives, restrictions or gameplay behavior; its `LoadDynamic`
   (faction- and class-conditional) corrections are not read; category "zones" (16941 Crafting, 16611 Ruins of Lordaeron, 16919 Hall of
   Thanes, 16732, 16544) have no uiMapID, so those quests keep no `zone` and are listed in data-gaps.md.
-- **Consequence:** a Windshaper chapter needs IDs and positions from play: `Core/Learn.lua` records quest givers and enders, NPC and
-  object positions and the quest IDs of what a character accepts and turns in, which is enough to draft the chapter with
-  `guide_draft.py` (it needs no Wowhead). The Skyborne race bit in the pack's quest masks is unknown (`--race-bit`).
+- **Consequence (2026-10-20):** `Guides/HordeWindshaperDruid.lua` is drafted from these layers (Zephras Isle chapter `zephras-isle-1-12`, 90
+  quests, race bit 8589934592) and the Windshaper's own druid chain is routed from the pack: A Student of Nature 92485, Child of Nature
+  94911 (starts with Muln Earthfury in Mulgore, ends with Turak in Thunder Bluff), Moonglade 94913, The Great Ursera Spirit 94006,
+  Strength and Mercy 94638. Still not in the pack: the Windshaper's own Cat Form quests (only the shared 98340 and 98362 are), what
+  follows Zephras Isle after level 12, and objective counts and positions for several quests (the chapters carry `.todo` steps naming
+  them). `Core/Learn.lua` remains the way to fill the gaps from play. Objective kill counts are not kept in the pack at all, so
+  `tools/guide_sim.py` uses a parameter for them.
 
 ## Observed in the game (user reports)
 - 2026-10-20, a level-1 Troll in the Valley of Trials: Gornek offers **Cutting Teeth** and **Wayward Weapons**, Kaltunk offers **Your Place in the
