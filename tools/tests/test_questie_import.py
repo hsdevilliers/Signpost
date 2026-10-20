@@ -106,7 +106,7 @@ NPCS = {
         "subName": '"Trade Supplies"', "npcFlags": "6",
     },
     106: {"name": "'Instance Boss'", "spawns": "{[506]={{-1,-1}}}", "npcFlags": "0"},
-    107: {"name": "'Cave Bear'", "spawns": "{[1]={{20,20}}}", "npcFlags": "0", "rank": "1"},
+    107: {"name": "'Cave Bear'", "spawns": "{[1]={{20,20},{20.5,20}}}", "npcFlags": "0", "rank": "1"},
     108: {
         "name": "'Hidden Vendor'", "spawns": "{[506]={{-1,-1}}}", "friendlyToFaction": '"H"',
         "subName": '"Food & Drink"', "npcFlags": "4",
@@ -295,7 +295,7 @@ class ImportTest(unittest.TestCase):
             fields - {"n", "side", "p", "s", "e", "o", "zone", "sort", "l", "r", "races", "classes"},
             {
                 "next", "preSingle", "preGroup", "exclusive", "parent", "breadcrumbFor", "skill", "maxLevel",
-                "repeatable", "gives", "needs", "flags", "sub", "quest", "drops", "objDrops", "vendors", "many", "rank",
+                "repeatable", "gives", "needs", "flags", "sub", "quest", "drops", "objDrops", "vendors", "many", "rank", "sp",
             },
         )
 
@@ -314,6 +314,9 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(npcs[107]["p"], [[1418, 20, 20]])  # AreaID 1 (the table parsed as a list)
         self.assertEqual(npcs[107]["rank"], 1)  # an elite keeps its rank; a normal creature has none
         self.assertNotIn("rank", npcs[101])
+        self.assertEqual(npcs[107]["sp"], 2)  # every spawn point is counted, though the position is one cluster
+        self.assertEqual(npcs[101]["sp"], 6)
+        self.assertNotIn("sp", npcs[102])  # a single spawn has no count
 
     def test_items(self):
         items = self.tables["items"]

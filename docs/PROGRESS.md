@@ -356,3 +356,4 @@ Acceptance
   (Classic XP table; quest XP from QuestieDB's Classic seed when the private cache has it). Not done: stage 3 (passive `/played`
   calibration), stage 4 (variants, risk score), kill counts and spawn counts (the pack keeps neither: parameters stand in), replacing
   the drafter's placeholder pacing with the simulator.
+  The importer now keeps each NPC's spawn-point count as `sp` (more than one only); the simulator's respawn model uses the smaller of `sp` and `spawns_in_reach`. Objective kill counts exist only in QuestieDB's objective text, so a parameter stands in.

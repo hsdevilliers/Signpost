@@ -175,7 +175,8 @@ class Model:
             if kills <= 0:
                 continue
             each = (self.p["kill_seconds"] + self.p["loot_seconds"] + self.p["walk_between_mobs_seconds"]) * factor
-            spawns = max(1.0, float(self.p["spawns_in_reach"]))
+            known = (self.npcs.get(npc) or {}).get("sp")
+            spawns = max(1.0, float(min(known, self.p["spawns_in_reach"]) if known else self.p["spawns_in_reach"]))
             rounds = math.ceil(kills / spawns)
             respawn = self.p["respawn_seconds"][self.rank_kind(npc)]
             waiting = (rounds - 1) * max(0.0, respawn - min(kills, spawns) * each)
