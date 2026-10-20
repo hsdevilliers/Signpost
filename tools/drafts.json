@@ -19,7 +19,9 @@
             "--exclude",
             7820,
             "--exclude-reason",
-            "no known source for the cloth; not worth a detour"
+            "no known source for the cloth; not worth a detour",
+            "--exclude",
+            76240
           ]
         },
         {
@@ -82,7 +84,65 @@
             "--done",
             5932,
             "--done",
-            6002
+            6002,
+            "--done",
+            98340,
+            "--done",
+            98405,
+            "--done",
+            98342,
+            "--done",
+            98739,
+            "--done",
+            98362
+          ]
+        },
+        {
+          "id": "druid-cat-form-20",
+          "name": "Druid: Cat Form",
+          "race": "Tauren",
+          "class": "DRUID",
+          "zones": [
+            1456,
+            1450
+          ],
+          "levels": "20-20",
+          "args": [
+            "--class-only",
+            "--done",
+            3094,
+            "--done",
+            5926,
+            "--done",
+            5927,
+            "--done",
+            5928,
+            "--done",
+            5922,
+            "--done",
+            5930,
+            "--done",
+            5932,
+            "--done",
+            6002,
+            "--done",
+            6126,
+            "--done",
+            6127,
+            "--done",
+            6128,
+            "--done",
+            6129,
+            "--done",
+            6130,
+            "--done",
+            26,
+            "--done",
+            28,
+            "--done",
+            30,
+            "--done",
+            31
           ]
         }
       ],
@@ -131,6 +191,60 @@
         }
       ],
       "rewrites": []
+    },
+    {
+      "guide": "horde-windshaper-druid",
+      "faction": "Horde",
+      "chapters": [
+        {
+          "id": "zephras-isle-1-12",
+          "name": "Zephras Isle",
+          "race": "Skyborne",
+          "class": "DRUID",
+          "zones": [
+            2521
+          ],
+          "levels": "1-12",
+          "args": [
+            "--race-bit",
+            8589934592
+          ]
+        },
+        {
+          "id": "windshaper-bear-form-10",
+          "name": "Windshaper Druid: Moonglade and Bear Form",
+          "race": "Skyborne",
+          "class": "DRUID",
+          "zones": [
+            2521,
+            1412,
+            1456,
+            1450
+          ],
+          "levels": "10-12",
+          "args": [
+            "--race-bit",
+            8589934592,
+            "--class-only",
+            "--done",
+            92485,
+            "--done",
+            94006,
+            "--done",
+            94638
+          ]
+        }
+      ],
+      "rewrites": [
+        {
+          "match": "\\.todo \"travel from [A-Za-z' ]+ to Moonglade: the travel graph has no route yet\"",
+          "with": ".todo \"Go to Moonglade: cast Teleport: Moonglade (VERIFY(beta): where a druid learns it; docs/CLASS-QUESTS.md), else the way is not in the data\""
+        },
+        {
+          "match": "\\.todo \"travel from Moonglade to ([A-Za-z' ]+): the travel graph has no route yet\"",
+          "with": ".todo \"Return from Moonglade to \\1 (VERIFY(beta): hearthstone or flight path; the way back is not in the data)\""
+        }
+      ]
     }
   ]
 }
