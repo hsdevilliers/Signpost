@@ -5,9 +5,13 @@
     python tools/import_savedvars.py --merge-learned                learned layer from SignpostDB.learned and eventLog, then
                                                                     rebuild
     python tools/import_savedvars.py --merge-learned --also incoming/play-machine   ... from both machines' SavedVariables
+    python tools/import_savedvars.py --merge-learned --contributions <shared folder>   ... and contributors' copies (see below)
 
 --from DIR reads a copied SavedVariables folder (the play machine's) instead of the client's; --also DIR (repeatable)
-adds more learned data to --merge-learned; --pack DIR is the data pack (default ../Signpost_Data). The maps go into
+adds more learned data to --merge-learned; --contributions DIR (repeatable) reads the shared folder that
+tools/share_savedvars.ps1 fills (<id>/Signpost-<game folder>-<time>.lua per contributor): every file of one contributor and
+game folder is folded, oldest first, into one source, so importing again, or importing a later copy, never double-counts;
+--pack DIR is the data pack (default ../Signpost_Data). The maps go into
 layers/client.json, the learned data (Core/Learn.lua, plus the NPC positions and zone crossings in the debug
 recorder's event log) into layers/learned.json (signpost_tools/learned.py), and the pack is rebuilt from every layer
 (datapack.build), learned last.
@@ -24,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from signpost_tools import datapack, devconfig, learned  # noqa: E402
 from signpost_tools.savedvars import LuaParseError  # noqa: E402
-from signpost_tools.svfiles import find_files, load_db  # noqa: E402
+from signpost_tools.svfiles import ACCOUNT_VAR, SVFile, find_files, load_db  # noqa: E402
 
 DEFAULT_PACK = devconfig.REPO_ROOT.parent / "Signpost_Data"
 DEFAULT_GUIDES = devconfig.REPO_ROOT / "Guides"
@@ -82,6 +86,19 @@ def account_db(source: Path | None, config: Path | None) -> dict:
         sys.exit(str(exc))
 
 
+def contribution_sources(folder: Path) -> list[tuple[str, dict]]:
+    """(label, SignpostDB) for each file under a shared folder: <id>/Signpost-<game folder>-<time>.lua. The label names
+    the contributor and game folder, so their copies fold into one source, oldest first (the names sort by time)."""
+    sources = []
+    for path in sorted(Path(folder).glob("*/Signpost-*.lua")):
+        flavor = path.stem.removeprefix("Signpost-").rsplit("-", 2)[0]
+        try:
+            sources.append((f"contrib-{path.parent.name}-{flavor}", load_db(SVFile(path, ACCOUNT_VAR, "account"))))
+        except LuaParseError as exc:
+            sys.exit(f"{path}: {exc}")
+    return sources
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--from", dest="source", type=Path, help="read a copied SavedVariables folder")
@@ -102,13 +119,21 @@ def main() -> None:
         metavar="DIR",
         help="with --merge-learned: also read the learned data in this copied SavedVariables folder (repeatable)",
     )
+    parser.add_argument(
+        "--contributions",
+        type=Path,
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="with --merge-learned: also read the contributors' copies in this shared folder (repeatable)",
+    )
     parser.add_argument("--pack", type=Path, default=DEFAULT_PACK, help="data pack folder (default ../Signpost_Data)")
     parser.add_argument("--guides", type=Path, default=DEFAULT_GUIDES, help=argparse.SUPPRESS)
     options = parser.parse_args()
     if not (options.json or options.maps or options.merge_learned):
         parser.error("choose --json, --maps and/or --merge-learned")
-    if options.also and not options.merge_learned:
-        parser.error("--also only goes with --merge-learned")
+    if (options.also or options.contributions) and not options.merge_learned:
+        parser.error("--also and --contributions only go with --merge-learned")
 
     try:
         files = find_files(options.source, options.config)
@@ -145,6 +170,10 @@ def main() -> None:
         origin = f"in game: Core/Learn.lua and the debug event log, {len(sources)} SavedVariables file(s)"
         # the labels stay the same between imports, so a source is folded into its own earlier record
         labels = ["local"] + [f"also-{Path(folder).name}" for folder in options.also]
+        for folder in options.contributions:
+            for label, db in contribution_sources(folder):
+                sources.append(db)
+                labels.append(label)
         stats = learned.merge_learned(options.pack, sources, origin, [options.guides], labels)
         written.append("learned layer: " + ", ".join(f"{count} {name}" for name, count in stats.items()))
 
