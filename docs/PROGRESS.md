@@ -274,6 +274,17 @@ Acceptance
   quest in the first zone; the Troll chapter excludes the Orgrimmar-only "The New Horde"); both guides rebuilt. Forever's own starter quests (Wayward
   Weapons) are missing from the pack: FOREVER-API-NOTES "Observed in the game".
 
+## Profession modules (Release 1)
+
+- [x] `Professions/<KEY>.lua` for the twelve professions Forever has: Alchemy 171, Blacksmithing 164, Enchanting 333, Engineering 202,
+  Herbalism 182, Leatherworking 165, Mining 186, Skinning 393, Tailoring 197 (primary) and Cooking 185, First Aid 129, Fishing 356 (secondary),
+  with the skill lines the beta client reported (FOREVER-API-NOTES "Professions"; Jewelcrafting, Inscription and Archaeology are not on
+  Forever) and Classic's rank caps marked VERIFY(launch). `tests/profession_modules_spec.lua` checks them as the client loads them; the test
+  helper loads `Professions/` as content, like `Guides/`. An optional `rankSpells = { spellIDs }` field (Automation/Trainer.lua) is not set:
+  without it the trainer automation buys nothing for `.trainprof`.
+- [ ] The route tracks (`Guides/Professions/<key>.lua`) and the `.hub` markers in the chapters they anchor to: with the guide content (the pack
+  knows the profession trainers by NPC title, e.g. Thuwd for Skinning in Orgrimmar).
+
 ## Notes
 
 - 2026-10-17: name re-check before creating the repos: CurseForge `/wow/addons/signpost` 404, Wago `/addons/signpost` 404,

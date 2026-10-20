@@ -11,9 +11,9 @@ function M.files()
 	local files = {}
 	for line in io.lines("Signpost.toc") do
 		line = line:gsub("\r$", "")
-		-- The shipped guides and chapters are content, not engine: a spec registers the guides it needs
+		-- The shipped guides, chapters and profession modules are content, not engine: a spec registers what it needs
 		-- (tests/shipped_guides_spec.lua loads the real ones), so the real route never picks a test player's guide.
-		local content = line:find("^Guides\\") and not line:find("^Guides\\Travel\\")
+		local content = (line:find("^Guides\\") and not line:find("^Guides\\Travel\\")) or line:find("^Professions\\")
 		if line ~= "" and not line:find("^#") and not line:find("^Libs\\") and not content then
 			files[#files + 1] = (line:gsub("\\", "/"))
 		end
