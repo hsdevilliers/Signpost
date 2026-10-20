@@ -738,6 +738,34 @@ Acceptance
 - [ ] **Release 1 scope gate:** Troll Hunter (all professions), Tauren Druid and Windshaper Druid hardcore guides each pass
   `guide_lint --strict` for the levels they claim; the addon loads cleanly with the data pack absent; README with install steps.
 
+### Phase 9 — Route simulator (proposed by the user, 2026-10-20; discussed, not started)
+
+A per-guide simulation to estimate how good a route is and to compare variants, with assumptions that can be relaxed and tuned. What exists
+already: `tools/guide_travel.py --simulate` (zone, flight paths, hearth, a travel clock from walking speed, flight cost, boat waits and
+hearthstone cooldown) and `guide_draft.py`'s placeholder level estimate (one level per N quests). Stages:
+1. **Deterministic simulator** (`tools/guide_sim.py`): walks a route as the drafter does, adding a per-objective time model (kill, loot, collect,
+   escort time from spawn density and distance) and XP per quest and per kill, with the level thresholds, so level gates are met by a real estimate
+   (this replaces the placeholder pacing in the drafter and gives the lint's `quest-level` warning real numbers). Output: time to each level,
+   time per chapter, travel share, backtracking, over- and under-levelled quests.
+   **Respawns** (user, 2026-10-20): an objective that needs more kills than there are spawns in reach has to wait for respawns, and groups of
+   mobs respawn at very different speeds, so the model carries a respawn time per creature kind (normal, elite, rare; per-creature overrides
+   where known); the user ruled out a "crowding" factor for other players (2026-10-20). Wait time = (kills needed - spawns in reach) against the
+   respawn time, shared between objectives that overlap in one area. The raw spawn count per NPC is a plain number the importer would keep
+   (QuestieDB lists every spawn point; the pack keeps three clusters). QuestieDB has no respawn field: the times are parameters, unverified
+   for Forever, and the sensitivity report shows whether a route's ranking depends on them.
+2. **XP data layer**: quest XP and the XP-to-level table. QuestieDB carries Classic's (`support/Forever/QuestXP`, a Classic seed, not Forever's);
+   Wowhead's class quest listing has an `xp` field but its Forever pages are blocked to us. Forever's tuning is unknown: mark it as an assumption.
+3. **Light, passive calibration (optional)**: not per-quest timing (that would need many sessions; the user and one friend are the only players).
+   The game already tracks time played: `Core/Learn.lua` would record `/played` (TIME_PLAYED_MSG) at each level-up, a few numbers per level and no
+   effort from the player, and the importer fits ONE overall pace multiplier from it. Time per quest stays a model: a kill-and-loot time per
+   objective, walking between the spawn points the pack already has (so the walking is computed), a factor for the quest's level against the
+   character's, and constants for turn-ins, escorts and interactions, all named parameters in one file.
+4. **What-if, sensitivity and risk**: one parameters file (speeds, kill rates, XP multipliers, rested XP) with a sensitivity report; variants
+   (skip a quest, reorder hubs, add a dungeon) ranked by time; a hardcore risk score (dangerous quests, exposure above the character's level).
+Caveats: the output compares routes, it does not predict a player's clock: a ranking that holds across the plausible range of every
+parameter is trusted, and the sensitivity report names the cases where it flips. Forever's XP and kill rates are assumptions until measured. Suggested order: stages
+1 and 2 before drafting levels 20-60 (they fix the ordering the weak estimate gets wrong), stages 3 and 4 after the first release.
+
 ## 8a. Bootstrapping — directories, repos, where Claude Code runs
 
 **Local layout** (dev machine, Windows; repositories directory `C:\Users\StephandeVilliers\Repos`):

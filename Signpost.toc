@@ -44,6 +44,18 @@ Engine\Progress.lua
 
 Classes\DRUID.lua
 Classes\HUNTER.lua
+Professions\ALCHEMY.lua
+Professions\BLACKSMITHING.lua
+Professions\COOKING.lua
+Professions\ENCHANTING.lua
+Professions\ENGINEERING.lua
+Professions\FIRSTAID.lua
+Professions\FISHING.lua
+Professions\HERBALISM.lua
+Professions\LEATHERWORKING.lua
+Professions\MINING.lua
+Professions\SKINNING.lua
+Professions\TAILORING.lua
 
 Automation\Core.lua
 Automation\Quests.lua
@@ -67,3 +79,5 @@ UI\Contribute.lua
 UI\StepFrame.lua
 UI\Pins.lua
 UI\Journal.lua
+UI\Report.lua
+UI\Options.lua

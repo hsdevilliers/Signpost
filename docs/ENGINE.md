@@ -374,6 +374,16 @@ directives of `ns.Progress:Current()` (never sticky ones, never the player's unr
   stand-in whose directives come from the real `ns.Directives:ParseLine`), `tests/ui_spec.lua` (hearth button),
   `tests/journal_spec.lua` (the toggles).
 
+### UI/Report.lua and UI/Options.lua
+
+- `ns.Report:Add(step?, note?)` records `{ t, guide, step, level, version, map, x, y, note }` into `SignpostDB.reports` (the current step by default;
+  the note is one line of plain text, at most 300 characters; at most 200 reports, the oldest goes first), fires `REPORT_ADDED` and prints a
+  thanks. `:Count()`. `/signpost report [note]` and `/signpost report count`; a "Report this step" button in the Journal's Route tab.
+  Nothing is sent: the reports travel with the saved data when the player shares the file, and `/signpost export` shows them.
+- `ns.Options:Register()` (at `DB_READY`) adds a "Signpost" category to Blizzard's Options > AddOns through
+  `Settings.RegisterCanvasLayoutCategory` / `RegisterAddOnCategory`, only when that API exists: a short panel with an "Open the Journal" button
+  (the settings themselves live in the Journal).
+
 ## TOC order (integration adds the lines; tracks never edit the TOCs)
 
 ```

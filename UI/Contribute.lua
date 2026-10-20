@@ -66,7 +66,7 @@ function Window:Create()
 		L["Nothing leaves your computer by itself. To share what was recorded, log out, "]
 			.. L["then copy the file Signpost.lua from "]
 			.. L["World of Warcraft\\<game folder>\\WTF\\Account\\<your account>\\SavedVariables\\ into the shared folder. "]
-			.. L["The file also holds Signpost's settings and error log."]
+			.. L["The file also holds Signpost's settings, error log and the notes you write with /signpost report."]
 	)
 	local change = text(
 		host,
