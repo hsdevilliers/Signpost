@@ -136,6 +136,10 @@ game.
 
 ## Workflow rules
 - Commit at the end of every task with a message `phaseN: <what>`. Update `docs/PROGRESS.md` (checkbox list mirrored from PLAN) in the same commit.
+- **Standing agreement (user, 2026-10-20): Claude Code merges its own PRs into `main` without asking, once it is itself satisfied:**
+  CI green, the full local suite (`tools/check.ps1`) passing, and the diff reviewed. Merge with a merge commit, pull `main`, delete the
+  merged branch. Still ask first for anything that is not an ordinary merge: force-pushes, rewriting history, deleting anything that
+  is not a merged branch, changing the repository's settings or secrets, and publishing a release (e.g. to CurseForge).
 - Anything that must be verified in the live client gets a `-- VERIFY(beta): ...` or `-- VERIFY(launch): ...` comment and an
   entry in `docs/FOREVER-API-NOTES.md` under "Open probes". Clear them only with evidence (paste the `/signpost probe` output).
 - Do not invent quest IDs, NPC IDs, spell IDs or coordinates. They come from `tools/` output or from an in-game dump. If data is
