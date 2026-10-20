@@ -6,15 +6,14 @@ ns.Guides:Register({
 	faction = "Horde",
 	races = { "Tauren" },
 	classes = { "DRUID" },
-	levels = { 1, 12 },
+	levels = { 1, 20 },
 	text = [[
 #guide Tauren Druid, hardcore route
 #include mulgore-1-12
+#include druid-bear-form-10
+#include barrens-10-20
+#include druid-forms-14-20
 #skipquest 5926 >> alternative start of the same chain; 5928 (Thunder Bluff) is routed
 #skipquest 5927 >> alternative start of the same chain; 5928 (Thunder Bluff) is routed
-#skipquest 5922 >> Moonglade is a long trip from Mulgore: routed in a later chapter once the route passes there (VERIFY)
-#skipquest 5930 >> part of the Moonglade trip, see 5922
-#skipquest 5932 >> part of the Moonglade trip, see 5922
-#skipquest 6002 >> end of the Moonglade chain (summons Lunaclaw), see 5922
 ]],
 })

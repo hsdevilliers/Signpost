@@ -46,6 +46,9 @@ Classes\DRUID.lua
 
 Guides\Travel\Borders.lua
 Guides\Chapters\mulgore-1-12.lua
+Guides\Chapters\druid-bear-form-10.lua
+Guides\Chapters\barrens-10-20.lua
+Guides\Chapters\druid-forms-14-20.lua
 Guides\HordeTaurenDruid.lua
 
 UI\Widgets.lua

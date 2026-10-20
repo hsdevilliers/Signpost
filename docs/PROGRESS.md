@@ -227,8 +227,11 @@ Acceptance
   Tauren druid class chain included), travel steps from `guide_travel.py`, class chains skipped with reasons. `guide_lint --strict` with the
   pack: 0 errors, 7 `.todo` (the Mulgore/Thunder Bluff crossing is not in the travel graph yet; Kodo Hide Bag items have no position).
   A DRAFT: order is a first pass (placeholder level pacing, `.level N` steps mark assumed levels), not yet walked in game.
-- [ ] Moonglade/Bear Form timing (the chain's Moonglade trip is skipped here; a later chapter must route it): a hardcore design call, see docs/HARDCORE.md.
-- [ ] Barrens and later chapters; Windshaper guide (needs recorded data); levels 12-60.
+- [x] Barrens (10-20) and two druid class chapters added (Moonglade/Bear Form after Mulgore; Lessons Anew and Aquatic Form after the Barrens):
+  the guide now covers 1-20; `guide_lint --strict` with the pack: 0 errors, 30 `.todo` (travel gaps, objectives with no position).
+  `guide_draft.py` gained `--hardcore` criteria (elite/boss kill, quest level too far above the chapter), `--class-only`, `--done`;
+  the pack's NPCs carry QuestieDB's elite `rank` (808 elite, 35 rare elite, 76 boss).
+- [ ] Moonglade/Bear Form timing and the safe way there (design call, docs/HARDCORE.md); Windshaper guide (needs recorded data); levels 20-60.
 
 ## Hardcore (user, 2026-10-20)
 
