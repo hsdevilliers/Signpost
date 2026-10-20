@@ -187,19 +187,37 @@ def _id_list(ids: list) -> str:
 FOREVER_ADDED_MAPS = {2482: "Mount Hyjal", 2521: "Zephras Isle", 2524: "Darkspear Islands", 2548: "Riverglades", 2652: "Shen'dralas"}
 
 
-def forever_gap_lines(merged: dict) -> list[str]:
-    """What Forever has that the baseline layers cannot have: the zones it added, counted in the pack."""
+FOREVER_LAYERS_MARK = "Forever layers ("  # in the questie layer's origin when questie_import applied QuestieDB's Forever layers
+
+
+def forever_gap_lines(merged: dict, layers: list[tuple[str, dict]] = ()) -> list[str]:
+    """What Forever has that the pack does and does not hold: the zones it added, counted in the pack."""
     quests, npcs = merged["quests"], merged["npcs"]
-    lines = [
-        "## Not in this pack: Forever's own content",
-        "",
-        "The questie layer is QuestieDB's Classic Era data with the coordinates converted to Forever's maps; QuestieDB lists \"Forever "
-        "race/class restrictions and new content\" as not converted. The pack is a Classic **baseline**, not Forever's database. "
-        "Missing by construction: the Skyborne race (no race mask), Forever's new class quests (docs/CLASS-QUESTS.md in the Signpost "
-        "repository), the new dungeons (Hall of Thanes, Ruins of Lordaeron), reworked quests and XP. What the pack holds for the "
-        "zones Forever added:",
-        "",
-    ]
+    layered = any(FOREVER_LAYERS_MARK in str((layer or {}).get("origin")) for _, layer in layers)
+    lines = ["## Not in this pack: Forever's own content", ""]
+    if layered:
+        lines += [
+            "The questie layer is QuestieDB's converted Classic Era baseline (coordinates converted to Forever's maps) with "
+            "QuestieDB's Forever correction layers applied on top (generated delta-base, beta traces, authored fixes; the "
+            "origin line above counts the records they added and changed). Now covered: Forever-only quests, NPCs, objects "
+            "and items (names, levels, who starts and ends a quest, zones, races including the Skyborne bits, classes), "
+            "and the new zones' NPCs and quests that QuestieDB has. Still not covered: QuestieDB says the delta base does "
+            "not supply complete objectives, restrictions or gameplay behavior, so new quests can lack objectives, chains "
+            "and prerequisites; QuestieDB's Dynamic corrections (faction- and class-conditional, read at runtime) are not "
+            "read; Forever's new class quests (docs/CLASS-QUESTS.md in the Signpost repository) and the new dungeons "
+            "(Hall of Thanes, Ruins of Lordaeron) are only as complete as QuestieDB's records; quest XP and rewards. What "
+            "the pack holds for the zones Forever added:",
+            "",
+        ]
+    else:
+        lines += [
+            "The questie layer is QuestieDB's Classic Era data with the coordinates converted to Forever's maps; QuestieDB "
+            "lists \"Forever race/class restrictions and new content\" as not converted. The pack is a Classic **baseline**, "
+            "not Forever's database. Missing by construction: the Skyborne race (no race mask), Forever's new class quests "
+            "(docs/CLASS-QUESTS.md in the Signpost repository), the new dungeons (Hall of Thanes, Ruins of Lordaeron), "
+            "reworked quests and XP. What the pack holds for the zones Forever added:",
+            "",
+        ]
     for map_id, name in FOREVER_ADDED_MAPS.items():
         in_quests = sum(1 for q in quests.values() if q.get("zone") == map_id)
         in_npcs = sum(1 for n in npcs.values() if any(isinstance(p, list) and p and p[0] == map_id for p in n.get("p") or []))
@@ -230,7 +248,7 @@ def gap_report(merged: dict, layers: list[tuple[str, dict]], tool: str) -> str:
         f"Totals: {len(quests)} quests, {len(npcs)} NPCs, {len(objects)} objects, {len(merged['items'])} items, "
         f"{len(merged['maps'])} maps.",
         "",
-        *forever_gap_lines(merged),
+        *forever_gap_lines(merged, layers),
         f"## Quests without a start ({len(no_start)})",
         "",
         _id_list(no_start) or "none",

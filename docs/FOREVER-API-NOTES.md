@@ -185,6 +185,18 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
   [timesaver.gg](https://timesaver.gg/blog/wow-forever-skyborne-starting-zone-zephras-isle-guide),
   [wowforeverguides.com](https://wowforeverguides.com/races/skyborne),
   [Blizzard news](https://news.blizzard.com/en-us/article/24302071/wow-forever-meet-the-new-skyborne).
+- **Update 2026-10-20 (QuestieDB master af56aeef17): the layers now give us part of it.** The base `data/Forever` tables are still a
+  converted Era baseline with 0 Zephras quests, but QuestieDB layers real Forever content on top as correction providers
+  (`src/corrections/Forever/`: generated delta-base, beta traces, authored fixes; docs/forever-delta-base.md there). `questie_import.py`
+  reads them as data (`signpost_tools/lua_corrections.py`) and applies them (`forever_layers.py`). Result for the Horde pack: Zephras Isle
+  (2521) **90 quests and 176 NPCs**, Shen'dralas (2652) 16 quests and 2 NPCs, Darkspear Islands (2524) 10 quests, Riverglades (2548) 10 NPCs
+  and no quests, Mount Hyjal (2482) nothing. Race masks: Skyborne are **bits 32 (High Order Skyborne, Alliance, 4294967296) and 33
+  (Windshaper, Horde, 8589934592)**, not raceID - 1 (raceIDs 95 and 96); QuestieDB's `ALL_HORDE` is the Classic Horde races plus bit 33
+  (8589934770), `ALL_ALLIANCE` those plus bit 32. The pack's `races` therefore exceed 32 bits: never test them with WoW's 32-bit `bit.*`
+  (the tools use Python integers). Starter quests the baseline lacked are in (Wayward Weapons 97279: Gornek 3143 -> 3159, level 1-2).
+  Limits: QuestieDB says the delta base supplies no complete objectives, restrictions or gameplay behavior; its `LoadDynamic`
+  (faction- and class-conditional) corrections are not read; category "zones" (16941 Crafting, 16611 Ruins of Lordaeron, 16919 Hall of
+  Thanes, 16732, 16544) have no uiMapID, so those quests keep no `zone` and are listed in data-gaps.md.
 - **Consequence:** a Windshaper chapter needs IDs and positions from play: `Core/Learn.lua` records quest givers and enders, NPC and
   object positions and the quest IDs of what a character accepts and turns in, which is enough to draft the chapter with
   `guide_draft.py` (it needs no Wowhead). The Skyborne race bit in the pack's quest masks is unknown (`--race-bit`).

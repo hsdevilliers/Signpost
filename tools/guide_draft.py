@@ -260,8 +260,9 @@ def class_gate(mask: int | None, class_token: str, gate_class: bool = True) -> s
     return " .class " + ",".join(names)
 
 
-# The pack's masks for "any Horde race" and "any Alliance race" (the Classic races of each side).
-FACTION_MASKS = {178, 77}
+# The pack's masks for "any Horde race" and "any Alliance race": the Classic races of each side, and with Forever's
+# Skyborne bit of that side (1 << 33 Horde, 1 << 32 Alliance; QuestieDB's raceKeys.ALL_HORDE and ALL_ALLIANCE).
+FACTION_MASKS = {178, 77, 178 | 1 << 33, 77 | 1 << 32}
 
 
 def start_place(pool: dict[int, Quest], world: guide_travel.World, spec: argparse.Namespace) -> Coord | None:
