@@ -154,7 +154,9 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   pauses, none is measured for Forever. The flag comes from QuestieDB's Classic baseline, so an escort Forever added is not flagged, and what the
   escort does on the way (where it goes, what attacks it) is not in the data: the note says so.
 - **Data holes become `.todo` steps**: an objective with no position in the pack is worked where its quest starts, and the step
-  says so; a border with no route yet gets a travel step the lint reports.
+  says so; a zone change the travel data cannot place gets a placeholder step in plain words (docs/GUIDE-FORMAT.md) that the lint counts as a
+  `.todo`. The travel generator also teaches flight paths: where the route passes a flight master and a later zone change would fly from it,
+  it adds a `.fp` step (a flight must save 90 s, or there is no other way), so a written route has more travel steps than the planner priced.
 - **Group quests** in a normal route are tagged `.optional`. A step made only of such quests never holds the player up, and the step card shows
   the quest as a line beside the steps before it (`Optional: <quest> (group quest)`, GUIDE-FORMAT "Optional-only steps"). The card cannot yet
   retire the line five levels above the quest: that needs the quest's level in the guide (backlog: `a-group-questid-level-modifier`).

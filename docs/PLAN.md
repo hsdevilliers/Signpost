@@ -263,11 +263,17 @@ the pins show the arrival dock (probe how Forever reports position on transports
   with a wait cost, *hearth* to the current inn.
 - Border crossings are hand-authored in `Borders.lua` (small set) and **learned automatically**: `Core/Learn.lua` records, on every
   `ZONE_CHANGED_NEW_AREA`, the last position in the old zone and the first in the new one; exported crossings replace hand guesses.
+  Boat and zeppelin docks and innkeepers are learned the same way, from the position samples (docs/ENGINE.md, Core/Learn.lua);
+  docs/PLAY-CHECKLIST.md lists the short runs that fill the gaps, most useful first.
 
 **Authoring tool** (`tools/guide_travel.py`): simulates the guide step by step (current zone, FPs learned via `.fp`, hearth via `.hs`,
 expected level), finds every uncovered zone change, runs a shortest-path search on the travel graph (walk cost = yards, flight cost
 = fixed + distance, boat/zeppelin = wait + crossing, hearth = 0 but 60-min cooldown tracked), and prints ready-to-paste DSL steps with
 `.path` waypoints along roads where `Borders.lua`/data provide them. `guide_lint.py --strict` fails on any remaining uncovered transition.
+Flight masters and innkeepers come from the pack's travel table and, until a learned or exported record exists, from its own NPC
+records (the service flags of the QuestieDB layer, a Classic baseline) matched to the client's flight nodes. Where the route passes
+a flight master and a later zone change would fly from it, the tool proposes the `.fp` step too (`--no-learn-flight-paths` turns it
+off). A zone change the data cannot place stays a `.todo` + `.zone` step, but in plain words and with no coordinate (docs/GUIDE-FORMAT.md).
 
 **Runtime nudge** (Phase 8, optional): if the player is 2+ zones away from the current step (logged in elsewhere, died, hearthed),
 the step frame shows a "Back to route" line with the planner's suggested first hop, computed in-game from the same graph.

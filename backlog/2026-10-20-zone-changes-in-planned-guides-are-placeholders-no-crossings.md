@@ -26,3 +26,15 @@ The guide tells the player to change zone but not how, and the planner's travel 
   Stonetalon, Thousand Needles), by hand or learned in play (`/signpost learned`), and the transport links (zeppelins, flight paths) are in the
   travel data.
 - The planner's route has `.path`, `.fly` or `.zeppelin` steps for them and `guide_lint --strict` reports no placeholder `.todo` for travel.
+
+## Notes
+
+WP-F, 2026-10-21 (batch 1): where it stands. The travel generator now reads flight masters and innkeepers from the pack's own NPC records
+(31 of the 39 Horde flight nodes placed, 28 inns; a Classic baseline) and proposes `.fp` steps, so about 10 to 14 placeholders of a planned
+route become real `.fly` steps (a beam run: Troll 69 -> 55 `.todo` steps, Tauren 69 -> 59, Skyborne 57 -> 48). What is left are borders and
+zeppelin docks the pack does not hold: 11 crossings and the Orgrimmar - Undercity zeppelin would fix every placeholder of the Troll route
+(12 records), 35 of 43 of the Tauren's and 28 of 33 of the Skyborne's; the rest need the Moonglade and Zephras Isle links. The placeholder
+text now says in plain words what the player does. The recorder learns crossings (both ways), flight nodes, boat and zeppelin rides and
+innkeepers; docs/PLAY-CHECKLIST.md lists the runs, most useful first. Nothing from the user's play is in the SavedVariables yet (3 NPCs,
+4 quests, no crossing). Still open: the data itself (play, then `python tools/import_savedvars.py --merge-learned`), and the game-side
+checks in `travel-recorder-fp-steps-and-plain-placeholders-in-the-game`.

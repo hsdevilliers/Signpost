@@ -468,6 +468,23 @@ the only things about the character, and the importer drops `known`.
   which the Lua spec writes with `SIGNPOST_WRITE_FIXTURES=1 busted tests/learn_professions_spec.lua` and fails on when the
   recorder stops writing exactly it, and which the Python test imports (the round trip).
 
+Travel records (boat and zeppelin rides, innkeepers). `rides = { { from = { map, x, y }, to = { map, x, y }, side, kind?,
+fromArea?, toArea?, secs, t, c }, ... }` (a list, up to `LIMITS.rides`): the dock the player left and the one they arrived at,
+told from the one-second position samples (`:TrackTravel(pos)`, called by `:Sample()`) and not from a signal the client may not
+send: at least three samples in a row of being carried (moving more than the player's own speed plus 4 yd) or without a map
+position, with no flight, instance or death to explain it, then the player on the ground again. The dock is the last ground
+sample before that (at most 15 s old when the position goes missing), the arrival the first of two ground samples after it.
+The ride goes on through the loading screen of a zeppelin that crosses continents; it is dropped when it lasts less than 15 s or
+more than 15 min, or the docks are less than 300 yd apart in one world; a loading screen with no ride under way (hearthstone,
+summon, instance) forgets the dock. `side` is the rider's faction, `kind` what `/signpost ride boat|zeppelin` named (used once,
+good for ten minutes), the areas are the game's own zone texts, `secs` the time it took. `inns[npcID] = { map, x, y, n?, t, c }`:
+an NPC whose gossip offers to make the inn the player's home (the binder icon, or the words "inn" and "home") with the player's
+position at that window; `n` is the bind location's name, stored when `GetBindLocation()` changes within two minutes of the
+window. Both follow the contribute choice like the rest (a release build records nothing without the player's yes), and
+`/signpost learned` counts them. The tables are made when first used. `tools/signpost_tools/learned.py` joins the rides there and
+back into `travel.transports` (a ride whose kind nobody named is left out, with a problem line that says how to name it) and
+writes `travel.inns`; `tools/guide_travel.py` turns them into `.boat`/`.zeppelin` steps and uses the inns for `.home`.
+
 ### UI/StepFrame.lua and UI/Pins.lua — `ns.StepFrame`, `ns.Pins`
 
 - React to `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED` (at once), `CONTEXT_CHANGED`, `TRANSPORT_STATE` (coalesced,

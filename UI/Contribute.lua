@@ -39,10 +39,10 @@ function Window:Create()
 		"GameFontHighlight",
 		top,
 		-8,
-		L["Where NPCs, quest givers, flight masters, trainers, vendors and zone borders are, "]
-			.. L["what trainers teach and charge, and the recipes in your profession windows, "]
+		L["Where NPCs, quest givers, flight masters, innkeepers, trainers, vendors and zone borders are, "]
+			.. L["where boats and zeppelins dock, what trainers teach and charge, and the recipes in your profession windows, "]
 			.. L["so the guides get better. "]
-			.. L["Only IDs, names of NPCs, objects, flight nodes, spells and recipes, trainer prices "]
+			.. L["Only IDs, names of NPCs, objects, flight nodes, places, spells and recipes, trainer prices "]
 			.. L["and map positions are recorded. "]
 			.. L["No chat, none of your gold and no player or pet names."]
 	)

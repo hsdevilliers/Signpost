@@ -3,12 +3,12 @@ positions and zone crossings the /signpost debug recorder kept in SignpostDB.eve
 
 `learned_layer` turns SignpostDB tables (one per SavedVariables source) into layer tables in the pack's schema
 (Data/Schema.lua): NPC and object positions ({ uiMapID, x, y }; sightings averaged into up to three spots), quest
-givers and enders, flight masters, walked zone crossings, the vendors of items the route uses, and the trainers of each
-profession with what they teach and charge (professions[line].services) and the recipes of the trade skill windows
-(professions[line].recipes; the schema is in Data/Schema.lua). `merge_learned` writes them as layers/learned.json.
-datapack.build merges that layer last, so learned positions override the other sources; links (quest givers and
-enders, vendors, trainers, a profession's services and recipes) are written together with what the other layers
-already know, so learning one never drops another.
+givers and enders, flight masters, walked zone crossings, boat and zeppelin rides, innkeepers, the vendors of items the
+route uses, and the trainers of each profession with what they teach and charge (professions[line].services) and the
+recipes of the trade skill windows (professions[line].recipes; the schema is in Data/Schema.lua). `merge_learned` writes
+them as layers/learned.json. datapack.build merges that layer last, so learned positions override the other sources;
+links (quest givers and enders, vendors, trainers, a profession's services and recipes) are written together with what
+the other layers already know, so learning one never drops another.
 
 Only IDs, the names of NPCs, objects, flight nodes, spells and recipes, trainer prices and requirements, and
 coordinates. A player's or pet's GUID is skipped before its name is looked at, and nothing about an item is kept but
@@ -265,6 +265,138 @@ def crossings(samples: list[tuple[Point, Point, float]], maps: dict) -> list[dic
             crossing["name"] = "/".join(names)
         result.append(crossing)
     return result
+
+
+# Transports and inns ------------------------------------------------------------------------------------------------
+#
+# Core/Learn.lua records a boat or zeppelin ride as `rides = { { from = { map, x, y }, to = { map, x, y }, kind?, side?,
+# fromArea?, toArea?, secs?, c, t }, ... }` (where the player was last standing on the ground before the transport carried
+# them away, and where they were first on the ground after: the docks, within a few yards) and an innkeeper as
+# `inns[npcID] = { map, x, y, n?, c, t }` (n: the bind location's name once the hearthstone was set there).
+
+DOCK_SPOT = 2.0  # map percent: rides whose two ends are this close are one transport route
+KINDS = ("boat", "zeppelin")
+# Words in the area names recorded at the docks that say what the transport is (none of them is a guess about Forever:
+# the area's own name says "Zeppelin", "Harbor" ...). Anything else leaves the kind to the player's `/signpost ride <kind>`.
+KIND_WORDS = (
+    ("zeppelin", "zeppelin"),
+    ("harbor", "boat"),
+    ("harbour", "boat"),
+    ("pier", "boat"),
+    ("wharf", "boat"),
+    ("ferry", "boat"),
+)
+SIDE_NAMES = ("Horde", "Alliance")  # the player's faction token, as UnitFactionGroup returns it
+
+
+def _kind_of(kind: object, *areas: object) -> str | None:
+    """boat or zeppelin: the recorded kind (the player said it), else a word of an area name, else None."""
+    if isinstance(kind, str) and kind.lower() in KINDS:
+        return kind.lower()
+    for area in areas:
+        if isinstance(area, str):
+            for word, found in KIND_WORDS:
+                if word in area.lower():
+                    return found
+    return None
+
+
+def _ride_samples(dbs: list[dict], maps: dict) -> list[dict]:
+    """Every recorded ride with both ends as map points on zone maps, oriented lower end first (a boat runs both ways)."""
+    samples = []
+    for db in dbs:
+        for ride in _listed(_learned(db).get("rides")):
+            if not isinstance(ride, dict):
+                continue
+            a, b = _point(ride.get("from")), _point(ride.get("to"))
+            if not (a and b) or _continental(a[0], maps) or _continental(b[0], maps):
+                continue
+            areas = [ride.get("fromArea"), ride.get("toArea")]
+            if a > b:
+                a, b, areas = b, a, areas[::-1]
+            if a[0] == b[0] and math.hypot(a[1] - b[1], a[2] - b[2]) <= DOCK_SPOT:
+                continue  # one spot: not a ride between two docks
+            side = ride.get("side") if ride.get("side") in SIDE_NAMES else None
+            samples.append(
+                {"a": a, "b": b, "w": float(_id(ride.get("c")) or 1), "kind": _kind_of(ride.get("kind")), "areas": areas, "side": side}
+            )
+    return samples
+
+
+def transports(dbs: list[dict], maps: dict) -> tuple[list[dict], list[str]]:
+    """travel.transports from recorded rides: one record per pair of docks (rides there and back are one), the ends weighted
+    means, the kind the player named (or an area name says), the side the recorders had (both when they differ). A route whose
+    kind nobody named is left out, with a problem line that says how to name it: the step would say "boat" or "zeppelin"."""
+    groups: list[dict] = []
+    for sample in sorted(_ride_samples(dbs, maps), key=lambda s: (-s["w"], s["a"], s["b"])):
+        for g in groups:
+            if (
+                g["a"][0] == sample["a"][0]
+                and g["b"][0] == sample["b"][0]
+                and math.hypot(g["sax"] / g["w"] - sample["a"][1], g["say"] / g["w"] - sample["a"][2]) <= DOCK_SPOT
+                and math.hypot(g["sbx"] / g["w"] - sample["b"][1], g["sby"] / g["w"] - sample["b"][2]) <= DOCK_SPOT
+            ):
+                break
+        else:
+            g = {"a": sample["a"], "b": sample["b"], "w": 0.0, "sax": 0.0, "say": 0.0, "sbx": 0.0, "sby": 0.0, "kinds": {}, "areas": [], "sides": set()}
+            groups.append(g)
+        w = sample["w"]
+        g["w"] += w
+        g["sax"] += sample["a"][1] * w
+        g["say"] += sample["a"][2] * w
+        g["sbx"] += sample["b"][1] * w
+        g["sby"] += sample["b"][2] * w
+        if sample["kind"]:
+            g["kinds"][sample["kind"]] = g["kinds"].get(sample["kind"], 0.0) + w
+        g["areas"] += sample["areas"]
+        g["sides"].add(sample["side"])
+    result: list[dict] = []
+    problems: list[str] = []
+    for g in sorted(groups, key=lambda g: (g["a"][0], g["b"][0], g["sax"] / g["w"], g["say"] / g["w"])):
+        names = [(maps.get(g[end][0]) or {}).get("n") or f"map {g[end][0]}" for end in ("a", "b")]
+        kind = max(g["kinds"], key=lambda k: (g["kinds"][k], k)) if g["kinds"] else _kind_of(None, *g["areas"])
+        if kind is None:
+            problems.append(
+                f"ride {names[0]} <-> {names[1]}: boat or zeppelin? (type /signpost ride boat or /signpost ride zeppelin "
+                "before boarding; the route is left out until a ride says it)"
+            )
+            continue
+        if len(g["kinds"]) > 1:
+            problems.append(f"ride {names[0]} <-> {names[1]}: recorded as both {' and '.join(sorted(g['kinds']))}; took {kind}")
+        sides = {side for side in g["sides"] if side}
+        side = next(iter(sides)) if len(sides) == 1 and None not in g["sides"] else "both"
+        result.append(
+            {
+                "kind": kind,
+                "from": [g["a"][0], _round(g["sax"] / g["w"]), _round(g["say"] / g["w"])],
+                "to": [g["b"][0], _round(g["sbx"] / g["w"]), _round(g["sby"] / g["w"])],
+                "side": side,
+                "src": "learned",
+            }
+        )
+    return result, problems
+
+
+def _inns(dbs: list[dict]) -> dict[int, dict]:
+    """travel.inns from recorded innkeepers: the latest position the player stood at, and the bind location's name from the
+    latest record that has one (a later sighting without it does not erase it)."""
+    places: dict[int, tuple[float, Point]] = {}
+    names: dict[int, tuple[float, str]] = {}
+    for db in dbs:
+        for npc, record in _keyed(_learned(db).get("inns")).items():
+            npc, point = _id(npc), _point(record)
+            if not (npc and point and isinstance(record, dict)):
+                continue
+            when = _when(record.get("t"))
+            if npc not in places or when >= places[npc][0]:
+                places[npc] = (when, point)
+            name = record.get("n")
+            if isinstance(name, str) and name and (npc not in names or when >= names[npc][0]):
+                names[npc] = (when, name)
+    return {
+        npc: {"p": list(point)} | ({"n": names[npc][1]} if npc in names else {})
+        for npc, (_, point) in sorted(places.items())
+    }
 
 
 # Links --------------------------------------------------------------------------------------------------------------
@@ -681,13 +813,22 @@ def learned_layer(dbs: list[dict], base: dict, guide_dirs: list[Path] = ()) -> t
     # the reagents of the recipes learned count as route items, like those of the recipes the pack holds
     tables["items"], outside = _vendors(dbs, base.get("items") or {}, route_items(base, list(guide_dirs)) | reagents)
     flight_masters, taxi_problems = _flight_masters(dbs)
-    tables["travel"] = {"flightMasters": flight_masters, "crossings": crossings(_crossing_samples(dbs, maps), maps)}
+    rides, ride_problems = transports(dbs, maps)
+    inns = _inns(dbs)
+    tables["travel"] = {
+        "flightMasters": flight_masters,
+        "crossings": crossings(_crossing_samples(dbs, maps), maps),
+        "transports": rides,
+        "inns": inns,
+    }
     stats = {table: len(tables[table]) for table in ("npcs", "objects", "quests", "items", "professions")}
     stats.update(profession_stats)
     stats["flightMasters"] = len(flight_masters)
     stats["crossings"] = len(tables["travel"]["crossings"])
+    stats["transports"] = len(rides)
+    stats["inns"] = len(inns)
     stats["vendorItemsOutsideRoute"] = outside
-    return tables, trainer_problems + taxi_problems, stats
+    return tables, trainer_problems + taxi_problems + ride_problems, stats
 
 
 # The archive: what each source has ever recorded ------------------------------------------------------------------------
@@ -777,6 +918,8 @@ def fold_source(old: dict | None, db: dict) -> dict:
     learned["crossings"] = _fold_crossings(old_learned.get("crossings"), new_learned.get("crossings"))
     _fold_services(learned["trainers"], old_learned.get("trainers"), new_learned.get("trainers"))
     learned["recipes"] = _fold_recipes(old_learned.get("recipes"), new_learned.get("recipes"))
+    learned["rides"] = _fold_crossings(old_learned.get("rides"), new_learned.get("rides"))  # two ends, a count: as a crossing
+    learned["inns"] = _fold_keyed(old_learned.get("inns"), new_learned.get("inns"))
     events: dict[str, dict] = {}
     for entry in [*_listed(old.get("eventLog")), *_listed(db.get("eventLog"))]:
         event = _event(entry)

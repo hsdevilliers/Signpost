@@ -12,9 +12,9 @@ adds more learned data to --merge-learned; --contributions DIR (repeatable) read
 tools/share_savedvars.ps1 fills (<id>/Signpost-<game folder>-<time>.lua per contributor): every file of one contributor and
 game folder is folded, oldest first, into one source, so importing again, or importing a later copy, never double-counts;
 --pack DIR is the data pack (default ../Signpost_Data). The maps go into
-layers/client.json, the learned data (Core/Learn.lua, plus the NPC positions and zone crossings in the debug
-recorder's event log) into layers/learned.json (signpost_tools/learned.py), and the pack is rebuilt from every layer
-(datapack.build), learned last.
+layers/client.json, the learned data (Core/Learn.lua: NPCs, quests, flight nodes, zone crossings, boat and zeppelin
+rides, innkeepers, trainers, vendors; plus the NPC positions and zone crossings in the debug recorder's event log) into
+layers/learned.json (signpost_tools/learned.py), and the pack is rebuilt from every layer (datapack.build), learned last.
 """
 
 from __future__ import annotations
@@ -26,11 +26,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import guide_travel  # noqa: E402
 from signpost_tools import datapack, devconfig, learned  # noqa: E402
 from signpost_tools.savedvars import LuaParseError  # noqa: E402
 from signpost_tools.svfiles import ACCOUNT_VAR, SVFile, find_files, load_db  # noqa: E402
 
-DEFAULT_PACK = devconfig.REPO_ROOT.parent / "Signpost_Data"
+# ../Signpost_Data next to this checkout, or next to the main checkout when this is a git worktree (a worktree's own
+# parent folder holds no pack, and writing a layer there would silently make a second, wrong one).
+DEFAULT_PACK = guide_travel.default_pack_dir(devconfig.REPO_ROOT) or devconfig.REPO_ROOT.parent / "Signpost_Data"
 DEFAULT_GUIDES = devconfig.REPO_ROOT / "Guides"
 CONTINENT = 2  # Enum.UIMapType.Continent
 

@@ -138,6 +138,16 @@ Travel directives (`Engine/Travel.lua`):
 | `.hs <inn name>` | `GetBindLocation()` is the inn | innkeeper |
 | `.home` | the zone changed to the bind location's after the hearthstone cast | |
 
+The travel generator (`tools/guide_travel.py`) writes these shapes: a border with known points is `.path <a> ; <b>` and `.zone <map> >>
+Cross into X (name)`; a flight is `.goto <flight master> >> Go to the flight master` and `.fly <node>`, after a step that teaches the flight
+path (`.goto <flight master>` and `.fp <map>,<node>`, proposed where the route passes the flight master and a later trip flies from it); a
+boat or zeppelin is `.boat|.zeppelin <dock> > <dock> >> Take the zeppelin to X`; the hearthstone is `.home`. A zone change whose way the data
+does not hold yet is a **placeholder**: `.todo "Walk from X to Y: the guide has no waypoints for this yet, so find your own way. This step is
+done when you arrive in Y."` and `.zone <Y> >> Go to Y`. The `.zone` completes the step on arrival (the `.todo` beside it is only a note, see
+above). It has no `.goto`: one in the destination would make the step count as a step of that zone for the profession tracks' `@zone` anchors.
+The wording follows what is known (two continents: "they are on different continents, so you need a boat, a zeppelin or another ride, and the
+guide has no dock for it yet") and never carries a coordinate.
+
 Class directives come from class modules (`Classes/<CLASS>.lua`): e.g. `.tame <npcID>`, `.ammo ...`. Using one in a
 chapter without a `.class` gate is a lint error.
 
