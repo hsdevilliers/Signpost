@@ -13,6 +13,7 @@
 -- cheap: work happens at NPC windows and zone changes, plus one position sample a second for the crossings. Every
 -- table is capped (Learn.LIMITS); a new entry in a full table replaces the one seen longest ago.
 -- tools/import_savedvars.py --merge-learned turns all of it into the data pack's learned layer.
+-- What trainers teach and charge, and the recipes of the trade skill windows: Core/LearnProfessions.lua.
 local ADDON_NAME, ns = ...
 local L = ns.L
 local Util = ns.Util
@@ -255,6 +256,10 @@ local function sight(unit)
 	end
 	return who
 end
+
+-- Shared with Core/LearnProfessions.lua, which records the trainer and trade skill windows under the same guards.
+Learn.Plain = { number = plainNumber, id = plainID, string = plainString }
+Learn.Entity = entity
 
 -- Quests ------------------------------------------------------------------------------------------------------------
 -- The dialog says who offers (QUEST_DETAIL) or takes back (QUEST_PROGRESS, QUEST_COMPLETE) a quest; the dialog may be
@@ -577,9 +582,13 @@ end
 -- Events ------------------------------------------------------------------------------------------------------------
 
 -- Nothing is recorded without the player's yes on a release build (Core/Contribute.lua; dev builds always record).
+function Learn:Recording()
+	return ns.db ~= nil and ns.Contribute ~= nil and ns.Contribute:Enabled()
+end
+
 local function on(event, fn)
 	ns.Events:Register(event, function(...)
-		if ns.db and ns.Contribute and ns.Contribute:Enabled() then
+		if Learn:Recording() then
 			fn(...)
 		end
 	end)
@@ -638,14 +647,18 @@ end)
 
 ns.Slash:Register("learned", function()
 	local n = Learn:Counts()
+	local professions = Learn.Professions and Learn.Professions:Counts() or { services = 0, recipes = 0 }
 	Util.Print(
-		L["learned: %d NPCs, %d objects, %d quests, %d flight nodes, %d zone crossings, %d trainers, %d vendors"],
+		L["learned: %d NPCs, %d objects, %d quests, %d flight nodes, %d zone crossings, %d trainers, %d vendors, "]
+			.. L["%d trainer services, %d recipes"],
 		n.npcs,
 		n.objects,
 		n.quests,
 		n.taxi,
 		n.crossings,
 		n.trainers,
-		n.vendors
+		n.vendors,
+		professions.services,
+		professions.recipes
 	)
 end, L["count what Learn has recorded (tools/import_savedvars.py --merge-learned folds it into the data pack)"])

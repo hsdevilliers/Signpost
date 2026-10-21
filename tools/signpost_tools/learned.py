@@ -3,15 +3,17 @@ positions and zone crossings the /signpost debug recorder kept in SignpostDB.eve
 
 `learned_layer` turns SignpostDB tables (one per SavedVariables source) into layer tables in the pack's schema
 (Data/Schema.lua): NPC and object positions ({ uiMapID, x, y }; sightings averaged into up to three spots), quest
-givers and enders, flight masters, walked zone crossings, the vendors of items the route uses and the trainers of each
-profession. `merge_learned` writes them as layers/learned.json. datapack.build merges that layer last, so learned
-positions override the other sources; links (quest givers and enders, vendors, trainers) are written together with
-what the other layers already know, so learning one never drops another.
+givers and enders, flight masters, walked zone crossings, the vendors of items the route uses, and the trainers of each
+profession with what they teach and charge (professions[line].services) and the recipes of the trade skill windows
+(professions[line].recipes; the schema is in Data/Schema.lua). `merge_learned` writes them as layers/learned.json.
+datapack.build merges that layer last, so learned positions override the other sources; links (quest givers and
+enders, vendors, trainers, a profession's services and recipes) are written together with what the other layers
+already know, so learning one never drops another.
 
-Only IDs, the names of NPCs, objects and flight nodes, and coordinates. A player's or pet's GUID is skipped before its
-name is looked at, and nothing about an item is kept but which vendors sell it, and only for the items the route
-touches: items the other layers know (quest starters and objectives), profession reagents, and the items guide steps
-buy or collect.
+Only IDs, the names of NPCs, objects, flight nodes, spells and recipes, trainer prices and requirements, and
+coordinates. A player's or pet's GUID is skipped before its name is looked at, and nothing about an item is kept but
+which vendors sell it, and only for the items the route touches: items the other layers know (quest starters and
+objectives), profession reagents, and the items guide steps buy or collect.
 """
 
 from __future__ import annotations
@@ -329,25 +331,238 @@ def _vendors(dbs: list[dict], known: dict, route: set[int]) -> tuple[dict[int, d
     return items, len(outside)
 
 
-def _trainers(dbs: list[dict], known: dict) -> tuple[dict[int, dict], list[str]]:
-    """professions[skillLine].trainers: by the skill line Core/Learn.lua read at the trainer, else by recipes."""
-    learned: dict[int, dict[str, set[int]]] = {}
+# Profession services and recipes ------------------------------------------------------------------------------------
+#
+# Core/LearnProfessions.lua records, with each trainer, the services its window listed (trainers[npc].services) and, per
+# recipe, what the trade skill window listed (recipes[spell]). The layer files them under the profession's skill line:
+# professions[line].trainers, .services[npc] and .recipes[spell] (Data/Schema.lua). What the other layers hold for the
+# same trainers and recipes is kept; the learned fields win field by field, and a trainer's services and a recipe's
+# difficulty observations are unioned with them. Only the fields below are read, so nothing else in a SavedVariables
+# file (a stray name, a line of text) can reach the archive or the pack.
+
+# Enum.TradeskillRelativeDifficulty, in the order a recipe passes them
+DIFFICULTIES = ("optimal", "medium", "easy", "trivial")
+COLOURS = ("orange", "yellow", "green", "grey")  # where each difficulty starts, in the same order
+MAX_SKILL = 1000  # no profession skill is above this
+MAX_LEVEL = 200
+MAX_COPPER = 2**31
+MAX_TEXT = 100  # bytes: a spell, recipe or rank name is shorter
+MAX_REAGENTS = 12  # items per recipe, as the recorder's LIMITS.reagentsPerRecipe
+
+
+def _count(value: object, maximum: int) -> int | None:
+    """A whole number from 0 to `maximum`, else None."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return value if isinstance(value, int) and 0 <= value <= maximum else None
+
+
+def _text(value: object) -> str | None:
+    """A name: a non-empty string that is no longer than a name is."""
+    if isinstance(value, str) and value and len(value.encode("utf-8", "surrogateescape")) <= MAX_TEXT:
+        return value
+    return None
+
+
+def _service(raw: object) -> dict | None:
+    """One trainer service reduced to the fields the pack keeps: spell `id`, `item` it gives, `n` name, `r` rank text,
+    `cost` in copper, `lvl` required level, `need` required skill, and `line` (the profession's skill line, which the
+    layer files it under and drops). None when it names neither a spell nor a name."""
+    if not isinstance(raw, dict):
+        return None
+    service: dict[str, object] = {}
+    for key in ("id", "item", "line"):
+        ident = _id(raw.get(key))
+        if ident:
+            service[key] = ident
+    for key in ("n", "r"):
+        text = _text(raw.get(key))
+        if text:
+            service[key] = text
+    cost = _count(raw.get("cost"), MAX_COPPER)
+    if cost is not None:
+        service["cost"] = cost
+    for key, maximum in (("lvl", MAX_LEVEL), ("need", MAX_SKILL)):
+        value = _count(raw.get(key), maximum)
+        if value:
+            service[key] = value
+    return service if "id" in service or "n" in service else None
+
+
+def _service_key(service: dict) -> tuple:
+    """A service is its spell, else its name and rank."""
+    if "id" in service:
+        return ("s", service["id"])
+    return ("n", service.get("n", ""), service.get("r", ""))
+
+
+def merge_services(*readings: object) -> list[dict]:
+    """The services of several readings of one trainer, oldest first: each service once, as its newest reading has it
+    (a window filtered to some services does not take the others away)."""
+    merged: dict[tuple, dict] = {}
+    for reading in readings:
+        for raw in _listed(reading):
+            service = _service(raw)
+            if service:
+                merged[_service_key(service)] = service
+    return sorted(merged.values(), key=lambda s: (s.get("id", 0), s.get("n", ""), s.get("r", "")))
+
+
+def _reagents(value: object) -> dict[int, int]:
+    reagents: dict[int, int] = {}
+    pairs = sorted(((_id(key), _count(count, 1000)) for key, count in _keyed(value).items()), key=lambda p: p[0] or 0)
+    for item, number in pairs:
+        if item and number and len(reagents) < MAX_REAGENTS:
+            reagents[item] = number
+    return reagents
+
+
+def _observations(value: object) -> list[tuple[int, str]]:
+    """(skill, difficulty) pairs from a recipe's `obs`; whatever is not one of those is dropped."""
+    pairs = []
+    for raw in _listed(value):
+        if isinstance(raw, dict):
+            skill, cat = _count(raw.get("skill"), MAX_SKILL), raw.get("cat")
+            if skill and cat in DIFFICULTIES:
+                pairs.append((skill, cat))
+    return pairs
+
+
+def compact_observations(pairs: list[tuple[int, str]]) -> list[dict]:
+    """One entry per skill value (the last one given wins), then only the lowest and the highest skill seen in each
+    difficulty: all that the colour thresholds can be read from, and at most eight entries however long one plays."""
+    by_skill: dict[int, str] = {}
+    for skill, cat in pairs:
+        by_skill[skill] = cat
+    keep: set[int] = set()
+    for cat in DIFFICULTIES:
+        skills = [skill for skill, name in by_skill.items() if name == cat]
+        if skills:
+            keep.update((min(skills), max(skills)))
+    return [{"skill": skill, "cat": by_skill[skill]} for skill in sorted(keep)]
+
+
+def skill_bounds(obs: object) -> dict[str, tuple[int | None, int | None]]:
+    """Where each colour starts, as far as a recipe's observations say: {"yellow": (lowest, highest), ...} with None
+    where nothing is known. A recipe is orange from the skill it can first be made at, yellow from `yellow` on, green
+    from `green`, grey from `grey`; a difficulty seen at some skill means that colour had started by then, and an
+    earlier difficulty seen at a skill means the colour had not started yet. (Exact when both numbers are equal.)"""
+    pairs = _observations(obs)
+    bounds: dict[str, tuple[int | None, int | None]] = {}
+    for index, colour in enumerate(COLOURS):
+        earlier = [skill for skill, cat in pairs if DIFFICULTIES.index(cat) < index]
+        from_here = [skill for skill, cat in pairs if DIFFICULTIES.index(cat) >= index]
+        bounds[colour] = (max(earlier) + 1 if earlier else None, min(from_here) if from_here else None)
+    return bounds
+
+
+def _recipe(raw: object) -> dict | None:
+    """One recipe reduced to the fields the pack keeps: `n` name, `item` it makes, `reagents` { item: count }, `obs`
+    difficulty observations, and `line` (the skill line the layer files it under and drops). None when it has no name,
+    item or reagents."""
+    if not isinstance(raw, dict):
+        return None
+    record: dict[str, object] = {}
+    name = _text(raw.get("n"))
+    if name:
+        record["n"] = name
+    for key in ("item", "line"):
+        ident = _id(raw.get(key))
+        if ident:
+            record[key] = ident
+    reagents = _reagents(raw.get("reagents"))
+    if reagents:
+        record["reagents"] = reagents
+    if not any(key in record for key in ("n", "item", "reagents")):
+        return None
+    obs = compact_observations(_observations(raw.get("obs")))
+    if obs:
+        record["obs"] = obs
+    return record
+
+
+def _merge_recipe(older: dict, newer: dict) -> dict:
+    """The newer reading's fields where it has them, else the older one's; the observations of both."""
+    merged = {**older, **{key: value for key, value in newer.items() if key != "obs"}}
+    obs = compact_observations(_observations(older.get("obs")) + _observations(newer.get("obs")))
+    if obs:
+        merged["obs"] = obs
+    return merged
+
+
+def _learned_recipes(dbs: list[dict]) -> dict[int, dict]:
+    """{spell: recipe} from every source: the newest reading's fields, the observations of all of them."""
+    readings: dict[int, list[tuple[float, dict]]] = {}
+    for db in dbs:
+        for key, raw in _keyed(_learned(db).get("recipes")).items():
+            spell, record = _id(key), _recipe(raw)
+            if spell and record:
+                readings.setdefault(spell, []).append((_when(raw.get("t")), record))
+    recipes = {}
+    for spell, items in readings.items():
+        ordered = [record for _, record in sorted(items, key=lambda item: item[0])]
+        merged = ordered[0]
+        for record in ordered[1:]:
+            merged = _merge_recipe(merged, record)
+        recipes[spell] = merged
+    return recipes
+
+
+def _recipes(dbs: list[dict], known: dict) -> tuple[dict[int, dict[int, dict]], int, list[str]]:
+    """professions[skillLine].recipes: the pack's recipes of each profession a learned recipe belongs to, with the
+    learned ones over them. Also how many learned recipes were filed, and the ones that name no profession."""
+    owner = {}
+    for line, profession in known.items():
+        for key in (profession.get("recipes") if isinstance(profession, dict) else None) or {}:
+            if _id(key):
+                owner.setdefault(_id(key), line)
+    by_line: dict[int, dict[int, dict]] = {}
+    filed, problems = 0, []
+    for spell, learned_record in sorted(_learned_recipes(dbs).items()):
+        line = learned_record.get("line") or owner.get(spell)
+        if not line:
+            problems.append(f"learned recipe {spell}: no skill line (the profession of its window was not named)")
+            continue
+        record = {key: value for key, value in learned_record.items() if key != "line"}
+        recipes = by_line.setdefault(line, dict((known.get(line) or {}).get("recipes") or {}))
+        base = recipes.get(spell)
+        recipes[spell] = _merge_recipe(base, record) if isinstance(base, dict) else record
+        filed += 1
+    return by_line, filed, problems
+
+
+def _trainers(
+    dbs: list[dict], known: dict, recipe_lines: dict[int, set[int]]
+) -> tuple[dict[int, dict], int, list[str]]:
+    """professions[skillLine].trainers and .services: by the skill line Core/Learn.lua read at the trainer or at one of
+    its services, else by the recipes (the pack's, and the learned ones in `recipe_lines`: { line: {spells} }) that its
+    spells teach. A service names its own profession, else it belongs to the trainer's one. Also how many services
+    were filed."""
+    learned: dict[int, dict] = {}
     for db in dbs:
         for npc, record in _keyed(_learned(db).get("trainers")).items():
             npc = _id(npc)
             if not (npc and isinstance(record, dict)):
                 continue
-            entry = learned.setdefault(npc, {"spells": set(), "skills": set()})
+            entry = learned.setdefault(npc, {"spells": set(), "skills": set(), "readings": []})
             entry["spells"].update(_ids(record.get("spells")))
             if _id(record.get("skill")):
                 entry["skills"].add(_id(record.get("skill")))
-    recipes = {}
+            if "services" in record:
+                entry["readings"].append((_when(record.get("t")), record["services"]))
+    recipes = {line: set(spells) for line, spells in recipe_lines.items()}
     for skill_line, profession in known.items():
         table = profession.get("recipes") if isinstance(profession, dict) else None
-        recipes[skill_line] = {ident for ident in (_id(key) for key in table or {}) if ident}
+        recipes.setdefault(skill_line, set()).update(ident for ident in (_id(key) for key in table or {}) if ident)
     teachers: dict[int, set[int]] = {}
+    filed: dict[int, dict[int, list[dict]]] = {}
     problems = []
     for npc, entry in sorted(learned.items()):
+        services = merge_services(*(reading for _, reading in sorted(entry["readings"], key=lambda r: r[0])))
+        entry["spells"].update(service["id"] for service in services if "id" in service)
+        entry["skills"].update(service["line"] for service in services if "line" in service)
         skills = entry["skills"] or {line for line, spells in recipes.items() if spells & entry["spells"]}
         if not skills:
             problems.append(
@@ -356,11 +571,75 @@ def _trainers(dbs: list[dict], known: dict) -> tuple[dict[int, dict], list[str]]
             )
         for skill_line in skills:
             teachers.setdefault(skill_line, set()).add(npc)
-    professions = {
-        line: {"trainers": _with(npcs, (known.get(line) or {}).get("trainers"))}
-        for line, npcs in sorted(teachers.items())
+        for service in services:
+            line = service.get("line") or (next(iter(skills)) if len(skills) == 1 else None)
+            if line:
+                kept = {key: value for key, value in service.items() if key != "line"}
+                filed.setdefault(line, {}).setdefault(npc, []).append(kept)
+    professions = {}
+    for line, npcs in sorted(teachers.items()):
+        base = known.get(line) or {}
+        professions[line] = {"trainers": _with(npcs, base.get("trainers"))}
+        if line in filed:
+            services = {npc: _listed(listed) for npc, listed in _keyed(base.get("services")).items()}
+            for npc, listed in filed[line].items():
+                services[npc] = merge_services(services.get(npc), listed)
+            professions[line]["services"] = services
+    return professions, sum(len(listed) for by_npc in filed.values() for listed in by_npc.values()), problems
+
+
+def _profession_layer(dbs: list[dict], known: dict) -> tuple[dict[int, dict], list[str], set[int], dict[str, int]]:
+    """The layer's professions table (trainers, services and recipes), the problems found, the reagent items of its
+    recipes and the counts: recipes and trainerServices filed."""
+    recipes, recipe_count, recipe_problems = _recipes(dbs, known)
+    spells = {line: {spell for spell in by_spell if isinstance(spell, int)} for line, by_spell in recipes.items()}
+    professions, service_count, problems = _trainers(dbs, known, spells)
+    for line, by_spell in recipes.items():
+        professions.setdefault(line, {})["recipes"] = by_spell
+    reagents = {
+        item
+        for by_spell in recipes.values()
+        for record in by_spell.values()
+        for item in (record.get("reagents") if isinstance(record, dict) else None) or {}
+        if isinstance(item, int)
     }
-    return professions, problems
+    counts = {"recipes": recipe_count, "trainerServices": service_count}
+    return professions, problems + recipe_problems, reagents, counts
+
+
+def _fold_services(folded: dict[str, dict], old: object, new: object) -> None:
+    """The archive's trainers with their services merged across the archived and the fresh record, the later record's
+    reading of a service winning. `folded` is what _fold_keyed made of the two; its records are replaced, not edited."""
+    tables = [{str(key): record for key, record in _keyed(table).items()} for table in (old, new)]
+    for key in list(folded):
+        readings = [
+            (_when(records[key].get("t")), records[key]["services"])
+            for records in tables
+            if isinstance(records.get(key), dict) and "services" in records[key]
+        ]
+        services = merge_services(*(reading for _, reading in sorted(readings, key=lambda r: r[0])))
+        record = {name: value for name, value in folded[key].items() if name != "services"}
+        if services:
+            record["services"] = services
+        folded[key] = record
+
+
+def _fold_recipes(old: object, new: object) -> dict[str, dict]:
+    """The archive's recipes: per spell the later record's fields over the earlier one's, the observations of both."""
+    folded: dict[str, dict] = {}
+    for table in (old, new):
+        for key, raw in _keyed(table).items():
+            spell, record = _id(key), _recipe(raw)
+            if not (spell and record):
+                continue
+            record["t"] = raw["t"] if _number(raw.get("t")) else 0
+            previous = folded.get(str(spell))
+            if previous is None:
+                folded[str(spell)] = record
+            else:
+                older, newer = (previous, record) if record["t"] >= previous["t"] else (record, previous)
+                folded[str(spell)] = _merge_recipe(older, newer)
+    return folded
 
 
 def _flight_masters(dbs: list[dict]) -> tuple[dict[int, dict], list[str]]:
@@ -396,11 +675,15 @@ def learned_layer(dbs: list[dict], base: dict, guide_dirs: list[Path] = ()) -> t
     maps = base.get("maps") or {}
     tables = _sightings(dbs).tables()
     tables["quests"] = _quests(dbs, base.get("quests") or {})
-    tables["items"], outside = _vendors(dbs, base.get("items") or {}, route_items(base, list(guide_dirs)))
-    tables["professions"], trainer_problems = _trainers(dbs, base.get("professions") or {})
+    tables["professions"], trainer_problems, reagents, profession_stats = _profession_layer(
+        dbs, base.get("professions") or {}
+    )
+    # the reagents of the recipes learned count as route items, like those of the recipes the pack holds
+    tables["items"], outside = _vendors(dbs, base.get("items") or {}, route_items(base, list(guide_dirs)) | reagents)
     flight_masters, taxi_problems = _flight_masters(dbs)
     tables["travel"] = {"flightMasters": flight_masters, "crossings": crossings(_crossing_samples(dbs, maps), maps)}
     stats = {table: len(tables[table]) for table in ("npcs", "objects", "quests", "items", "professions")}
+    stats.update(profession_stats)
     stats["flightMasters"] = len(flight_masters)
     stats["crossings"] = len(tables["travel"]["crossings"])
     stats["vendorItemsOutsideRoute"] = outside
@@ -492,6 +775,8 @@ def fold_source(old: dict | None, db: dict) -> dict:
     old_learned, new_learned = _learned(old), _learned(db)
     learned = {table: _fold_keyed(old_learned.get(table), new_learned.get(table)) for table in ARCHIVE_TABLES}
     learned["crossings"] = _fold_crossings(old_learned.get("crossings"), new_learned.get("crossings"))
+    _fold_services(learned["trainers"], old_learned.get("trainers"), new_learned.get("trainers"))
+    learned["recipes"] = _fold_recipes(old_learned.get("recipes"), new_learned.get("recipes"))
     events: dict[str, dict] = {}
     for entry in [*_listed(old.get("eventLog")), *_listed(db.get("eventLog"))]:
         event = _event(entry)
