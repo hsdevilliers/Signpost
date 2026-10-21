@@ -209,6 +209,20 @@ describe("quest tracking follows the step", function()
 		assert.is_nil(s.world.superTracked)
 	end)
 
+	it(
+		"is not about a quest its step only picks up: an .accept line names nothing, also for a quest in the log",
+		function()
+			local s = start() -- the log holds 101 to 104, and 103, 104 and 101 are tracked
+			s.enter(s.step("t:1", ".goto 1411,10,10", ".accept 102"))
+			assert.are.same({ 103, 104, 101 }, s.world.watch)
+			assert.are.same({}, s.world.watchCalls) -- a step that names no quest makes no client call
+			-- beside a line that names a quest, the pick-up adds nothing to what is tracked
+			s.enter(s.step("t:2", ".accept 102", ".complete 101"))
+			assert.are.same({ 101 }, s.world.watch)
+			assert.are.same({ 101 }, s.ns.Tracking.NamedQuests(s.step("t:3", ".accept 102", ".complete 101")))
+		end
+	)
+
 	it("skips a quest that is not in the quest log", function()
 		local s = start()
 		s.enter(s.step("t:1", ".complete 101", ".complete 999", ".turnin 998"))
@@ -1313,6 +1327,30 @@ describe("quest tracking: the game's own tracking is not the player's", function
 		assert.are.equal("following", mode(s))
 	end)
 
+	-- "Right after" is GAME_WINDOW (2 s) by the clock: the specs above all have the change come in the same instant, so
+	-- a window of nothing would do for them.
+	it("takes a watch change up to two seconds after the game accepted a quest for the game's", function()
+		local s = start({ watch = {} })
+		s.enter(s.step("t:1", ".complete 101", ".complete 102"))
+		s.mock.fire("QUEST_ACCEPTED", 106)
+		s.world.advance(1.5) -- some way into the window
+		table.insert(s.world.watch, 103)
+		s.mock.fire("QUEST_WATCH_LIST_CHANGED", 103, true)
+		s.world.advance(0.5)
+		assert.are.equal("following", mode(s))
+	end)
+
+	it("takes the same change for the player's once the window is over", function()
+		local s = start({ watch = {} })
+		s.enter(s.step("t:1", ".complete 101", ".complete 102"))
+		s.mock.fire("QUEST_ACCEPTED", 106)
+		s.world.advance(2.5) -- just past it
+		table.insert(s.world.watch, 103)
+		s.mock.fire("QUEST_WATCH_LIST_CHANGED", 103, true)
+		s.world.advance(0.5)
+		assert.are.equal("player", mode(s))
+	end)
+
 	it("takes the same change for the player's when the game did nothing just before it", function()
 		local s = start({ watch = {} })
 		s.enter(s.step("t:1", ".complete 101", ".complete 102"))
@@ -1518,6 +1556,20 @@ describe("quest tracking after a reload", function()
 		s.world.watchTypes[103] = 0
 		s.mock.fire("PLAYER_LOGOUT")
 		assert.is_nil(s.ns.char.tracking.handsOff)
+	end)
+
+	it("looks at nothing at logout while it is paused: no card, no judgement, nothing saved", function()
+		local s = start({ watch = {} })
+		s.enter(s.step("t:1", ".complete 101", ".complete 102"))
+		assert.are.equal("following", mode(s))
+		G.SlashCmdList.SIGNPOST("hide") -- the module is paused from here on, in the state it was in
+		assert.are.equal("hidden", s.ns.Tracking:Paused())
+		table.insert(s.world.watch, 103) -- a change by hand that it would take for the player's if it looked
+		forget(s.world)
+		s.mock.fire("PLAYER_LOGOUT")
+		assert.are.equal("following", mode(s))
+		assert.is_nil(s.ns.char.tracking.handsOff)
+		assert.are.same({}, s.world.watchCalls) -- it did not even read the tracker
 	end)
 
 	it("honours the saved fact until the player turns the setting on again", function()
