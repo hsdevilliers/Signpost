@@ -26,11 +26,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import guide_travel  # noqa: E402
 from signpost_tools import datapack, devconfig, learned  # noqa: E402
 from signpost_tools.savedvars import LuaParseError  # noqa: E402
 from signpost_tools.svfiles import ACCOUNT_VAR, SVFile, find_files, load_db  # noqa: E402
 
-DEFAULT_PACK = devconfig.REPO_ROOT.parent / "Signpost_Data"
+# ../Signpost_Data next to this checkout, or next to the main checkout when this is a git worktree (a worktree's own
+# parent folder holds no pack, and writing a layer there would silently make a second, wrong one).
+DEFAULT_PACK = guide_travel.default_pack_dir(devconfig.REPO_ROOT) or devconfig.REPO_ROOT.parent / "Signpost_Data"
 DEFAULT_GUIDES = devconfig.REPO_ROOT / "Guides"
 CONTINENT = 2  # Enum.UIMapType.Continent
 

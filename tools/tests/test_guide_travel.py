@@ -3,7 +3,11 @@ import dataclasses
 import io
 import json
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import guide_travel
@@ -310,6 +314,40 @@ class PlaceholderTest(unittest.TestCase):
         graph = world()
         plan = guide_travel.plan_travel(graph, Place(20, Coord(20, 50, 50), "start"), Place(40, Coord(40, 50, 50), "goal"))
         self.assertEqual(guide_travel.plan_steps(graph, plan), [[".boat 20,90.0,90.0 > 40,10.0,10.0 >> Take the boat to Isle"]])
+
+
+class DefaultPackTest(unittest.TestCase):
+    """The data pack is found next to the checkout, or next to the main checkout from inside a git worktree."""
+
+    @staticmethod
+    def git(cwd, *args):
+        subprocess.run(
+            ["git", "-c", "user.name=test", "-c", "user.email=test@example.com", *args], cwd=cwd, check=True, capture_output=True
+        )
+
+    def test_a_worktree_finds_the_pack_next_to_the_main_checkout(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve()
+            main, pack = base / "Signpost", base / "Signpost_Data"
+            main.mkdir()
+            pack.mkdir()
+            (pack / "_meta.lua").write_text("", encoding="utf-8")
+            self.git(main, "init", "-q")
+            self.git(main, "commit", "-q", "--allow-empty", "-m", "start")
+            nested = base / ".claude" / "worktrees" / "feature"
+            self.git(main, "worktree", "add", "-q", str(nested), "-b", "feature")
+            self.assertEqual(guide_travel.default_pack_dir(main), pack)
+            self.assertEqual(guide_travel.default_pack_dir(nested), pack)  # not the worktrees folder's sibling
+            (pack / "_meta.lua").unlink()
+            self.assertIsNone(guide_travel.default_pack_dir(nested))  # a folder without _meta.lua is no pack
+
+    def test_the_importer_uses_the_same_default(self):
+        import import_savedvars
+
+        expected = guide_travel.default_pack_dir(import_savedvars.devconfig.REPO_ROOT)
+        self.assertEqual(import_savedvars.DEFAULT_PACK, expected or import_savedvars.devconfig.REPO_ROOT.parent / "Signpost_Data")
 
 
 class MoongladeRewriteTest(unittest.TestCase):
