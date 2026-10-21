@@ -1,10 +1,10 @@
--- PLANNED: the thorough alt 2 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
 
 ns.Chapters:Register(
-	"windshaper-druid-04-undercity",
+	"windshaper-druid-05-undercity",
 	[[
 #chapter 20-21 Undercity
 step
@@ -26,16 +26,8 @@ step
   .goto 1458,48.82,69.28
   .turnin 97290 -- Unending Torment
   .turnin 97291 -- Unending Torment
-step
-  .goto 1458,46.31,71.91
-  .accept 95216 -- The New Plague
-  .todo "The New Plague: objective 1 has no position in the pack"
-  .complete 95216,1 -- The New Plague
-  .turnin 95216 -- The New Plague
-step
   .goto 1458,46.61,74.09
   .turnin 97891 -- Prompt Potion Runner
-step
   .goto 1458,73.4,33.0
   .turnin 78143 -- Secrets of the Dreamers
   .turnin 78145 -- Arcanic Systems Manual
@@ -44,6 +36,14 @@ step
   .accept 78150 -- Friend of the Library
   .accept 79096 -- Ataeric: On Arcane Curiosities
   .turnin 78150 -- Friend of the Library
+  .level 21 -- reach it first: kill or grind on the way
+  .note Grind about 3,100 experience before you go on: about 21 kills of creatures near your level (an estimate)
+step
+  .goto 1458,46.31,71.91
+  .accept 95216 -- The New Plague
+  .todo "The New Plague: objective 1 has no position in the pack"
+  .complete 95216,1 -- The New Plague
+  .turnin 95216 -- The New Plague
 step
   .goto 1458,58.08,89.51
   .accept 92421 -- Light's Justice
