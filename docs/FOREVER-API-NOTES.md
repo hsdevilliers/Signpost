@@ -320,19 +320,42 @@ Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.
   and no counters; up to ten lines (`MAX_BODY_LINES`) of `GameFontHighlight` at 260 px lay out without clipping a line or
   covering more than the old five did.
 - [ ] **Quest tracking follows the step** (`Engine/Tracking.lua`, user 2026-10-20; built on the mock, none of it seen in the client;
-  `/signpost probe` now lists the names, and the Classic ones as expected-absent): do `C_QuestLog.AddQuestWatch(questID[, watchType])`,
-  `RemoveQuestWatch(questID)`, `GetQuestWatchType(questID)` (nil for a quest nobody tracks?), `GetNumQuestWatches()`,
-  `GetQuestIDForQuestWatchIndex(i)`, `C_SuperTrack.GetSuperTrackedQuestID()`, `SetSuperTrackedQuestID(questID)` and
-  `Enum.QuestWatchType.Manual` exist on Forever, and does `AddQuestWatch` take the watch type? Or is it the Classic shape (global
-  `AddQuestWatch(logIndex)`, `IsQuestWatched`, `GetQuestIndexForWatch`, which the module falls back to, with
-  `C_QuestLog.GetLogIndexForQuestID` and `GetQuestIDForLogIndex` for the numbers)? Does the watch list read back an add or a
-  remove at once, before `QUEST_WATCH_LIST_CHANGED` (the module compares right after, and stops for the session if no quest of
-  a step shows as tracked)? How many quests can be tracked: a full tracker refuses the add, which the module takes for a broken
-  `AddQuestWatch` (it then leaves the tracker alone and stops). Does `C_QuestLog.GetInfo` list the quests under a collapsed
-  header (the module asks `Context:QuestInLog` either way)? Does the game's own auto-tracking (on accept, on progress) leave the module's result
-  alone (a quest accepted mid-step is untracked at the next change of the quest log's set of quests)? Do the minimap and the
-  objective tracker then show only the step's quests with their progress, and does the check box under "Quest tracker" in
-  Journal > Settings (second column) fit the pane?
+  `/signpost probe` lists the names, and the Classic ones as expected-absent).
+  **How to run it, short:** in game, out of combat, with at least one quest in the log: `/signpost tracking test`, wait two
+  seconds, `/reload`. It watches one quest and unwatches it again (the tracker is as it was afterwards; the chat says what
+  happened, and says plainly if it could not put it back) and records, in `SignpostDB.probe.tracking`, the shape (retail or
+  Classic), which of the functions exist, `Enum.QuestWatchType`, each call's return or error with what the client then said
+  (count of tracked quests, whether the quest is tracked, its watch type, whether it is in the list: this answers "does the list
+  read back an add or a remove at once"), the same read again 1.5 s later, the watch events that arrived meanwhile, and any
+  `MAX_WATCHABLE_QUESTS` / `Constants.QuestWatchConsts` the client names. Claude reads it with `python tools/read_savedvars.py
+  probe`. Meanwhile the module keeps the first twelve observations of the game's own tracking in `SignpostDB.probe.trackingSeen`
+  (a quest that arrived: is it already tracked, as which watch type; a change of the tracker and who it was taken for), so a few
+  minutes of normal play with the guide on (accept a quest, kill something for another) answer the auto-tracking question.
+  `/signpost tracking` prints the module's state, what it keeps to give back and which functions exist.
+  **Still to read from the client:** do `C_QuestLog.AddQuestWatch(questID[, watchType])`, `RemoveQuestWatch(questID)`,
+  `GetQuestWatchType(questID)` (nil for a quest nobody tracks?), `GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`,
+  `C_SuperTrack.GetSuperTrackedQuestID()`, `SetSuperTrackedQuestID(questID)` and `Enum.QuestWatchType` (Automatic, Manual) exist
+  on Forever, and does `AddQuestWatch` take the watch type? Or is it the Classic shape (global `AddQuestWatch(logIndex)`,
+  `IsQuestWatched`, `GetQuestIndexForWatch`, which the module falls back to, with `C_QuestLog.GetLogIndexForQuestID` and
+  `GetQuestIDForLogIndex` for the numbers)? Does the watch list read back an add or a remove at once, before the event (the module
+  compares right after; if no quest of a step shows as tracked it backs off for the client and tries again after 5 s, 15 s, ...)?
+  How many quests can be tracked, and what does `AddQuestWatch` answer when the tracker is full (the module takes it for a broken
+  `AddQuestWatch`, backs off and retries until the player frees a slot)? Does `C_QuestLog.GetInfo` list the quests under a
+  collapsed header (the module asks `Context:QuestInLog` either way)? Does the game track a quest as it is accepted and as its
+  progress changes, as which `Enum.QuestWatchType`, and does `GetQuestWatchType` tell that from the player's own tracking (the
+  module ignores Automatic watches when comparing; without watch types it cannot tell them apart and backs off for the player)?
+  Does `QUEST_WATCH_LIST_CHANGED` exist, and does it fire for the module's own writes before or after the call returns? Does turning
+  the setting off give the tracker back as the player had it, and does showing the step card again (`/signpost show`, the Journal's
+  box) set the tracking for the current step? Do the minimap and the objective tracker then show only the step's quests with their
+  progress, and does the check box under "Quest tracker" in Journal > Settings (second column) fit the pane?
+- [ ] **Quest log capacity: 40 is the user-accepted working value** (user, 2026-10-21: "accept a 40 quest cap for wow forever"; the user
+  says Forever raised the Classic limit of 25 to 40, nothing recorded confirms it; the planner assumes 40): `/signpost probe` records
+  `SignpostDB.probe.questLogMax = { canAccept, canAcceptKind, legacyGlobal, entries, quests, numQuests }` and prints "quest log: N
+  quests now; limit per GetMaxNumQuestsCanAccept: X, per MAX_QUESTLOG_QUESTS: Y". The probe confirms or corrects 40: does
+  `C_QuestLog.GetMaxNumQuestsCanAccept()` exist (`canAcceptKind`) and answer 40? Does the Classic global `MAX_QUESTLOG_QUESTS` exist
+  and say 25 or 40? Run it with a few quests in the log (`entries` counts headers, `quests` the quests by walking the log, `numQuests`
+  is the client's own count; they differ while a header is collapsed and the client hides its quests from the walk, which also
+  answers the collapsed-header probe above). Move the answer to Verified with the build number.
 - [ ] The quest item button (`type = "item"`, `item = "item:<id>"`) uses the item by click and by `/click SignpostItemButton`,
   with `ActionButtonUseKeyDown` on and off; a step change in combat updates it after combat without `ADDON_ACTION_BLOCKED`.
 

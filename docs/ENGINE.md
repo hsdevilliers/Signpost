@@ -293,46 +293,98 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
 
 The quest log's tracked quests follow the current step (user, 2026-10-20): the quest tracker and the minimap then show the
 quests of the step, and the tracker shows their progress (which is why the step frame lists the quests and leaves their
-objectives to the quest log).
+objectives to the quest log). One state machine, written out in the comment at the top of the module (states, the events that
+move between them, the saved fields); `Tracking.state.mode` is its state for the step in hand.
 
-- **When it acts:** `Tracking:Active()`: the setting is on (`Tracking:Enabled()`), a guide is active (`ns.Progress:Guide()`),
-  the step card is shown and the client has not refused a step's quests this session (`Tracking.failed`). The card's flag is
-  the saved one, `SignpostDB.stepFrame.shown` (`/signpost hide`, the Journal's "Show the step card"), not the hides the card
-  does by itself in combat, when dead or while the Journal is open. Otherwise it does nothing at all: no client call, not even
-  for a change of the quest log. Showing the card again takes effect at the next step or change of the quest log's quests.
-- **A step becomes current** (`STEP_CHANGED` for another step id; `Tracking:SetEnabled(true)` forces it): the quests the step
-  is about are tracked first, those of its `.complete` and `.turnin` directives (`Tracking.NamedQuests(step)`: in directive
-  order, each once) that are in the quest log (`ns.Context:QuestInLog`, which also finds a quest under a collapsed header).
-  Only when the client tracks at least one of them are all the other tracked quests untracked, and the step's quests a full
-  tracker refused are added again. If none got tracked (AddQuestWatch raised or refused it: a full tracker looks the same) it
-  changes nothing else, records one entry in the error log ("Signpost: quest tracking stopped: ...", `ns.Errors`) and stops
-  until the setting is toggled either way. A step that names no quest in the log (a pick-up, a trip) changes nothing and makes
-  no client call. The first successful application for the step also gives the first of its quests that is not complete to
-  `C_SuperTrack.SetSuperTrackedQuestID`, unless `GetSuperTrackedQuestID` already returns one of them; later applications for
-  the same step do not move the focus.
+- **States:** `idle` (nothing is managed: no step yet, the module could not act when the step began, the client has no watch
+  functions, or the tracker was just given back), `following` (the tracker is set to the step's quests, and set again when the
+  quest log's set of quests changes), `player` (backed off for the player: they tracked or untracked a quest by hand during the
+  step; `Tracking.state.manual` is true), `client` (backed off for the client: it tracked none of the step's quests) and
+  `restoring` (transient, while the player's earlier tracking is given back).
+- **When it acts:** `Tracking:Active()`, which is `Tracking:Paused() == nil`: the setting is on (`Tracking:Enabled()`), a guide is
+  active (`ns.Progress:Guide()`), the step card is shown and `/signpost tracking test` is not running (`Paused()` says which
+  of `"off"`, `"noguide"`, `"hidden"`, `"testing"` stops it). The card's flag is the saved one, `SignpostDB.stepFrame.shown`
+  (`/signpost hide`, the Journal's "Show the step card"), not the hides the card does by itself in combat, when dead or while the
+  Journal is open (so opening or closing the Journal changes nothing here). Otherwise it does nothing at all: no client call, not
+  even for a change of the quest log. When the card's flag turns on again (`StepFrame:SetShown(true)`, `StepFrame:Reset()`; the
+  module wraps those two methods at `DB_READY` and watches the flag, so the card's file does not know about it)
+  `Tracking:OnCardShown()` sets the tracking for the current step as a new start. Hiding the card gives nothing back: it pauses
+  the module.
+- **A step becomes current** (`STEP_CHANGED` for another step id; `Tracking:SetEnabled(true)` and the card shown again force it):
+  a new start. The quests the step is about are tracked first, those of its `.complete` and `.turnin` directives
+  (`Tracking.NamedQuests(step)`: in directive order, each once) that are in the quest log (`ns.Context:QuestInLog`, which also
+  finds a quest under a collapsed header). Only when the client tracks at least one of them are all the other tracked quests
+  untracked, and the step's quests a full tracker refused are added again. If none got tracked the module backs off for the
+  client (below). A step that names no quest in the log (a pick-up, a trip) changes nothing and makes no client call. The first
+  successful application for the step also gives the first of its quests that is not complete to
+  `C_SuperTrack.SetSuperTrackedQuestID`, unless `GetSuperTrackedQuestID` already returns one of them; later applications for the
+  same step do not move the focus.
 - **The same step announced again** (the engine parsed the guide again: `PROFESSION_PLAN_CHANGED`, `GUIDE_SELECTED`) is not a
-  new start: when the module stayed hands off it still does, otherwise it sets the tracking again without the focus. A reload
-  or login is a new session and a new start.
+  new start: when the module backed off for the player it still does, otherwise it sets the tracking again without the focus. A
+  reload or login is a new start, except for the saved fact below.
 - **The quest log changes while the step is current** (`CONTEXT_CHANGED("quests")`): only when the *set* of quests changed (a
   quest accepted or removed; progress inside a quest, or a header collapsed or expanded, changes nothing and costs no call)
-  the tracking is set again for the step, without the focus. Unless one of the quests the log already had has been tracked or
-  untracked since the module last set it (by the player, or by the game tracking a quest as its progress changes: the module
-  cannot tell them apart): then `Tracking.state.manual` is true and the module leaves the tracking alone until the next step,
-  even if the change is put back.
-- The player's earlier tracking is not remembered and not given back when the step ends or the setting is turned off (v1).
+  the tracking is set again for the step, without the focus, unless the player has changed the tracker meanwhile (next item).
+  A quest that arrived is not compared: it is untracked unless the step is about it.
+- **Who changed the tracker.** The module reads the tracker back after every write and keeps that as `left` (`state.left`; saved
+  as `SignpostCharDB.tracking.left`). A quest the log already had whose tracked state differs from `left` was changed by
+  somebody else, and the game is told from the player by (1) the watch type, `C_QuestLog.GetQuestWatchType` against
+  `Enum.QuestWatchType` (Automatic is the game's own tracking, as when it tracks a quest as its progress changes; Manual is
+  not; a watch of the game's that the step is about is left standing, and the game dropping it is not the player's doing), (2)
+  when the change is seen as it happens (the event `QUEST_WATCH_LIST_CHANGED`, where the client has it; a bunch of events is
+  looked at once, 0.3 s after the first), a `QUEST_ACCEPTED` or `QUEST_WATCH_UPDATE` within `GAME_WINDOW` (2 s) before it is the
+  game's own tracking (and is then taken into `left`, so it is not judged again), (3) otherwise the player's: the module backs
+  off, `Tracking.state.mode` is `player`, and `SignpostCharDB.tracking.handsOff` holds the step's id. Without watch types and
+  without that event a change by the game still looks like the player's (documented limit: it fails safe, the player is never
+  fought). The check runs at the next change of the quest log's set of quests, at the watch list event, and at `PLAYER_LOGOUT`
+  (a reload is a logout too, so a change made just before a reload is remembered).
+- **Backed off for the player** lasts until the next step (a new start), until the player toggles the setting, or until the step
+  card is shown again. The saved fact is honoured only by the first start after a reload and only for the step it names; any
+  other start forgets it.
+- **Backed off for the client** (`Tracking.state.mode == "client"`): the tracker was left as it was, one entry goes to the error
+  log for the streak ("Signpost: quest tracking backed off: ...", `ns.Errors`), and the module tries again: on a timer 5, 15, 45,
+  120 and 300 s after the 1st to 5th failure in a row, and at a step, a change of the quest log's quests or a watch list event
+  that comes after the back-off, never earlier (`BACKOFF`, `due()`: a burst of steps or quest log changes costs one try). After
+  the fifth failure there is no more timer and the back-off stays 300 s. A success ends the streak; toggling the setting or the
+  card shown again start over. A full tracker is recovered this way once the player frees a slot; the module does not free one
+  itself (it could lose a quest of the player's).
+- **Giving back** (`Tracking:Release()`): the first time the module is about to change the tracker it remembers what the player
+  had tracked (`SignpostCharDB.tracking.before`, in tracker order, quests in the log only; once, until it is given back). When
+  the setting is turned off (also while the card is hidden: it is the player's own act) or a guide choice leaves no guide
+  active (`GUIDE_SELECTED`), it puts that back, once: what the module added and the player did not untrack since is untracked,
+  what it removed and the player did not track again since is tracked again (quests the player changed after the module's last
+  write are theirs, as is what the player tracked by hand), only quests still in the log count, and when none of the earlier
+  tracking is left the tracker stays as it is rather than ending up empty. It says what it did in chat. A guide that reaches its
+  last step keeps that step current: nothing ends and nothing is given back.
 - `Tracking:Enabled()`, `Tracking:SetEnabled(on)`: `SignpostDB.settings.trackStepQuests` holds only the player's own choice
   (Journal > Settings > Quest tracker); until they choose, `Tracking.DEFAULT_ENABLED` (true, the user's choice) is the answer
-  and the one place the default lives.
-- Client API, all through `Util.Call` so a missing or failing function costs this feature and never the step engine.
-  Retail shape: `C_QuestLog.GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`, `GetQuestWatchType(questID)` (any value
-  but nil and false is tracked, `Enum.QuestWatchType.Automatic` (0) too; the watch list answers when it is missing),
+  and the one place the default lives. Either way it is a new start (back-off and the saved hands-off fact forgotten); turned
+  on it takes effect for the current step at once, turned off it gives the earlier tracking back.
+- **`/signpost tracking`** prints the setting, the state, the step, what the module last set, what it keeps to give back, the
+  back-off, the quests tracked now (with the client's watch type) and which watch functions the client has.
+  **`/signpost tracking test`** (out of combat only) watches one quest of the log and unwatches it again (the quest tracked
+  last when every quest is tracked: it is taken off and put back, so the order stays), reads the tracker back after each call and
+  once more 1.5 s later, notes the watch events that arrive meanwhile, puts the tracker back once more if it is not as it was,
+  says in chat what it did, and records it in `SignpostDB.probe.tracking` (shape, which functions exist, `Enum.QuestWatchType`,
+  each call's return or error with the readback, counts before and after, events, `restored`, `limits`). The module is paused
+  while it runs and picks up afterwards (a step or the setting changed meanwhile is applied then). The module also keeps the
+  first twelve observations of the game's own tracking in `SignpostDB.probe.trackingSeen` (what the client says about a quest
+  that arrived and how a change was told). `/signpost probe` keeps both (`Probe.keep`).
+- Client API, all through `Util.Call` (pcall in the test) so a missing or failing function costs this feature and never the
+  step engine. Retail shape: `C_QuestLog.GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`, `GetQuestWatchType(questID)`
+  (any value but nil and false is tracked, `Enum.QuestWatchType.Automatic` (0) too; the watch list answers when it is missing),
   `AddQuestWatch(questID, Enum.QuestWatchType.Manual)`, `RemoveQuestWatch(questID)`; `C_SuperTrack.GetSuperTrackedQuestID()`
   and `SetSuperTrackedQuestID(questID)`. Where `C_QuestLog` lacks `AddQuestWatch` or `RemoveQuestWatch`, the Classic shape on
   quest log numbers: `AddQuestWatch(number)`, `RemoveQuestWatch(number)`, `IsQuestWatched(number)`, `GetNumQuestWatches()`,
   `GetQuestIndexForWatch(i)` (a quest's number from `C_QuestLog.GetLogIndexForQuestID`, else a walk of `C_QuestLog.GetInfo`;
-  the quest at a number from `GetQuestIDForLogIndex`, else `GetInfo`). Unverified on Forever (API notes, "Open probes";
-  `/signpost probe` lists which names exist). `QUEST_WATCH_LIST_CHANGED` is probed but not used: the watch list is compared when
-  it matters.
+  the quest at a number from `GetQuestIDForLogIndex`, else `GetInfo`). Unverified on Forever (API notes, "Open probes").
+  `QUEST_WATCH_LIST_CHANGED`, `QUEST_ACCEPTED` and `QUEST_WATCH_UPDATE` are used as described; the module works without the
+  first.
+- **`Core/Probe.lua`'s quest log capacity** (`SignpostDB.probe.questLogMax = { canAccept, canAcceptKind, legacyGlobal, entries,
+  quests, numQuests }`): `C_QuestLog.GetMaxNumQuestsCanAccept()`, the Classic global `MAX_QUESTLOG_QUESTS`, the entries of the
+  quest log (headers too), the quests among them counted by walking the log, and the client's own count (the second result of
+  `GetNumQuestLogEntries`). The user accepted 40 as the working value (2026-10-21); the probe confirms or corrects it. Nothing in
+  the engine reads it yet.
 
 ### Core/Learn.lua — `ns.Learn`
 

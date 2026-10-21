@@ -186,15 +186,20 @@ quest log's tracker is set to the quests the step is about, the quests of its `.
 in the quest log (a quest under a collapsed header is in it): they are tracked first, and only once the client has tracked at
 least one of them is every other tracked quest untracked, so the minimap and the quest tracker show only those quests, and
 the tracker shows their progress (the step frame does not). If the client tracks none of them (it raises or refuses, a full
-tracker looks the same) the tracker is left as it was and the module stops until the setting is toggled. A step that names no
-quest in the log (a pick-up, a trip) leaves the tracking as it is. It acts only while all of these hold: the player has not
-turned it off (Journal > Settings > Quest tracker; on until they do), a guide is active, and the step card is shown (the
-saved setting, `/signpost hide` and the Journal's "Show the step card"; with the card hidden it does nothing at all, while
-the card's own hides in combat, when dead or with the Journal open do not count). It does not fight the player: a quest the
-log already had that is tracked or untracked by hand (or by the game) during the step stays so until the step changes, even
-if the change is put back, and the step announced again after the guide is parsed again keeps that. The tracker is pointed
-once at the first quest of the step that is not complete, when the step begins. The player's earlier tracking is not
-restored afterwards.
+tracker looks the same) the tracker is left as it was and the module tries again a little later (after 5, 15, 45, 120 and 300
+seconds, and at a later step or change of the quest log, never in a burst). A step that names no quest in the log (a pick-up, a
+trip) leaves the tracking as it is. It acts only while all of these hold: the player has not turned it off (Journal >
+Settings > Quest tracker; on until they do), a guide is active, and the step card is shown (the saved setting, `/signpost
+hide` and the Journal's "Show the step card"; with the card hidden it does nothing at all, and showing the card again sets the
+tracking for the current step at once, while the card's own hides in combat, when dead or with the Journal open do not
+count). It does not fight the player: a quest the log already had that the player tracks or untracks by hand during the step
+stays so until the step changes, even if the change is put back, and the step announced again after the guide is parsed again
+keeps that, as does a reload in the middle of the step. What the game itself tracks as it goes (a quest as it is accepted, or
+as its progress changes) is not taken for the player's doing where the client says so, and a quest it tracks that is not the
+step's is untracked. The tracker is pointed once at the first quest of the step that is not complete, when the step begins.
+When the player turns the setting off (or no guide is left) the module gives back what they were tracking before it first
+changed the tracker, without undoing anything they changed since, and says so in chat. `/signpost tracking` shows what the
+module is doing; `/signpost tracking test` checks the client's watch functions.
 
 ## Display text
 
