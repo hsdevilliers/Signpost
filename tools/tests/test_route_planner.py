@@ -115,6 +115,30 @@ class EndToEndTest(RouteCase):
         self.assertIn("reaches level 6", text)
         self.assertIn("greedy:", text.strip().splitlines()[-1])
 
+    def test_the_area_rule_is_stated_in_the_setup_audited_in_the_quests_and_switched_by_the_option(self):
+        args = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        code, text = self.run_main(*args)
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn("is done on the spot, in the same visit (--area-yards", flat)
+        self.assertIn("within 350 yards of where it is picked up", flat)
+        self.assertIn("same area", text)
+        code, text = self.run_main(*args, "--area-yards", "120")
+        self.assertIn("within 120 yards of where it is picked up", " ".join(text.split()))
+        code, text = self.run_main(*args, "--area-yards", "0")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn("same-area quests are not done on the spot (--area-yards 0)", flat)
+        self.assertNotIn("is done on the spot", flat)
+
+    def test_the_plan_file_records_the_area_and_what_the_route_left_out(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0")
+            self.assertEqual(code, 0, text)
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["area_yards"], 350.0)
+            self.assertEqual(data["area_misses"], [])  # the greedy route takes what it stands next to
+
     def test_the_report_says_how_many_quests_the_log_holds_at_most_and_the_limit_is_obeyed(self):
         args = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
         code, text = self.run_main(*args)
@@ -258,6 +282,45 @@ class QuestLogPeakTest(unittest.TestCase):
         )
         self.assertEqual(rp.route_log_peak(route), 4)  # 2 held, 3 at the second step, only 4 at the third, and 4 + three accepts = four at the fourth
         self.assertEqual(rp.route_log_peak(types.SimpleNamespace(steps=[])), 0)
+
+
+class AreaReportTest(unittest.TestCase):
+    """The audit line of THE QUESTS (Planner.area_misses): the quests a route stood next to and left out."""
+
+    def lines(self, area_yards, misses):
+        pl = types.SimpleNamespace(
+            s=engine.Settings(area_yards=area_yards),
+            area_misses=lambda plan, radius=None: misses,
+            quests={qid: types.SimpleNamespace(name=name) for qid, name in ((92462, "Infestation Investigation"), (92598, "The Gift of Skysight"))},
+            hubs=[types.SimpleNamespace(label="Zephras Isle: Aetheen of the Gales"), types.SimpleNamespace(label="Zephras Isle: Rorian the Dayseeker")],
+        )
+        out = rp.Out(quiet=True)
+        rp.report_area(out, pl, engine.Plan())
+        return "\n".join(out.lines)
+
+    def test_a_route_that_left_nothing_out_says_so_with_the_area(self):
+        text = self.lines(350.0, [])
+        self.assertIn("no quest is left out that was offered where the route stood", text)
+        self.assertIn("within 350 yards", text)
+
+    def test_the_quests_left_out_are_named_with_their_level_and_where_the_route_stood(self):
+        text = " ".join(self.lines(350.0, [(92462, 0, 2), (92598, 1, 4)]).split())
+        self.assertIn("2 quest(s) were offered where the route stood", text)
+        self.assertIn("92462 Infestation Investigation (level 2, Aetheen of the Gales)", text)
+        self.assertIn("92598 The Gift of Skysight (level 4, Rorian the Dayseeker)", text)
+        self.assertNotIn("the rule is off", text)
+
+    def test_with_the_rule_off_the_report_still_audits_with_the_default_area_and_says_so(self):
+        text = " ".join(self.lines(0.0, [(92462, 0, 2)]).split())
+        self.assertIn("within 350 yards", text)  # the audit needs an area: the setting's default
+        self.assertIn("(--area-yards 0: the rule is off)", text)
+
+    def test_a_long_list_is_cut_after_six(self):
+        many = [(92462, 0, 2)] * 8
+        text = " ".join(self.lines(350.0, many).split())
+        self.assertIn("8 quest(s)", text)
+        self.assertEqual(text.count("92462 Infestation Investigation"), 6)
+        self.assertIn("...", text)
 
 
 class GrainReportTest(unittest.TestCase):

@@ -1,12 +1,14 @@
 ---
 title: Planned chapters are named after their first zone but hold steps of others; lone level steps have no place
 kind: finding
-status: open
+status: done
 priority: low
 area: planner
 source: claude
 raised: 2026-10-20
 raised_in: independent review of the installed Troll Hunter guide, 2026-10-20
+closed: 2026-10-21
+resolution: WP-E1 (feat/planner-features): chapters are cut where the route stays 3+ steps in another zone (counted after joining) and named after the majority zone; a lone .level step is attached to the step before it; tests ChapterTest and SpansTest.
 ---
 
 ## What
@@ -23,3 +25,9 @@ The Journal's chapter list shows the wrong zone for part of the route.
 ## Done when
 
 A chapter is named after the zone most of its steps are in, or is split at every change of zone; a lone level step joins its neighbour.
+
+## Notes
+
+- Done (WP-E1, feat/planner-features): split_chapters in tools/planner.py. A change of zone starts a chapter when the new zone lasts at least 3 steps (counted after
+  joining; --chapter-steps), a shorter stay is part of the chapter it happens in, and a chapter is named after the zone most of its steps are in. A lone .level step
+  is attached to the step before it as a .level line and the grind note. The Troll beam: 22 chapters become 24. Tests ChapterTest, SpansTest.

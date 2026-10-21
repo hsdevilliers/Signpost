@@ -82,6 +82,22 @@ beam compares its best finished routes as they would be written, and against the
   and the next pick-up at one NPC are one step; the step keeps the `.goto` of every place in it, the player's pins when there is no data pack), one doing
   step for quests whose objectives are close to each other (the addon draws no marker for it; it keeps its first `.goto` for the tools). A quest whose
   objectives all fall in one doing step is `.complete <quest>`, otherwise `.complete <quest>,<objective>`. A step with a gate or a `.hub` line of its own is never joined.
+- **A quest whose work is near is done on the spot** (`--area-yards`, default 350; user, 2026-10-21, from his early test of the Skyborne guide: "for step
+  two, it tells me to complete the Harmony and Balance. And there is another quest available to pick up called Infestation Investigation, and it's not telling
+  me to pick it up ... these two quests literally are completed in the same zone on the map"; the rule: a quest offered where the player stands, with its
+  objectives in the area of the step in hand, should be taken). A quest has a *bundle* at a place it starts when a place to hand it in and a place for every
+  objective (an objective with no position in the pack is worked where the quest starts) lie within 350 yards of that place, about 50 seconds of walking each
+  way (`Planner.bundles`). A quest picked up at such a place is worked and handed in before the visit ends, in the same visit; so is one that was picked up at
+  an earlier visit and held in the log because its level was too high to work it (the planner accepts up to 5 levels above the character and works up to 3),
+  when the route is next at its giver's hub and can work it. A hand-in or a follow-up the hand-in opens (a chain) is taken in the same visit. Group quests
+  (`optional`) are not asked for on the spot. Once a visit goes beyond its hub the walk between its places is priced by the map (a flat `local_walk` only
+  between two places of one hub), and the visit ends where its last action was.
+  Why: the search used to accept a free quest at a hub for nothing (an accept costs 12 seconds), never go back for its objective, and `tidy` then took it out
+  of the written route as "accepted and never finished". On the Skyborne guide 92462 Infestation Investigation was in the log at the end of 13 of the 14
+  finalists the beam wrote out, and its follow-up 92463 The Cirrusfly Queen is never offered when 92462 is never handed in: no choice among finalists (the
+  Monte Carlo of `--install` included) could bring them back. The audit is `Planner.area_misses` and the `same area` line of THE QUESTS: the quests the route stood
+  next to (the hub it was visiting), that could be worked at that level, and left out. `--area-yards 0` turns the rule off and reproduces the planning before it
+  (and then lists what that planning left out). Measurements below.
 - **A grind step says how much to grind** (user, 2026-10-21: "I'm fine if you want to have certain points in the guide where you simply tell the player to
   grind a certain amount of experience"). When nothing can be done until a level opens something, the route grinds for it (the time is charged, nothing
   else). A grind is not a step of its own: it is two lines at the end of the step it follows, where the character stands when it begins (one that comes first
@@ -115,8 +131,8 @@ beam compares its best finished routes as they would be written, and against the
 baseline greedy route against this one, and for a search of several grains of progress `grains`: each grain's best route as it would be
 written, the work it took and how far apart they are) - `THE ROUTE AS A GRAPH` (zones with the time spent, the
 travel between them, one row per leg) - `TIME AND EXPERIENCE` (where the time goes, the time at each level, and `grinding`: every grind
-step with its amount and the share of the route it makes) - `THE QUESTS` (done, the most quests held at once, left out as slow, the
-class quests with the level each is done at against the level it opens at) - `THE DECISIONS` (each change of
+step with its amount and the share of the route it makes) - `THE QUESTS` (done, the most quests held at once, the `same area` audit, left out as
+slow, the class quests with the level each is done at against the level it opens at) - `THE DECISIONS` (each change of
 zone and the best route held in other zones at that step) - `CHECKED BY THE SAME SIMULATOR AND LINT` (the route written as guide
 steps with the travel steps added, walked by `guide_sim` and `guide_lint`: availability errors, the most quests the written route
 holds at once, lint errors, `.todo` steps, and how
@@ -157,6 +173,11 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   quests (the druids), and a wider beam is not always better. `thorough` runs several grains and keeps the best, and its report says how far apart the grains'
   best routes are (`grains`: trust the best route no more than that; a warning above 5%). Read the baseline line of the report too, which says how much faster the
   result is than the greedy route, and distrust a route that is not clearly faster. "Measurements" below has the numbers.
+- **The same-area rule is local**: it covers a quest whose giver is in the hub being visited (or was, when it was held), with all its work within 350 yards of the
+  giver. It does not look at an NPC with a "!" in the next hub, at a quest whose work is farther away (that quest is picked up for nothing and the search decides
+  whether to go back for it, and `tidy` drops it if it does not), or at a group quest (tagged optional). Inside a visit the places are walked nearest first, not as the
+  shortest tour. And it changes the search, not only the route: the places the character is at when a level comes differ, and a beam that is rough anyway can land
+  on a worse route for it (the Skyborne beam did, "Measurements"); `thorough` takes the best of several grains and `--install` the best of all.
 - **The quest log limit counts what the search holds**, which is more than the written route holds ("Measurements"): 40 is Forever's capacity (confirmed by
   the user in the game, 2026-10-21; Classic's is 25).
 - **Data holes become `.todo` steps**: an objective with no position in the pack is worked where its quest starts, and the step
