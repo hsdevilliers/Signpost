@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 4 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 5 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -9,12 +9,13 @@ ns.Chapters:Register(
 #chapter 19-20 Undercity
 step
   .goto 1458,73.4,33.0
-  .turnin 78143 -- Secrets of the Dreamers
   .turnin 78145 -- Arcanic Systems Manual
   .turnin 79097 -- Baxtan: On Destructive Magics
   .accept 78127 -- The Dalaran Digest
+  .accept 78143 -- Secrets of the Dreamers
   .accept 78149 -- Fury of the Land
   .accept 78150 -- Friend of the Library
+  .accept 79096 -- Ataeric: On Arcane Curiosities
   .turnin 78150 -- Friend of the Library
   .goto 1458,58.61,54.68
   .accept 97891 -- Prompt Potion Runner
@@ -43,8 +44,5 @@ step
   .accept 65601 -- Love Hurts
   .goto 1454,63.65,49.93
   .turnin 65601 -- Love Hurts
-step
-  .todo "travel from Orgrimmar to The Barrens: the travel graph has no route yet"
-  .zone 1413 >> Go to The Barrens
 ]]
 )

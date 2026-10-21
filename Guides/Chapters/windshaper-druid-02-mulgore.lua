@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 4 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 5 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -24,32 +24,52 @@ step
   .goto 1412,54.76,64.27
   .accept 749 -- The Ravaged Caravan
 step
+  .goto 1412,51.87,53.37
+  .turnin 749 -- The Ravaged Caravan
+  .accept 751 -- The Ravaged Caravan
+step
   .goto 1412,46.68,63.83
   .turnin 99081 -- Grim Tidings
   .accept 99101 -- Our Ancient Enemy
   .goto 1412,46.67,63.38
   .turnin 99101 -- Our Ancient Enemy
 step
-  .goto 1412,51.87,53.37
-  .turnin 749 -- The Ravaged Caravan
-  .accept 751 -- The Ravaged Caravan
+  .goto 1412,47.28,57.63
+  .accept 99411 -- Kyle's Gone Missing!
+step
+  .goto 1412,46.28,62.34
+  .complete 99411 -- Kyle's Gone Missing!
 step
   .goto 1412,54.76,64.27
   .turnin 751 -- The Ravaged Caravan
   .accept 764 -- The Venture Co.
   .accept 765 -- Supervisor Fizsprocket
 step
-  .goto 1412,58.66,47.59
+  .goto 1412,61.19,49.32
+  .complete 765 -- Supervisor Fizsprocket
   .complete 764 -- The Venture Co.
 step
   .goto 1412,54.76,64.27
   .turnin 764 -- The Venture Co.
+  .turnin 765 -- Supervisor Fizsprocket
 step
-  .goto 1412,61.19,49.32
-  .complete 765 -- Supervisor Fizsprocket
+  .goto 1412,47.28,57.63
+  .turnin 99411 -- Kyle's Gone Missing!
 step
-  .goto 1412,56.98,34.55
-  .accept 833 -- A Sacred Burial
+  .goto 1412,46.13,67.4
+  .accept 96605 -- The Great Outdoors
+step
+  .goto 1412,46.21,67.31
+  .complete 96605 -- The Great Outdoors
+step
+  .goto 1412,46.13,67.4
+  .turnin 96605 -- The Great Outdoors
+step
+  .goto 1412,33.13,65.92
+  .accept 98430 -- The Longwalkers
+step
+  .goto 1412,37.19,64.62
+  .complete 98430 -- The Longwalkers
 step
   .todo "travel from Mulgore to Thunder Bluff: the travel graph has no route yet"
   .zone 1456 >> Go to Thunder Bluff

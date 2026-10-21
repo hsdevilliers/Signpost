@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 4 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 5 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -6,68 +6,64 @@ local ADDON_NAME, ns = ...
 ns.Chapters:Register(
 	"windshaper-druid-12-the-barrens",
 	[[
-#chapter 22-23 The Barrens
+#chapter 22-22 The Barrens
 step
   .goto 1413,51.95,31.58
   .turnin 899 -- Consumed by Hatred
   .turnin 4921 -- Lost in Battle
   .turnin 95774 -- Her Name Is Olgra
 step
-  .goto 1413,57.62,27.24
-  .complete 97003 -- Chol'aruk the Ravener
-step
-  .goto 1413,52.65,29.06
-  .turnin 97003 -- Chol'aruk the Ravener
-step
   .goto 1413,62.98,37.22
   .turnin 1094 -- Further Instructions
-  .goto 1413,63.35,38.45
-  .turnin 896 -- Miner's Fortune
 step
-  .goto 1413,44.86,59.14
-  .accept 913 -- Cry of the Thunderhawk
-  .accept 6382 -- The Ashenvale Hunt
-  .goto 1413,44.62,59.27
-  .accept 97250 -- Wrongly Blamed, Justly Corrected
-  .goto 1413,44.55,59.26
-  .accept 878 -- Tribes at War
+  .todo "travel from The Barrens to Undercity: the travel graph has no route yet"
+  .zone 1458 >> Go to Undercity
 step
-  .goto 1413,44.77,63.05
-  .complete 913 -- Cry of the Thunderhawk
+  .goto 1458,73.4,33.0
+  .turnin 78143 -- Secrets of the Dreamers
+  .turnin 78149 -- Fury of the Land
 step
-  .goto 1413,44.86,59.14
-  .turnin 913 -- Cry of the Thunderhawk
+  .goto 1458,46.31,71.91
+  .accept 95216 -- The New Plague
+  .todo "The New Plague: objective 1 has no position in the pack"
+  .complete 95216,1 -- The New Plague
+  .turnin 95216 -- The New Plague
 step
-  .goto 1413,42.87,55.25
-  .complete 878,1 -- Tribes at War
+  .goto 1458,58.08,89.51
+  .accept 92421 -- Light's Justice
+  .todo "Light's Justice: objective 1 has no position in the pack"
+  .complete 92421,1 -- Light's Justice
+  .turnin 92421 -- Light's Justice
 step
-  .goto 1413,43.27,48.0
-  .complete 878,3 -- Tribes at War
+  .todo "travel from Undercity to Silverpine Forest: the travel graph has no route yet"
+  .zone 1421 >> Go to Silverpine Forest
 step
-  .goto 1413,44.78,51.51
-  .complete 878,2 -- Tribes at War
+  .goto 1421,56.18,9.18
+  .accept 435 -- Escorting Erland
+  .goto 1421,53.46,13.43
+  .turnin 435 -- Escorting Erland
+  .accept 449 -- The Deathstalkers' Report
 step
-  .goto 1413,44.55,59.26
-  .turnin 878 -- Tribes at War
-  .accept 5052 -- Blood Shards of Agamaggan
+  .goto 1421,44.2,39.81
+  .accept 98298 -- Arugal's Folly
+  .accept 98299 -- Stop the Spread
+  .goto 1421,43.98,40.93
+  .accept 477 -- Border Crossings
+  .accept 95981 -- Watching the Roads
+  .accept 516 -- Beren's Peril
 step
-  .goto 1413,42.87,55.25
-  .complete 5052 -- Blood Shards of Agamaggan
+  .goto 1421,43.42,40.86
+  .turnin 449 -- The Deathstalkers' Report
+  .accept 437 -- The Dead Fields
+  .todo "The Dead Fields: objective 1 has no position in the pack"
+  .complete 437,1 -- The Dead Fields
+  .turnin 437 -- The Dead Fields
+  .accept 438 -- The Decrepit Ferry
 step
-  .goto 1413,48.77,77.21
-  .complete 97250 -- Wrongly Blamed, Justly Corrected
+  .goto 1421,43.4,41.2
+  .complete 79096 -- Ataeric: On Arcane Curiosities
 step
-  .goto 1413,46.37,73.79
-  .accept 79192 -- Stepping Stones
-step
-  .goto 1413,44.62,59.27
-  .turnin 97250 -- Wrongly Blamed, Justly Corrected
-  .goto 1413,44.55,59.26
-  .turnin 5052 -- Blood Shards of Agamaggan
-  .goto 1413,45.1,57.68
-  .accept 893 -- Weapons of Choice
-step
-  .todo "border The Barrens/Stonetalon Mountains: no crossing coordinates yet (record them in game or in Borders.lua)"
-  .zone 1442 >> Go into Stonetalon Mountains
+  .goto 1421,44.52,43.02
+  .accept 92401 -- A Frightened Request
 ]]
 )
