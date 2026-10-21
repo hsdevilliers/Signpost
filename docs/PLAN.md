@@ -266,6 +266,9 @@ the pins show the arrival dock (probe how Forever reports position on transports
   `ZONE_CHANGED_NEW_AREA`, the last position in the old zone and the first in the new one; exported crossings replace hand guesses.
   Boat and zeppelin docks and innkeepers are learned the same way, from the position samples (docs/ENGINE.md, Core/Learn.lua);
   docs/PLAY-CHECKLIST.md lists the short runs that fill the gaps, most useful first.
+- `Borders.lua` also holds **rides**: a boat, zeppelin or airship between two zones whose docks nobody has recorded (an entry with a `ride`
+  table and the zones only, never a made-up position; today the Skyborne's airship from Zephras Isle to Mulgore, from fan guides and
+  unverified). The tools turn one into a real step with the wait and what is unverified; a recorded ride in the pack replaces it.
 
 **Authoring tool** (`tools/guide_travel.py`): simulates the guide step by step (current zone, FPs learned via `.fp`, hearth via `.hs`,
 expected level), finds every uncovered zone change, runs a shortest-path search on the travel graph (walk cost = yards, flight cost

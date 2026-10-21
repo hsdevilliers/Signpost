@@ -269,7 +269,10 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
 - `:RegisterBorders(list)` — `Guides/Travel/Borders.lua` calls it with `{ { name, from = { map[, x, y] }, to = { map[, x,
   y] }, side, todo }, ... }` (a point is `{ map }` until the crossing is learned; `todo` says why); `:Borders(mapA, mapB)`
   → copies, the pack's learned crossings (`travel.crossings`) replacing hand entries for the same pair of zones; one map
-  gives the crossings touching it, two the ones between them.
+  gives the crossings touching it, two the ones between them. An entry with `ride = { kind = "boat" | "zeppelin", label?,
+  wait?, waitText?, fromText?, toText?, verify? }` (and `oneWay = true`) is a ride, not a crossing: a boat, zeppelin or airship
+  between the two zones whose docks nobody has recorded (map IDs only). `:Borders()` leaves it out; `:Rides(mapA, mapB)` lists
+  copies the same way; a ride that is no boat or zeppelin is rejected (`borderErrors`).
 - `:TransportState(stepId)` → `"waiting"`, `"boarded"`, `"arrived"` (nil for a step without `.fly`/`.boat`/
   `.zeppelin`); fires `TRANSPORT_STATE`; `:TransitText(stepId)` → "Sailing to X..." while boarded.
 - Also: `FindTaxiNode(name, mapHint, context)`, `NearestTaxiNode(context)`, `NodeKnown(name, mapHint, context)`,

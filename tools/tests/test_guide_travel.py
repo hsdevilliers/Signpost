@@ -498,6 +498,23 @@ class RideTest(unittest.TestCase):
         # the fixture's boat is not touched
         self.assertEqual(self.trip(world, 20, 40)[1], [[".boat 20,90.0,90.0 > 40,10.0,10.0 >> Take the boat to Isle"]])
 
+    def test_a_ride_that_runs_both_ways_says_where_it_leaves_and_lands_for_each_direction(self):
+        both = {key: value for key, value in RIDE.items() if key != "oneWay"}
+        world = self.world(entries=[both])
+        back = self.trip(world, 10, 40)[1][0][0]
+        self.assertEqual(back, ".zone 40 >> Take the airship from the plateau beside Towne (Westland) to the west dock (Isle)")
+        self.assertEqual(self.trip(world, 40, 10)[1], [RIDE_STEP])
+
+    def test_a_ride_with_no_words_still_says_what_to_take_and_what_is_missing(self):
+        bare = {**RIDE, "ride": {"kind": "boat"}}
+        lines = self.trip(self.world(entries=[bare]), 40, 10)[1][0]
+        self.assertEqual(lines[0], ".zone 10 >> Take the boat from Isle to Westland")
+        self.assertEqual(len(lines), 2)  # no wait is known, so no note
+        self.assertEqual(
+            lines[1], '.todo "Not verified in the game: where the dock is. This step is done when you arrive in Westland."'
+        )
+        self.assertEqual(self.world(entries=[bare]).transports[-1].wait, guide_travel.TRANSPORT_WAIT)
+
     def test_a_ride_with_docks_in_the_data_is_a_placed_transport(self):
         placed = {**RIDE, "from": [40, 10, 10], "to": [10, 90, 50]}
         world = self.world(entries=[placed])
