@@ -1420,6 +1420,22 @@ describe("quest tracking: the game's own tracking is not the player's", function
 		end
 		assert.are.equal(12, #s.ns.db.probe.trackingSeen)
 	end)
+
+	it("keeps twelve observations at most also when many changes are told at once", function()
+		local log = {}
+		for id = 101, 120 do
+			log[#log + 1] = id
+		end
+		local s = start({ log = log, watch = {} })
+		s.enter(s.step("t:1", ".complete 101"))
+		for id = 102, 116 do
+			table.insert(s.world.watch, id) -- fifteen quests the player tracks by hand
+		end
+		accept(s, 201)
+		s.settle("QUEST_ACCEPTED", 201)
+		assert.are.equal("player", mode(s))
+		assert.are.equal(12, #s.ns.db.probe.trackingSeen)
+	end)
 end)
 
 describe("quest tracking after a reload", function()
@@ -1460,6 +1476,16 @@ describe("quest tracking after a reload", function()
 		-- coming back to the first step is a new start too
 		t.enter(t.step("t:1", ".complete 101", ".complete 102"))
 		assert.are.equal("following", mode(t))
+	end)
+
+	it("honours the saved fact only for the step it names", function()
+		local s = inHand()
+		local t = reload(s)
+		-- the engine resumes on another step (it moved on, or the guide changed): a new start, not the old decision
+		t.enter(t.step("t:2", ".complete 102"))
+		assert.are.equal("following", mode(t))
+		assert.are.same({ 102 }, t.world.watch)
+		assert.is_nil(t.ns.char.tracking.handsOff)
 	end)
 
 	it("sets the tracking once after a reload when the player had not touched it", function()
@@ -1510,6 +1536,15 @@ describe("quest tracking after a reload", function()
 		local s = inHand()
 		s.ns.Tracking:SetEnabled(false)
 		assert.is_nil(s.ns.char.tracking.handsOff)
+	end)
+
+	it("forgets the saved fact when the setting is turned on while no guide is active to begin a step", function()
+		local s = inHand()
+		assert.are.equal("t:1", s.ns.char.tracking.handsOff)
+		s.hasGuide = false -- no step to begin: only the setting's own bookkeeping can forget the fact
+		s.ns.Tracking:SetEnabled(true)
+		assert.is_nil(s.ns.char.tracking.handsOff)
+		assert.are.equal("idle", mode(s))
 	end)
 end)
 

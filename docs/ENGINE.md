@@ -383,8 +383,8 @@ move between them, the saved fields); `Tracking.state.mode` is its state for the
 - **`Core/Probe.lua`'s quest log capacity** (`SignpostDB.probe.questLogMax = { canAccept, canAcceptKind, legacyGlobal, entries,
   quests, numQuests }`): `C_QuestLog.GetMaxNumQuestsCanAccept()`, the Classic global `MAX_QUESTLOG_QUESTS`, the entries of the
   quest log (headers too), the quests among them counted by walking the log, and the client's own count (the second result of
-  `GetNumQuestLogEntries`). The user accepted 40 as the working value (2026-10-21); the probe confirms or corrects it. Nothing in
-  the engine reads it yet.
+  `GetNumQuestLogEntries`). The quest log holds 40 quests on Forever: confirmed by the user in game, 2026-10-21; the probe records
+  the client's own answer as the evidence and a cross-check. Nothing in the engine reads it yet.
 
 ### Core/Learn.lua — `ns.Learn`
 

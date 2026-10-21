@@ -344,14 +344,16 @@ Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.
   collapsed header (the module asks `Context:QuestInLog` either way)? Does the game track a quest as it is accepted and as its
   progress changes, as which `Enum.QuestWatchType`, and does `GetQuestWatchType` tell that from the player's own tracking (the
   module ignores Automatic watches when comparing; without watch types it cannot tell them apart and backs off for the player)?
-  Does `QUEST_WATCH_LIST_CHANGED` exist, and does it fire for the module's own writes before or after the call returns? Does turning
+  Does `QUEST_WATCH_LIST_CHANGED` exist, and does it fire for the module's own writes before or after the call returns? Does
+  `PLAYER_LOGOUT` fire on `/reload` before the SavedVariables are written (the module looks at the tracker then, so that a change
+  by the player just before a reload is remembered)? Does turning
   the setting off give the tracker back as the player had it, and does showing the step card again (`/signpost show`, the Journal's
   box) set the tracking for the current step? Do the minimap and the objective tracker then show only the step's quests with their
   progress, and does the check box under "Quest tracker" in Journal > Settings (second column) fit the pane?
-- [ ] **Quest log capacity: 40 is the user-accepted working value** (user, 2026-10-21: "accept a 40 quest cap for wow forever"; the user
-  says Forever raised the Classic limit of 25 to 40, nothing recorded confirms it; the planner assumes 40): `/signpost probe` records
+- [ ] **Quest log capacity: 40, confirmed by the user in game, 2026-10-21** (Forever raised the Classic limit of 25 to 40; the planner
+  assumes 40). The client's own answer is recorded as the evidence and a cross-check, not yet read: `/signpost probe` records
   `SignpostDB.probe.questLogMax = { canAccept, canAcceptKind, legacyGlobal, entries, quests, numQuests }` and prints "quest log: N
-  quests now; limit per GetMaxNumQuestsCanAccept: X, per MAX_QUESTLOG_QUESTS: Y". The probe confirms or corrects 40: does
+  quests now; limit per GetMaxNumQuestsCanAccept: X, per MAX_QUESTLOG_QUESTS: Y". Does
   `C_QuestLog.GetMaxNumQuestsCanAccept()` exist (`canAcceptKind`) and answer 40? Does the Classic global `MAX_QUESTLOG_QUESTS` exist
   and say 25 or 40? Run it with a few quests in the log (`entries` counts headers, `quests` the quests by walking the log, `numQuests`
   is the client's own count; they differ while a header is collapsed and the client hides its quests from the walk, which also

@@ -441,8 +441,8 @@ section("apis", function()
 	return { types = types, missing = missing, unexpectedlyPresent = unexpected, wanted = wanted }
 end)
 
--- The quest log's capacity and fill. The user says Forever raised the limit from 25 to 40 and accepted 40 as the
--- working value (2026-10-21); this records what the client itself says, so the probe confirms or corrects it.
+-- The quest log's capacity and fill. Forever raised the limit from 25 to 40: confirmed by the user in game
+-- (2026-10-21). This records what the client itself says, as the evidence and a cross-check of that value.
 -- canAccept is C_QuestLog.GetMaxNumQuestsCanAccept() and canAcceptKind says whether that function exists;
 -- legacyGlobal is the Classic global MAX_QUESTLOG_QUESTS; entries is every line of the quest log (headers too) and
 -- quests the lines that are quests, counted by walking the log (a collapsed header hides its quests from the walk);

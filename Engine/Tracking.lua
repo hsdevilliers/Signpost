@@ -1083,6 +1083,9 @@ ns.Events:Register("QUEST_WATCH_LIST_CHANGED", function()
 end)
 
 -- A change by the player since the last look is kept for the next session (a reload is a logout too).
+-- VERIFY(beta): PLAYER_LOGOUT fires on /reload and on logout, before SavedVariables are written, on Forever as it
+-- does on Mainline (the module works without it: the change is then noticed at the next change of the quest log's
+-- quests).
 ns.Events:Register("PLAYER_LOGOUT", function()
 	Tracking:Notice(false)
 end)
