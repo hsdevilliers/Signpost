@@ -1,12 +1,14 @@
 ---
 title: The planner and the simulator price travel differently: a route simulates 13-17% under the estimate
 kind: finding
-status: open
+status: done
 priority: low
 area: planner, simulator
 source: claude
 raised: 2026-10-20
 raised_in: Route Planner runs, PR #35
+closed: 2026-10-21
+resolution: One price for travel: tools/signpost_tools/pricing.py is read by the planner (planner.py), the travel graph (guide_travel.plan_travel) and the simulation of a written route (guide_travel.simulate, guide_sim.run); tools/sim_params.json takes a travel object to override any number, a typo is an error. Cause found: the simulation priced a .zone hop and a change of continent with no boat in the data at 0 (the .zone step leaves the player nowhere, so the next walk was never measured); the planner priced both by distance. simulate() now walks from the last known point and charges the planner's 15 minutes for an unrouted change of continent. Beam, shared pack, planner against full simulation, before then after: Troll Hunter 20h37 vs 17h44 (-14.0%) then 20h15 (-1.7%); Tauren Druid 24h57 vs 18h58 (-24.0%) then 24h12 (-3.0%); Skyborne Druid 22h59 vs 18h24 (-19.9%) then 22h31 (-2.0%). The planner's own totals (22h33, 44h40, 28h52) did not move, so no route changes. What is left is about 20 minutes of local walking the planner adds per route and the walk inside doing steps, which the simulation does not price. Detour (1.0) and the boat times stay assumptions until play data calibrates them (guide_sim --pace). Docs: docs/PLANNER.md. Tests: tools/tests/test_pricing.py, SimulateTest, OnePriceTest. Branch feat/tools-lint-pricing.
 ---
 
 ## What

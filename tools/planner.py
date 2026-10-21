@@ -28,11 +28,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import guide_draft  # noqa: E402
 import guide_sim  # noqa: E402
 import guide_travel  # noqa: E402
-from signpost_tools import availability, steps  # noqa: E402
+from signpost_tools import availability, pricing, steps  # noqa: E402
 from signpost_tools.guidefile import Coord  # noqa: E402
 
 GRIND = "grind"
 TERRITORY_MIN = 4  # quests for the character's own faction a zone needs before it counts as theirs
+# The `.note` a guide step carries for a quest the game completes by a script (the pack's `scripted` flag, no objective listed): by
+# what it is (Model.scripted_work) and whether the route is HARDCORE. The time it costs is sim_params.json's escort_seconds / event_seconds.
+SCRIPTED_NOTES = {
+    ("escort", False): "escort: stay with the NPC and let it finish; the data does not say where it goes or what attacks it",
+    ("escort", True): "HARDCORE escort: mobs attack the NPC and you on the way; be healed and buffed, stay close, and leave it if unsure",
+    ("event", False): "event: the quest finishes when something happens here (an ambush, a ritual); read the quest log",
+    ("event", True): "HARDCORE event: enemies may come at you here; be healed and buffed first, and come back later if unsure",
+}
 
 
 @dataclass(frozen=True)
@@ -46,9 +54,9 @@ class Settings:
     zone_friction: float = 180.0  # seconds charged against a route for each change of zone (not added to its clock)
     skip_unprofitable: bool = True  # leave out quests slower than grinding (never class quests or what a kept quest needs)
     profit_threshold: float = 1.0  # a quest must give this many times the experience per second of grinding
-    detour: float = 1.0  # walking distance over straight-line distance
+    detour: float = pricing.PRICES.detour  # walking distance over straight-line distance (the simulation of the written route uses the same)
     local_walk: float = 8.0  # seconds between two NPCs of one hub
-    ferry_seconds: float = 420.0  # the boat or zeppelin between continents, waiting included (the walks to and from it extra)
+    ferry_seconds: float = pricing.PRICES.ferry  # the boat or zeppelin between continents, waiting included (the walks to and from it extra)
     gateways: tuple = (1454, 1458)  # the capitals whose hubs a trip between continents leaves and arrives by (Horde)
     branch: int = 8  # hubs tried from each node
     width: int = 30  # partial routes kept per bucket of progress by the beam
@@ -101,6 +109,7 @@ class PQuest:
     unknown_xp: bool = False  # the data has no experience for it (a quest new to Forever): never left out for being slow
     end_unknown: bool = False  # a class quest whose ender has no position in the pack: handed in at its start, and the step says so
     unknown_work: bool = False  # a class quest with no objective in the pack, accepted and handed in at one NPC: what it asks is not known
+    scripted: str = ""  # "escort" or "event": the game completes it by a script and the pack lists no objective, so one stands for the work
 
 
 @dataclass
@@ -374,9 +383,14 @@ class Planner:
         one_npc = bool(
             set(guide_draft._ids((record.get("s") or {}).get("npc"))) & set(guide_draft._ids((record.get("e") or {}).get("npc")))
         )
-        unknown_work = not objectives and one_npc
+        # an escort or an event (the pack's `scripted` flag) is not free experience whatever its NPCs: it costs the time sim_params.json
+        # gives it, written as a `.complete` with a note; a class quest keeps unknown_work's 5 minutes and `.todo` instead
+        scripted = "" if qid in self.mandatory else (self.model.scripted_work(qid) or "")
+        unknown_work = not objectives and one_npc and not scripted
         if unknown_work and not s.instant_quests and qid not in self.mandatory and qid not in self._required and not record.get("next"):
             return self._drop("no objective in the data (accepted and handed in at one NPC)", qid)
+        if scripted:  # the one objective that stands for the work: done where the quest starts, which is where the escort sets off
+            objectives.append(PObjective(1, "scripted", 0, list(starts)))
         if s.hardcore and elite:
             return self._drop("HARDCORE: needs an elite or boss kill", qid)
         if (record.get("l") or 0) > s.cap + 5:
@@ -401,6 +415,7 @@ class Planner:
             mandatory=qid in self.mandatory,
             end_unknown=end_unknown,
             unknown_work=unknown_work and qid in self.mandatory,
+            scripted=scripted,
         )
 
     def _prune_territory(self, faction: str) -> None:
@@ -572,7 +587,7 @@ class Planner:
         for o in q.objectives:
             if o.spots:
                 walk += 2 * min(self._yards(q.start_places[0], c) for c in o.spots)
-        seconds += walk / guide_travel.WALK_SPEED * self.s.detour
+        seconds += walk / pricing.PRICES.walk_speed * self.s.detour
         return xp / max(seconds, 1.0)
 
     def _index(self) -> None:
@@ -604,11 +619,12 @@ class Planner:
 
     def _walk(self, a: int, b: int) -> float | None:
         d = self.world.geo.distance(self.hubs[a].center, self.hubs[b].center)
-        return None if d is None else d * self.s.detour / guide_travel.WALK_SPEED
+        return None if d is None else d * self.s.detour / pricing.PRICES.walk_speed
 
     def travel(self, a: int | None, b: int) -> float:
         """Seconds from hub a to hub b: walking on one continent; between continents the walk to the capital's boat or
-        zeppelin, the ride (waiting included) and the walk from the other capital (a flat 15 minutes if a gateway is unknown)."""
+        zeppelin, the ride (waiting included) and the walk from the other capital (pricing.PRICES.continent, 15 minutes, if a gateway is
+        unknown). The prices are signpost_tools/pricing.py's, which the simulation of the written route uses too."""
         if a is None or a == b:
             return 0.0
         key = (a, b)
@@ -618,7 +634,7 @@ class Planner:
                 geo = self.world.geo
                 ga, gb = self.gateways.get(geo.instance(self.hubs[a].map)), self.gateways.get(geo.instance(self.hubs[b].map))
                 legs = (self._walk(a, ga), self._walk(gb, b)) if ga is not None and gb is not None else (None, None)
-                seconds = legs[0] + self.s.ferry_seconds + legs[1] if None not in legs else 900.0
+                seconds = legs[0] + self.s.ferry_seconds + legs[1] if None not in legs else pricing.PRICES.continent
             self._travel[key] = self._travel[(b, a)] = seconds
         return self._travel[key]
 
@@ -1345,6 +1361,8 @@ class Planner:
                     why = "is only in places this guide does not go" if objective is not None and objective.elsewhere else "has no position in the pack"
                     lines.append(f'  .todo "{name}: objective {a.index} {why}"')
                 lines.append(f"  .complete {q.id},{a.index}{gate} -- {name}")
+                if q.scripted:
+                    lines.append(f"  .note {name}: {SCRIPTED_NOTES[(q.scripted, self.s.hardcore)]}")
             if q.optional:
                 optional[q.id] = name
         for qid, name in optional.items():

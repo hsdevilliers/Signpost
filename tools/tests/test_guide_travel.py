@@ -1,11 +1,12 @@
 import contextlib
+import dataclasses
 import io
 import re
 import unittest
 
 import guide_travel
 from guide_travel import Place, World
-from signpost_tools import guidefile
+from signpost_tools import guidefile, pricing
 from signpost_tools.guidefile import Coord
 from tests.guide_fixtures import (
     BORDERS_LUA,
@@ -201,6 +202,53 @@ class SimulateTest(TempProject):
             "step\n  .goto 20,40,40\n  .zone 30\n  .goto 30,50,50\n"
         )
         self.assertEqual(guide_travel.simulate(covered, world()).transitions, [])
+
+    # Westland (10,50,50) and Eastland (20,50,50) are 1000 yards apart (GeoTest); the Isle (40) is another continent.
+    NO_ROUTE = 'step\n  .todo "travel from there to here: the travel graph has no route yet"\n  .zone {zone}\n'
+
+    def hop(self, zone, goto, prices=None, first="10,50,50"):
+        route = self.route(f"step\n  .goto {first}\n" + self.NO_ROUTE.format(zone=zone) + f"step\n  .goto {goto}\n")
+        return guide_travel.simulate(route, world(), prices)
+
+    def test_a_zone_change_with_no_route_costs_the_walk_between_the_places(self):
+        # it used to cost nothing: the `.zone` step leaves the player nowhere in particular, and the walk to the next place was never measured
+        sim = self.hop(20, "20,50,50")
+        self.assertEqual([step.seconds for step in sim.steps], [0.0, 0.0, pricing.PRICES.walk(1000.0)])
+        self.assertAlmostEqual(sim.steps[2].seconds, 1000 / 7)
+        self.assertEqual(sim.steps[2].clock, 3 * guide_travel.STEP_SECONDS + sim.steps[2].seconds)  # the hearthstone clock moves on too
+
+    def test_a_change_of_continent_with_no_route_costs_the_trip_between_continents(self):
+        sim = self.hop(40, "40,50,50")
+        self.assertEqual(sim.steps[2].seconds, pricing.PRICES.continent)
+        # a change of continent with no travel step at all is no cheaper (the lint reports it; the simulation prices it like the planner does)
+        bare = guide_travel.simulate(self.route("step\n  .goto 10,50,50\nstep\n  .goto 40,50,50\n"), world())
+        self.assertEqual(bare.steps[1].seconds, pricing.PRICES.continent)
+        self.assertEqual(len(bare.transitions), 1)
+
+    def test_the_walk_after_a_crossing_starts_at_the_crossing(self):
+        route = self.route("step\n  .goto 10,50,50\nstep\n  .path 10,95,50 ; 20,5,50\n  .zone 20\nstep\n  .goto 20,50,50\n")
+        sim = guide_travel.simulate(route, world())
+        self.assertAlmostEqual(sim.steps[1].seconds, (450 + 100) / 7)  # to the border and over it
+        self.assertAlmostEqual(sim.steps[2].seconds, 450 / 7)  # from the border to the next place: this was never priced
+
+    def test_a_flight_to_a_place_the_data_does_not_give_leaves_no_old_point_to_walk_from(self):
+        # the client's taxi pins here have no position: the flight lands in a zone, but nowhere the walk can measure from
+        taxi = [{"id": 1, "n": "Towne, Eastland", "faction": 1}, {"id": 2, "n": "Westhold, Westland", "faction": 1}]
+        maps = {**MAPS, 100: {**MAPS[100], "taxi": taxi}}
+        pack = guide_travel.Pack(guide_travel.Path("."), {"schema": 1}, {"maps": maps, "quests": QUESTS, "npcs": NPCS, "travel": TRAVEL})
+        route = self.route("step\n  .goto 10,50,50\n  .fp 10,Westhold\nstep\n  .goto 30,50,50\n  .fp 30,Towne\nstep\n  .fly Westhold\nstep\n  .goto 10,40,40\n")
+        sim = guide_travel.simulate(route, World(pack, [], "Horde"))
+        self.assertEqual((sim.steps[2].zone_out, sim.steps[2].coord_out), (10, None))
+        self.assertEqual(sim.steps[2].seconds, pricing.PRICES.unknown_flight)
+        self.assertEqual(sim.steps[3].seconds, 0.0)  # not a walk from Towne, where the player no longer is
+
+    def test_prices_can_be_given_and_travel_seconds_add_up(self):
+        slow = dataclasses.replace(pricing.PRICES, walk_speed=3.5, detour=1.0)
+        fast = dataclasses.replace(pricing.PRICES, walk_speed=14.0)
+        self.assertAlmostEqual(self.hop(20, "20,50,50", slow).steps[2].seconds, 2 * 1000 / 7)
+        self.assertAlmostEqual(self.hop(20, "20,50,50", fast).steps[2].seconds, 1000 / 14)
+        sim = self.hop(20, "20,50,50")
+        self.assertAlmostEqual(sim.steps[-1].clock, sum(step.seconds for step in sim.steps) + len(sim.steps) * guide_travel.STEP_SECONDS)
 
     def test_without_a_pack_the_maps_are_the_zones(self):
         route = self.route("step\n  .goto 11,50,50\nstep\n  .goto 10,60,50\n")

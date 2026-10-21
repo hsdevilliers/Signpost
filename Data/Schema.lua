@@ -32,6 +32,10 @@ local L = ns.L
 --                       breadcrumbFor = questID,                     -- an optional lead-in to that quest
 --                       skill = { skillLineID, rank },               -- a profession requirement (rank 0: any)
 --                       repeatable = true,
+--                       scripted = true,                             -- completed by a script or event (an escort, an
+--                                                                    -- ambush, a ritual), not by objectives; the pack
+--                                                                    -- lists none for most of them (QuestieDB's
+--                                                                    -- specialFlags bit 2, "needs event")
 --                       gives = itemID,                              -- what the giver hands over (a letter, a tool)
 --                       needs = { itemIDs } }                        -- needed, though no objective names them
 -- npcs[npcID]       = { n = name, side = side or "none",             -- "both" also for neutral creatures; "none":

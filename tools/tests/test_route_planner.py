@@ -153,6 +153,14 @@ class EndToEndTest(RouteCase):
         rules.unlink()
         self.assertNotIn(reason, self.run_main(*args)[1])
 
+    def test_the_ferry_is_the_shared_price_unless_the_command_line_says_otherwise(self):
+        for extra, minutes in (((), 7), (("--ferry", "9"), 9)):
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0", *extra)
+            self.assertEqual(code, 0, text)
+            self.assertIn(f"boat or zeppelin + {minutes} min + the walk from the other capital", " ".join(text.split()))
+        self.assertEqual(engine.Settings().ferry_seconds, 420.0)  # pricing.PRICES.ferry
+        self.assertIn("Both price travel with the same numbers (signpost_tools/pricing.py", " ".join(text.split()))  # the fidelity line
+
     def test_hardcore_is_taken_from_the_guide_and_can_be_overridden(self):
         code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0")
         self.assertIn("[HARDCORE route]", text)

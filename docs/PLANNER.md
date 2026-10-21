@@ -57,13 +57,21 @@ beam compares its best finished routes as they would be written, and against the
   giver has a same-named quest limited to another class, or whose giver's other quests all are), and every quest of a battleground zone
   (`skip_zones` in `tools/hardcore_rules.json`). An explore objective is an area to reach, with positions of its own. A class quest with no
   objective in the pack is given 5 minutes and a `.todo`. The setup says how many quests each rule left out.
+- **Escorts and events** (the pack's `scripted` flag, QuestieDB's "needs event" bit: the game completes the quest by a script, and the pack
+  lists no objective for most of them) are not free deliveries even when they start and end at one NPC (an ambush, a ritual). Such a quest costs
+  `escort_seconds` (it starts and ends at different NPCs: the NPC walks with the player, 7 minutes) or `event_seconds` (one NPC: 3 minutes) from
+  `tools/sim_params.json`, worked where the quest starts; it is written as `.accept`, `.complete` and `.turnin`, and a `.note` says what it is
+  (a HARDCORE route says it as a risk). It is still left out when it is slower than grinding. A class quest keeps its 5 minutes and `.todo`
+  (above), and a quest the pack gives objectives is priced by them. A pack built before the flag existed has none, and the planner then
+  behaves as it did (an escort between two NPCs passes as a delivery).
 - **Profitability**: a quest slower than grinding at the level it is done at is left out (`--threshold`, `--no-skip`), except class
   quests, the quests a kept quest needs, and quests the pack has no experience for.
 - **Grinding** is an edge too: forced when nothing can be done until a level opens something, voluntary (one level) when nothing pays
   better. The simulator's own grinding rate is used.
 - **Travel** is walking on one continent (distance by the map data, a detour factor); between continents it is the walk to the
   capital's boat or zeppelin, `--ferry` minutes, and the walk from the other capital. Reaching a continent or island with no
-  gateway (another race's start island) is not allowed, unless the character begins there.
+  gateway (another race's start island) is not allowed, unless the character begins there. The numbers are
+  `tools/signpost_tools/pricing.py`'s, the same ones the simulation of the written route uses (below, "What it cannot see").
 - **Zone friction**: every change of zone costs the planner `--friction` minutes (default 3) on top of the travel, so it does not
   hop between zones for a few experience points. It steers the search; it is not play time and is reported apart.
 - **Class quests are mandatory** (the chains of `Classes/<CLASS>.lua`, up to the cap): each is done or accounted for with a
@@ -118,16 +126,33 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   the level when a quest has none), 8 kills and 6 items per objective, kill 12 s, loot 4 s. The route is the best one under them,
   not a prediction of a player's clock. Forever's own tuning is unknown (CLAUDE.md, "Forever is not Classic"): quests and class
   quests Forever added that the pack lacks are not routed.
-- **The planner and the simulator price travel differently.** The simulator charges a flat few minutes for a border that is not
-  learned yet; the planner prices it by distance. The full simulation of a written route runs 10-20% below the planner's estimate
-  (backlog: `price-travel-differently`).
+- **Travel is priced once, and still an assumption.** The planner's search, the travel graph that proposes a guide's travel steps and the
+  simulation of the written route take their numbers from `tools/signpost_tools/pricing.py` (7 yards a second, no detour, flights, a boat's
+  3 minute wait and 4 minute ride, the hearthstone, 15 minutes for a change of continent the data has no boat for); a `"travel"` object in
+  `tools/sim_params.json` overrides any of them, and a typo there is an error. Before this the simulation charged nothing for a `.zone` hop
+  (the step leaves the player nowhere in particular, so the next walk was never measured) or for a change of continent with no boat in the
+  data, and a planned route simulated 14 to 24% under the planner's estimate. Now the fidelity line agrees within 3% (beam, shared pack:
+  Troll Hunter 20h15 simulated against 20h37 planned, -1.7%; Tauren Druid 24h12 against 24h57, -3.0%; Skyborne Druid 22h31 against 22h59,
+  -2.0%). What is left is travel: the planner walks between hub centres and adds 8 seconds for each change of place within a visit (about 20
+  minutes a route), and the simulation walks the steps' own positions and does not price the walk inside a doing step (last bullet). The
+  detour is 1.0 (the straight line) because no play data says otherwise, and a boat or zeppelin has never been timed: `python tools/guide_sim.py
+  --pace` is the way to calibrate once play data exists.
 - **Class quests are pushed, not scheduled**: a chain whose quests are far apart (the Cat Form chain's items) can still come several levels
   after it opens; the report lists the class quests more than 5 levels late and the level each was done at. A character that starts on an island
   (the Skyborne's) cannot reach the other continents' class quests before it leaves, however hard they are pushed.
 - **The search is rough**: two settings that look alike (a width of 30 or 60, 4 or 8 parts to a level) can differ by hours on a guide with many class
   quests (the druids), and a wider beam is not always better. `thorough` runs several and keeps the best; read the baseline line of the report, which
-  says how much faster the result is than the greedy route, and distrust a route that is not clearly faster.
+  says how much faster the result is than the greedy route, and distrust a route that is not clearly faster. Measured on the Tauren Druid (beam, total =
+  play + zone-change cost + the class-quest charge): widths 20, 30 and 45 and 4 parts give 48h59, 44h40, 43h02 and 50h42; leaving the data and the settings
+  alone and changing `loot_seconds` from 4 to 4.1 gives 50h33, and `interact_seconds` from 12 to 12.5 gives 53h38. The play time moves less (24h57 to
+  29h36 over those six runs) than the total; most of the swing is the charge for class quests done late (15 to 24 hours), i.e. whether the beam happened
+  to hold a route that makes the Moonglade trip early. So a total is comparable only between runs of the same data and settings, and a change of data is
+  judged by the play time and the "done at level" line of the class quests, or by the deterministic `greedy` preset (the escorts and events above cost it
+  23 to 45 minutes of play on the three guides).
 - **The quest log is not limited** (25 in Classic); the route may hold more at a moment than the game allows (backlog: `limit-the-quest-log`).
+- **The escort and event times are assumptions** (`escort_seconds`, `event_seconds`): Classic's escorts take about 5 to 12 minutes with their
+  pauses, none is measured for Forever. The flag comes from QuestieDB's Classic baseline, so an escort Forever added is not flagged, and what the
+  escort does on the way (where it goes, what attacks it) is not in the data: the note says so.
 - **Data holes become `.todo` steps**: an objective with no position in the pack is worked where its quest starts, and the step
   says so; a border with no route yet gets a travel step the lint reports.
 - **Group quests** in a normal route are tagged `.optional`. A step made only of such quests never holds the player up, and the step card shows
@@ -135,4 +160,4 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   retire the line five levels above the quest: that needs the quest's level in the guide (backlog: `a-group-questid-level-modifier`).
 - **Walking inside a doing step is not priced**: the planner adds a few seconds for each place of a hub; once the objective areas are joined into one
   doing step the simulator charges only the walk between steps (the step keeps one position). A pick-up and hand-in step keeps the position of
-  each NPC, and the simulator walks them in order.
+  each NPC, and the simulator walks them in order. This is part of the 2 to 3% by which the full simulation still runs under the planner's estimate.

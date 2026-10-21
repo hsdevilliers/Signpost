@@ -1,5 +1,5 @@
 {
-  "about": "Hardcore route rules for tools/guide_draft.py --hardcore (docs/HARDCORE.md). Quest IDs are from the data pack; every rule names where it comes from and how sure that source is. A skip becomes '#skipquest <id> >> <reason>'; a note becomes a '.note' after the quest's '.accept'. Corrected from play (the contributors' deaths) over time. skip_zones: every quest of such a zone is left out of every route (a battleground is not leveling content): the Route Planner reads it; the drafter drafts zones by name and never meets them.",
+  "about": "Hardcore route rules for tools/guide_draft.py --hardcore (docs/HARDCORE.md). Quest IDs are from the data pack; every rule names where it comes from and how sure that source is. A skip becomes '#skipquest <id> >> <reason>'; a note becomes a '.note' after the quest's '.accept'. Corrected from play (the contributors' deaths) over time. The Route Planner also prices and notes every escort or event the data flags (the pack's `scripted` field) without a rule here: a quest listed here is skipped on top of that. skip_zones: every quest of such a zone is left out of every route (a battleground is not leveling content): the Route Planner reads it; the drafter drafts zones by name and never meets them.",
   "rules": [
     {
       "id": 827,

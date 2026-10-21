@@ -15,8 +15,9 @@ which are read as data and applied first (signpost_tools.lua_corrections, foreve
 `[[return {...}]]` string holds the records.
 
 Only route facts are kept: names, levels, race/class masks, faction, who starts and ends a quest, chains, objective
-references by kind and ID, the items the quests touch with where they drop or are sold, the faction's service NPCs, and
-positions (at most --clusters per map). Never quest text, item stats or prices, or QuestieDB's code, formats or
+references by kind and ID, whether the quest is repeatable or scripted (an escort or an event: QuestieDB's specialFlags bits),
+the items the quests touch with where they drop or are sold, the faction's service NPCs, and positions (at most --clusters
+per map). Never quest text, item stats or prices, or QuestieDB's code, formats or
 corrections. Writes layers/questie.json, rebuilds the pack (signpost_tools.datapack) and reports problems by kind and
 ID only, in data-gaps.md.
 """
@@ -108,7 +109,8 @@ FACTION_LETTERS = {"horde": "H", "alliance": "A", "both": "AH"}  # friendlyToFac
 # profession trainers 16, "General Goods" 4, "Armorer" 16384 (plus 4).
 VENDOR, FLIGHT_MASTER, TRAINER, INNKEEPER, STABLE_MASTER, REPAIR = 4, 8, 16, 128, 8192, 16384
 SERVICE_FLAGS = VENDOR | FLIGHT_MASTER | TRAINER | INNKEEPER | STABLE_MASTER | REPAIR
-REPEATABLE = 1  # specialFlags bit
+REPEATABLE = 1  # specialFlags bits (QuestieDB's key table: 1 = Repeatable, 2 = Needs event)
+SCRIPTED = 2  # the game completes the quest by a script or an event, not by objectives: an escort, an ambush, a ritual
 MAX_CLUSTERS = 3
 CLUSTER_RADIUS = 3.0  # percent of the map
 MAX_DROPS = 25
@@ -530,6 +532,8 @@ class Importer:
         flags = get("specialFlags")
         if isinstance(flags, int) and flags & REPEATABLE:
             quest["repeatable"] = True
+        if isinstance(flags, int) and flags & SCRIPTED:
+            quest["scripted"] = True
         gives = scalar_id(get("sourceItemId"))
         if gives:
             quest["gives"] = gives

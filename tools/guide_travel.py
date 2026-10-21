@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from signpost_tools import datapack, guidefile  # noqa: E402
+from signpost_tools import datapack, guidefile, pricing  # noqa: E402
 from signpost_tools.guidefile import Coord, Directive, Route, RouteStep  # noqa: E402
 from signpost_tools.savedvars import LuaParseError, load_savedvars  # noqa: E402
 
@@ -37,21 +37,24 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TAXI_SIDES = {0: "both", 1: "Horde", 2: "Alliance"}
 ZONE_TYPE = 3  # Enum.UIMapType.Zone (cities are zones too)
 
-# Costs, in seconds.
-WALK_SPEED = 7.0  # yards per second on foot
-UNKNOWN_WALK = 90.0  # a walk inside a zone between points whose positions are not known
-FLIGHT_OVERHEAD = 30.0
-FLIGHT_SPEED = 25.0  # yards per second along the straight line (taxi routes wind)
-UNKNOWN_FLIGHT = 180.0
-TRANSPORT_WAIT = 180.0
-TRANSPORT_SPEED = 20.0
-TRANSPORT_ACROSS = 120.0  # a crossing between two world instances (continents)
-HEARTH_SECONDS = 30.0  # cast and loading screen
+# Costs, in seconds. The numbers and the reasoning for each are in signpost_tools/pricing.py (tools/sim_params.json can override them),
+# which the Route Planner and the guide simulator use too: one price for travel. The names stay for the code that imports them.
+WALK_SPEED = pricing.PRICES.walk_speed  # yards per second on foot
+UNKNOWN_WALK = pricing.PRICES.unknown_walk  # a walk inside a zone between points whose positions are not known
+FLIGHT_OVERHEAD = pricing.PRICES.flight_overhead
+FLIGHT_SPEED = pricing.PRICES.flight_speed  # yards per second along the straight line (taxi routes wind)
+UNKNOWN_FLIGHT = pricing.PRICES.unknown_flight
+TRANSPORT_WAIT = pricing.PRICES.transport_wait
+TRANSPORT_SPEED = pricing.PRICES.transport_speed
+TRANSPORT_ACROSS = pricing.PRICES.transport_across  # a crossing between two world instances (continents)
+HEARTH_SECONDS = pricing.PRICES.hearth  # cast and loading screen
 # VERIFY(beta): the hearthstone cooldown on Forever (Classic's is 60 minutes).
 HEARTH_COOLDOWN = 3600.0
-TODO_PENALTY = 120.0  # a crossing whose coordinates are not known yet...
-UNKNOWN_CROSS = 600.0  # ...costs this plus the penalty, so known routes win
-STEP_SECONDS = 45.0  # each step's own time in the clock that tracks the hearthstone cooldown
+TODO_PENALTY = pricing.PRICES.crossing_penalty  # a crossing whose coordinates are not known yet...
+UNKNOWN_CROSS = pricing.PRICES.unknown_crossing  # ...costs this plus the penalty, so known routes win (a search weight, not play time)
+# Each step's own time in the clock that tracks the hearthstone cooldown. It prices nothing in a route's total (SimStep.seconds is the
+# travel alone): only `.home` after `.home` is judged by this clock, so it runs slow against the ~3 minutes a step takes in the full simulation.
+STEP_SECONDS = 45.0
 
 
 # The data pack --------------------------------------------------------------------------------------------------------
@@ -528,6 +531,7 @@ class SimStep:
     fps: list[str]
     bind: str | None
     clock: float
+    seconds: float = 0.0  # what the step's travel took: walking, flights, boats (not STEP_SECONDS)
 
 
 @dataclass
@@ -607,22 +611,40 @@ def _step_events(rs: RouteStep, world: World, fps: list[KnownFP], bind: Bind | N
     return events
 
 
-def _seconds(world: World, coord: Coord | None, event: _Event) -> float:
+def _across(world: World, coord: Coord | None, event: _Event) -> bool:
+    """A walk from `coord` to the event's point that goes between two world instances (continents)."""
+    if coord is None or event.coord is None or event.kind != "point":
+        return False
+    here, there = world.geo.instance(coord.map), world.geo.instance(event.coord.map)
+    return here is not None and there is not None and here != there
+
+
+def _seconds(world: World, coord: Coord | None, event: _Event, prices: pricing.Prices | None = None) -> float:
+    """What one event of a step costs the player, who stands at `coord`: the prices are signpost_tools/pricing.py's."""
+    prices = prices or pricing.PRICES
     distance = world.geo.distance(coord, event.coord)
     if event.effect == "fly":
-        return FLIGHT_OVERHEAD + distance / FLIGHT_SPEED if distance is not None else UNKNOWN_FLIGHT
+        return prices.flight(distance)
     if event.effect == "home":
-        return HEARTH_SECONDS
+        return prices.hearth
     if event.directive.name in ("boat", "zeppelin") and event.kind == "arrive":
-        return TRANSPORT_WAIT + (distance / TRANSPORT_SPEED if distance is not None else TRANSPORT_ACROSS)
-    return distance / WALK_SPEED if distance is not None else 0.0
+        return prices.transport(distance)
+    if distance is None:
+        # A walk that cannot be measured costs nothing, except a change of continent: nobody walks that, and no travel step says how it
+        # is made (the pack has no zeppelin or boat yet), so it costs what the planner charges for one.
+        return prices.continent if _across(world, coord, event) else 0.0
+    return prices.walk(distance)
 
 
-def simulate(route: Route, world: World) -> Simulation:
-    """Walk the route: zones, flight paths, hearth, expected level; uncovered transitions and travel problems."""
+def simulate(route: Route, world: World, prices: pricing.Prices | None = None) -> Simulation:
+    """Walk the route: zones, flight paths, hearth, expected level; uncovered transitions and travel problems. Each step's travel
+    time is SimStep.seconds, priced by signpost_tools/pricing.py. A change of zone is never free: a `.zone` step leaves the player
+    nowhere in particular, and the walk to the next place is measured from the last place the route named (it used to cost nothing)."""
+    prices = prices or pricing.PRICES
     sim = Simulation()
     zone: int | None = None
     coord: Coord | None = None
+    last_point: Coord | None = None  # the last position the walk knew: where a walk starts when a zone change left `coord` unknown
     setter: RouteStep | None = None
     fps: list[KnownFP] = []
     bind: Bind | None = None
@@ -637,6 +659,7 @@ def simulate(route: Route, world: World) -> Simulation:
         arrivals = {event.zone for event in events if event.kind == "arrive"}
         travels = any(d.name in guidefile.TRAVEL_MOVES for d in rs.directives)
         checked = False
+        spent = 0.0
         for event in events:
             d = event.directive
             if event.effect == "fly" and not any(names_match(fp.name, d.args["node"]) for fp in fps):
@@ -663,15 +686,22 @@ def simulate(route: Route, world: World) -> Simulation:
                     message = f"targets in {world.label(zone)} and {world.label(event.zone)} in one step with no travel"
                     sim.issues.append(SimIssue(rs, d.line, "warning", "zone-jump", message))
             if event.kind is not None:
-                clock += _seconds(world, coord, event)
+                origin = coord if coord is not None else (last_point if event.kind == "point" else None)
+                took = _seconds(world, origin, event, prices)
+                clock += took
+                spent += took
                 zone, coord, setter = event.zone, event.coord, rs
+                if event.coord is not None:
+                    last_point = event.coord
+                elif event.effect in ("fly", "home"):
+                    last_point = None  # a flight or a hearthstone to a place the data does not give moved the player: the old point is stale
             if event.effect == "fp":
                 fps.append(KnownFP(d.args["node"], d.args["map"], world.zone(d.args["map"]), rs))
             elif event.effect == "hs":
                 bind = Bind(d.args["inn"], zone, coord, rs)
         clock += STEP_SECONDS
         known = [fp.name for fp in fps]
-        sim.steps.append(SimStep(rs, zone_in, zone, coord, level, known, bind.name if bind else None, clock))
+        sim.steps.append(SimStep(rs, zone_in, zone, coord, level, known, bind.name if bind else None, clock, spent))
     return sim
 
 
