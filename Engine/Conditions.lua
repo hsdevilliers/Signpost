@@ -546,93 +546,95 @@ local function absorbNear(gotoPin, pins, gotoSet)
 	end
 end
 
+-- The `.goto`s of a step that have nothing left to ask (entries()' indexes): a pick-up or hand-in step lists each NPC's
+-- `.goto` before that NPC's directives, so once every completable directive after a `.goto` up to the next one is
+-- satisfied, its place is done with and its pin goes (the player's rule: a marker shows where to go next, never where
+-- they have been). A `.goto` with no such directive (a waypoint, a lone `.goto`, one beside notes) keeps its pin until
+-- the step is done. Sticky directives are ongoing beside later steps and belong to no `.goto`.
+local function finishedGotos(list, context)
+	local done, anchor, count, open = {}, nil, 0, false
+	local function close()
+		if anchor and count > 0 and not open then
+			done[anchor] = true
+		end
+	end
+	for index, entry in ipairs(list) do
+		if not entry.sticky then
+			if entry.directive.name == "goto" then
+				close()
+				anchor, count, open = index, 0, false
+			elseif anchor and entry.def and isCompletable(entry.def) then
+				count = count + 1
+				open = open or not satisfied(entry, context)
+			end
+		end
+	end
+	close()
+	return done
+end
+
 -- The step's pins, docs/ENGINE.md `target`s: its directives' targets (sticky ones marked sticky = true), without those
--- of satisfied directives. A directive with a `pin` kind that has no position (no data pack, say) marks the `.goto`
--- that stands before it in the step (the first one when none does) with its kind and label instead, so a step that
--- joins several NPCs of an area, each NPC's `.goto` followed by its directives, has one pin and one label for each of
--- them; an NPC or object pin within a .goto's radius merges into the .goto's; pins for the same NPC or object at the
--- same spot merge. Every pin with a quest lists its quests in `quests` (several after a merge). A `.goto` keeps its
--- pin as long as the step is on screen, except in a joined step (two or more `.goto` lines): there a `.goto` whose
--- directives, those with a `pin` kind behind it up to the next `.goto`, are all satisfied no longer draws: its NPC is
--- done. A doing step (see "Step kinds") draws none: its `.goto` and `.complete` are not asked for pins at all (no
--- other core directive of such a step has any; a sticky place directive keeps its own).
+-- of satisfied directives and without the `.goto`s that have nothing left to ask (finishedGotos). A directive with a
+-- `pin` kind that has no position (no data pack, say) marks the `.goto` that stands before it in the step (the first
+-- one when none does) with its kind and label instead, so a step that joins several NPCs of an area, each NPC's `.goto`
+-- followed by its directives, has one pin and one label for each of them; an NPC or object pin within a .goto's radius
+-- merges into the .goto's; pins for the same NPC or object at the same spot merge. Every pin with a quest lists its
+-- quests in `quests` (several after a merge). A doing step (see "Step kinds") draws none: its `.goto` and `.complete`
+-- are not asked for pins at all (no other core directive of such a step has any; a sticky place directive keeps its
+-- own).
 function Conditions:Targets(step, context, states)
 	if type(step) ~= "table" then
 		return {}
 	end
 	context = context or ns.Context
 	local pins, gotoPins, gotoSet, claims = {}, {}, {}, {}
-	-- visits[n]: how many directives stand behind the n-th .goto with a pin kind (accept, turnin, ...), and how many of
-	-- them are not satisfied yet
-	local visits = {}
 	local list = entries(step, states)
 	local doing = isDoing(list)
-	for _, entry in ipairs(list) do
+	local finished = finishedGotos(list, context)
+	-- anchor: the index (in `list`) of the last .goto of the step passed so far; pinOf[index]: the pin of the .goto at
+	-- that index, if it has one (a finished .goto has none). A claim belongs to the .goto before its directive.
+	local anchor, pinOf = nil, {}
+	for index, entry in ipairs(list) do
 		local def, directive = entry.def, entry.directive
 		local isGoto = directive.name == "goto"
-		local quiet = doing and (isGoto or directive.name == "complete")
-		if def and not quiet then
-			local done = isCompletable(def) and not isGoto and satisfied(entry, context)
-			local visit = math.max(#gotoPins, 1)
-			if def.pin and not isGoto and not entry.sticky then
-				local counts = visits[visit] or { named = 0, open = 0 }
-				visits[visit] = counts
-				counts.named = counts.named + 1
-				counts.open = counts.open + (done and 0 or 1)
-			end
-			if not done then
-				local label = lineOf(entry, context)
-				local _, produced = call(def.targets, directive.args, context, entry.state)
-				local count = 0
-				for _, raw in ipairs(type(produced) == "table" and produced or {}) do
-					local pin = normalize(raw, entry, def, label)
-					if pin then
-						count = count + 1
-						pins[#pins + 1] = pin
-						if isGoto and not entry.sticky then
-							pin._generatedLabel = not entry.text or nil
-							gotoPins[#gotoPins + 1] = pin
-							gotoSet[pin] = true
-						end
+		local quiet = (doing and (isGoto or directive.name == "complete")) or finished[index] == true
+		if isGoto and not entry.sticky then
+			anchor = index
+		end
+		if def and not quiet and not (isCompletable(def) and not isGoto and satisfied(entry, context)) then
+			local label = lineOf(entry, context)
+			local _, produced = call(def.targets, directive.args, context, entry.state)
+			local count = 0
+			for _, raw in ipairs(type(produced) == "table" and produced or {}) do
+				local pin = normalize(raw, entry, def, label)
+				if pin then
+					count = count + 1
+					pins[#pins + 1] = pin
+					if isGoto and not entry.sticky then
+						pin._generatedLabel = not entry.text or nil
+						gotoPins[#gotoPins + 1] = pin
+						gotoSet[pin] = true
+						pinOf[index] = pinOf[index] or pin
 					end
 				end
-				if count == 0 and def.pin and not entry.sticky then
-					local questID = questOf(directive)
-					claims[#claims + 1] =
-						{ kind = def.pin, label = label, questID = questID, quests = { questID }, visit = visit }
-				end
+			end
+			if count == 0 and def.pin and not entry.sticky then
+				local questID = questOf(directive)
+				claims[#claims + 1] =
+					{ kind = def.pin, label = label, questID = questID, quests = { questID }, anchor = anchor }
 			end
 		end
-	end
-	-- A joined step's .goto whose directives are all done draws nothing (decided before the NPC pins are merged into the
-	-- .goto pins, so that a finished .goto cannot take the pin of an NPC still to visit).
-	local finished = {}
-	if #gotoPins > 1 then
-		for n, gotoPin in ipairs(gotoPins) do
-			local counts = visits[n]
-			if counts and counts.named > 0 and counts.open == 0 then
-				finished[gotoPin] = true
-			end
-		end
-	end
-	if next(finished) then
-		local kept = {}
-		for _, pin in ipairs(pins) do
-			if not finished[pin] then
-				kept[#kept + 1] = pin
-			end
-		end
-		pins = kept
 	end
 	pins = mergeSameEntity(pins)
 	for _, gotoPin in ipairs(gotoPins) do
-		if not finished[gotoPin] then
-			absorbNear(gotoPin, pins, gotoSet)
-		end
+		absorbNear(gotoPin, pins, gotoSet)
 	end
+	-- A claim marks the pin of the .goto before its directive; with none (the directive comes first, or that .goto
+	-- is finished and draws no pin) it marks the first .goto pin left.
 	for _, claim in ipairs(claims) do
-		if gotoPins[claim.visit] then
-			fold(gotoPins[claim.visit], claim)
+		local target = (claim.anchor and pinOf[claim.anchor]) or gotoPins[1]
+		if target then
+			fold(target, claim)
 		end
 	end
 	local out = {}

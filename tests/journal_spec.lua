@@ -450,6 +450,13 @@ step
 			end
 			lock.check.scripts.OnClick(lock.check)
 			assert.is_true(ns.db.stepFrame.locked)
+			local grow = byLabel["Grow the step card upwards (its bottom edge stays where it is)"]
+			assert.is_not_nil(grow)
+			grow.check.GetChecked = function()
+				return true
+			end
+			grow.check.scripts.OnClick(grow.check)
+			assert.is_true(ns.db.stepFrame.growUp)
 			local combat = byLabel["Hide the step card in combat"]
 			combat.check.GetChecked = function()
 				return true

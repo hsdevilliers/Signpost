@@ -566,9 +566,69 @@ describe("pins", function()
 		assert.are.equal('Accept "Quest #787"', pins[1].label)
 		assert.are.same({ 787 }, pins[1].quests)
 		context.log[787] = true
-		assert.are.same({
-			{ map = 1411, x = 42.1, y = 68.7, kind = "goto", radius = 10, label = "Go to map 1411 42.1, 68.7" },
-		}, ns.Conditions:Targets(step, context, {}))
+		-- everything to do at this place is done: no marker is left behind (the player's rule: a marker shows where to go
+		-- next, never where they have been)
+		assert.are.same({}, ns.Conditions:Targets(step, context, {}))
+	end)
+
+	describe("a step of several places", function()
+		local function xs(pins)
+			local out = {}
+			for _, pin in ipairs(pins) do
+				out[#out + 1] = pin.x
+			end
+			table.sort(out)
+			return out
+		end
+
+		it("keeps a pin for each place still to do and drops the others as the quests there are done", function()
+			local ns = mocks.load()
+			local step =
+				mocks.step(ns, { ".goto 1411,40,40", ".accept 787", ".goto 1411,42,42", ".turnin 787", ".accept 788" })
+			local context = mocks.context()
+			assert.are.same({ 40, 42 }, xs(ns.Conditions:Targets(step, context, {})))
+			context.log[787] = true -- picked up at the first place: its pin goes, the second place is where to go next
+			local pins = ns.Conditions:Targets(step, context, {})
+			assert.are.same({ 42 }, xs(pins))
+			assert.are.equal("turnin", pins[1].kind)
+			context.completed[787] = true -- handed in at the second place, whose next quest is not yet in the log
+			assert.are.same({ 42 }, xs(ns.Conditions:Targets(step, context, {})))
+			context.log[788] = true
+			assert.are.same({}, xs(ns.Conditions:Targets(step, context, {})))
+		end)
+
+		it("keeps the pin of a place while any of its quests is still to do", function()
+			local ns = mocks.load()
+			local step =
+				mocks.step(ns, { ".goto 1411,40,40", ".accept 787", ".accept 788", ".goto 1411,42,42", ".accept 789" })
+			local context = mocks.context({ log = { [787] = true, [789] = true } })
+			assert.are.same({ 40 }, xs(ns.Conditions:Targets(step, context, {}))) -- 788 is not picked up yet
+			context.log[788] = true
+			assert.are.same({}, xs(ns.Conditions:Targets(step, context, {})))
+		end)
+
+		it("keeps the pin of a .goto that has nothing to finish: a waypoint, a lone .goto, one beside notes", function()
+			local ns = mocks.load()
+			local context = mocks.context({ log = { [787] = true } })
+			local waypoint = mocks.step(ns, { ".goto 1411,10,10", ".goto 1411,40,40", ".accept 787" })
+			assert.are.same({ 10 }, xs(ns.Conditions:Targets(waypoint, context, {})))
+			local lone = mocks.step(ns, { ".goto 1411,10,10", ".note Careful here" })
+			assert.are.same({ 10 }, xs(ns.Conditions:Targets(lone, context, {})))
+		end)
+
+		it("is not held open by a note, which can never complete", function()
+			local ns = mocks.load()
+			local step = mocks.step(ns, { ".goto 1411,40,40", ".accept 787", ".note Careful here" })
+			local context = mocks.context({ log = { [787] = true } })
+			assert.are.same({}, xs(ns.Conditions:Targets(step, context, {})))
+		end)
+
+		it("is not held open by a sticky directive, which belongs to no place", function()
+			local ns = mocks.load({ professions = { skinning = SKINNING } })
+			local step = mocks.step(ns, { ".goto 1411,40,40", ".accept 787", ".sticky .skill skinning 10" })
+			local context = mocks.context({ log = { [787] = true } })
+			assert.are.same({}, xs(ns.Conditions:Targets(step, context, {})))
+		end)
 	end)
 
 	it("a step without a .goto and without the pack has no pins", function()
@@ -817,7 +877,7 @@ describe("pins of a joined step", function()
 		assert.are.equal('Accept "Next Door" from Giver Two', pins[1].label)
 	end)
 
-	it("a .goto with nothing behind it that names a pin keeps its pin: a .goto-only step is unchanged", function()
+	it("a .goto-only step is unchanged: each .goto keeps its pin and its 'Go to' label", function()
 		local ns = mocks.load()
 		local context = mocks.context()
 		context:Near(1411, 43.29, 68.53, 0) -- standing on it changes nothing
@@ -828,45 +888,50 @@ describe("pins of a joined step", function()
 		pins =
 			ns.Conditions:Targets(mocks.step(ns, { ".goto 1411,43.29,68.53", ".goto 1411,42.06,68.33" }), context, {})
 		assert.are.same({ { "goto", 43.29 }, { "goto", 42.06 } }, summary(pins))
-		-- a .note or a .level behind a .goto does not name a pin either, whether the .level is met (1) or not (3)
+		-- a .note behind a .goto names no quest and asks nothing; a .level not reached keeps its place open
 		pins = ns.Conditions:Targets(
 			mocks.step(ns, { ".goto 1411,43.29,68.53", ".note Wait here.", ".goto 1411,42.06,68.33", ".level 3" }),
 			context,
 			{}
 		)
 		assert.are.same({ { "goto", 43.29 }, { "goto", 42.06 } }, summary(pins))
-		pins = ns.Conditions:Targets(
-			mocks.step(ns, { ".goto 1411,43.29,68.53", ".level 1", ".goto 1411,42.06,68.33", ".level 3" }),
-			context,
-			{}
-		)
-		assert.are.same({ { "goto", 43.29 }, { "goto", 42.06 } }, summary(pins))
 	end)
 
-	it("a step with one .goto is unchanged: it keeps its pin after everything behind it is done", function()
+	it("the pin of a single-.goto step names its quests, and keeps a bare 'Go to' while its place is open", function()
 		local ns = mocks.load()
 		local step = mocks.step(ns, { ".goto 1411,43.29,68.53", ".accept 787", ".accept 788", ".level 5" })
 		local context = mocks.context()
 		local pins = ns.Conditions:Targets(step, context, {})
 		assert.are.same({ { "accept", 43.29, 787, 788 } }, summary(pins))
-		context.log[787], context.log[788] = true, true -- the .level is open: the step is still on screen
+		context.log[787], context.log[788] = true, true -- the .level is open: something is left to do at this place
 		pins = ns.Conditions:Targets(step, context, {})
 		assert.are.same({ { "goto", 43.29 } }, summary(pins))
 		assert.are.equal("Go to map 1411 43.3, 68.5", pins[1].label)
-	end)
-
-	it("a joined step whose NPCs are all done draws nothing, though it still waits for its other lines", function()
-		local ns = mocks.load()
-		local step = mocks.step(
-			ns,
-			{ ".goto 1411,43.29,68.53", ".accept 787", ".goto 1411,42.06,68.33", ".accept 788", ".level 5" }
-		)
-		local context = mocks.context({ log = { [787] = true, [788] = true } })
+		context.level = 5 -- nothing is left to ask at this place
 		assert.are.same({}, ns.Conditions:Targets(step, context, {}))
-		assert.is_false(isComplete(ns, step, context))
 	end)
 
-	it("sticky pins do not take a .goto's place, and a sticky .goto is not one of the step's", function()
+	it(
+		"the last place of a joined step names none of the quests done, and goes when its other lines are done",
+		function()
+			local ns = mocks.load()
+			local step = mocks.step(
+				ns,
+				{ ".goto 1411,43.29,68.53", ".accept 787", ".goto 1411,42.06,68.33", ".accept 788", ".level 5" }
+			)
+			local context = mocks.context({ log = { [787] = true, [788] = true } })
+			-- the first place is done with; the second still has the .level to ask, and no quest is named on it
+			local pins = ns.Conditions:Targets(step, context, {})
+			assert.are.same({ { "goto", 42.06 } }, summary(pins))
+			assert.are.equal("Go to map 1411 42.1, 68.3", pins[1].label)
+			assert.is_false(isComplete(ns, step, context))
+			context.level = 5
+			assert.are.same({}, ns.Conditions:Targets(step, context, {}))
+			assert.is_true(isComplete(ns, step, context))
+		end
+	)
+
+	it("a sticky .goto is no place of the step: it keeps its own pin and takes no claim", function()
 		local ns = mocks.load()
 		local step = mocks.step(ns, {
 			".goto 1411,43.29,68.53",
@@ -875,16 +940,15 @@ describe("pins of a joined step", function()
 			".goto 1411,42.06,68.33",
 			".accept 788",
 		})
-		local pins = ns.Conditions:Targets(step, mocks.context(), {})
+		local context = mocks.context()
+		local pins = ns.Conditions:Targets(step, context, {})
 		assert.are.same({ { "accept", 43.29, 787 }, { "accept", 42.06, 788 }, { "goto", 50 } }, summary(pins))
 		assert.is_true(pins[3].sticky)
-		-- a step with a single .goto of its own is not a joined step because of a sticky one: its pin stays
-		step = mocks.step(ns, { ".goto 1411,43.29,68.53", ".accept 787", ".sticky .goto 1411,50,50" })
-		local context = mocks.context({ log = { [787] = true } })
+		-- a place is done with whatever a sticky .goto does: only the sticky pin is left
+		context.log[787], context.log[788] = true, true
 		pins = ns.Conditions:Targets(step, context, {})
-		assert.are.same({ { "goto", 43.29 }, { "goto", 50 } }, summary(pins))
-		assert.is_nil(pins[1].sticky)
-		assert.is_true(pins[2].sticky)
+		assert.are.same({ { "goto", 50 } }, summary(pins))
+		assert.is_true(pins[1].sticky)
 	end)
 end)
 

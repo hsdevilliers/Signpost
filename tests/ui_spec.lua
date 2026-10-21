@@ -641,6 +641,7 @@ describe("step frame settings", function()
 			hideInCombat = true,
 			hideWhenDead = true,
 			hideWithJournal = true,
+			growUp = false,
 		}, ns.db.stepFrame)
 		assert.are.same({ minimap = true, worldMap = true, showNext = false, nextCount = 2 }, ns.db.pins)
 	end)
@@ -734,6 +735,109 @@ describe("step frame settings", function()
 		assert.is_false(ns.db.stepFrame.shown)
 		slash("show")
 		assert.is_true(frame:IsShown())
+	end)
+end)
+
+describe("step frame growth direction", function()
+	after_each(uiMock.uninstall)
+
+	-- The frame is `height` high when the position is applied (a position at the other edge is moved by the height).
+	local function place(ns, pos, height)
+		local frame = ns.StepFrame.frame
+		frame:SetHeight(height or 100)
+		ns.db.stepFrame.pos = pos
+		ns.StepFrame:ApplyPosition()
+		return frame
+	end
+
+	it("keeps the top edge by default and the bottom edge when it grows up, without moving the frame", function()
+		local ns, mock = load()
+		local frame = place(ns, { point = "TOPLEFT", relativePoint = "BOTTOMLEFT", x = 300, y = 400 })
+		assert.is_false(ns.db.stepFrame.growUp)
+		assert.are.same({ "TOPLEFT", G.UIParent, "BOTTOMLEFT", 300, 400 }, { frame:GetPoint(1) })
+		ns.StepFrame:SetGrowUp(true)
+		assert.is_true(ns.db.stepFrame.growUp)
+		-- the frame is 100 high: its bottom edge is 100 below its top edge
+		assert.are.same({ "BOTTOMLEFT", G.UIParent, "BOTTOMLEFT", 300, 300 }, { frame:GetPoint(1) })
+		assert.are.same({ point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT", x = 300, y = 300 }, ns.db.stepFrame.pos)
+		-- a taller step: the bottom edge is where it was, so the frame grows upwards (the anchor does not change)
+		frame:SetHeight(180)
+		ns.StepFrame:ApplyPosition()
+		assert.are.same({ "BOTTOMLEFT", G.UIParent, "BOTTOMLEFT", 300, 300 }, { frame:GetPoint(1) })
+		frame:SetHeight(100)
+		ns.StepFrame:SetGrowUp(false)
+		assert.are.same({ "TOPLEFT", G.UIParent, "BOTTOMLEFT", 300, 400 }, { frame:GetPoint(1) })
+		noErrors(ns, mock)
+	end)
+
+	it("moves a centred or right-hand position to the edge it needs", function()
+		local ns = load()
+		local frame = place(ns, { point = "CENTER", relativePoint = "CENTER", x = 10, y = 10 })
+		ns.StepFrame:SetGrowUp(true)
+		assert.are.same({ "BOTTOM", G.UIParent, "CENTER", 10, -40 }, { frame:GetPoint(1) }) -- 10 - 100 / 2
+		ns.StepFrame:SetGrowUp(false)
+		assert.are.same({ "TOP", G.UIParent, "CENTER", 10, 60 }, { frame:GetPoint(1) })
+		frame = place(ns, { point = "TOPRIGHT", relativePoint = "TOPRIGHT", x = -50, y = -20 })
+		ns.StepFrame:SetGrowUp(true)
+		assert.are.same({ "BOTTOMRIGHT", G.UIParent, "TOPRIGHT", -50, -120 }, { frame:GetPoint(1) })
+	end)
+
+	it("has a default place for each direction, and a reset keeps the direction", function()
+		local ns = load()
+		local frame = ns.StepFrame.frame
+		assert.are.same({ "TOPRIGHT", G.UIParent, "TOPRIGHT", -300, -220 }, { frame:GetPoint(1) })
+		ns.StepFrame:SetGrowUp(true)
+		assert.is_nil(ns.db.stepFrame.pos) -- nothing is saved: a frame that grows up gets a default anchored at its bottom
+		assert.are.same({ "BOTTOMRIGHT", G.UIParent, "TOPRIGHT", -300, -300 }, { frame:GetPoint(1) })
+		slash("reset")
+		assert.is_true(ns.db.stepFrame.growUp)
+		assert.are.same({ "BOTTOMRIGHT", G.UIParent, "TOPRIGHT", -300, -300 }, { frame:GetPoint(1) })
+	end)
+
+	it("anchors a dragged frame at the edge it grows from and keeps that across a reload", function()
+		local ns, _, ui = load()
+		local frame = ns.StepFrame.frame
+		ns.StepFrame:SetGrowUp(true)
+		frame:SetHeight(100)
+		ui.shift = true
+		ui.dragTo = { "TOPLEFT", G.UIParent, "BOTTOMLEFT", 300, 400 } -- the client hands back the corner it moved
+		frame:GetScript("OnDragStart")(frame)
+		frame:GetScript("OnDragStop")(frame)
+		assert.are.same({ "BOTTOMLEFT", G.UIParent, "BOTTOMLEFT", 300, 300 }, { frame:GetPoint(1) })
+		assert.are.same({ point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT", x = 300, y = 300 }, ns.db.stepFrame.pos)
+		local saved = ns.db
+		uiMock.uninstall()
+
+		local reloaded, mock = load({ saved = saved })
+		assert.is_true(reloaded.db.stepFrame.growUp)
+		assert.are.same({ "BOTTOMLEFT", G.UIParent, "BOTTOMLEFT", 300, 300 }, { reloaded.StepFrame.frame:GetPoint(1) })
+		noErrors(reloaded, mock)
+	end)
+
+	it("is set with /signpost grow", function()
+		local ns, mock = load()
+		slash("grow up")
+		assert.is_true(ns.db.stepFrame.growUp)
+		assert.truthy(mock.printed[#mock.printed]:find("grows upwards", 1, true))
+		slash("grow down")
+		assert.is_false(ns.db.stepFrame.growUp)
+		slash("grow")
+		assert.truthy(mock.printed[#mock.printed]:find("grows downwards", 1, true))
+		slash("grow sideways")
+		assert.truthy(mock.printed[#mock.printed]:find("'grow up'", 1, true)) -- the usage line
+		assert.is_false(ns.db.stepFrame.growUp)
+		noErrors(ns, mock)
+	end)
+
+	it("moves the item button with the frame's top edge after every layout", function()
+		local ns = load()
+		local calls, real = 0, ns.StepFrame.PositionItemButton
+		ns.StepFrame.PositionItemButton = function(self)
+			calls = calls + 1
+			return real(self)
+		end
+		ns.StepFrame:Layout()
+		assert.is_true(calls > 0)
 	end)
 end)
 

@@ -154,7 +154,10 @@ changes: a step completes when every completable directive in it is satisfied.
 | **Hand in** | N `.turnin` (a `.goto` for each NPC when several stand in the area: each is a pin, named for its own NPC's quests: see "Joined steps") | every quest is turned in | the quest enders |
 | **Hand in + pick up** | `.turnin` and `.accept` at one place | all of them | both |
 
-The guide's markers exist to steer the player **to a place**: where to pick up, where to hand in, and travel. The quest
+The guide's markers exist to steer the player **to a place**: where to pick up, where to hand in, and travel. A marker
+shows where to go **next**, never where the player has been: when every quest at one NPC is accepted or handed in, that
+place's marker goes at once, even while other NPCs of the same step are still open (a `.goto` with nothing after it to
+complete, such as a waypoint, keeps its marker until the step is done). The quest
 log already marks, on the map and the minimap, where each quest's objectives are, so the guide does not repeat it: a
 **doing step** draws no markers at all. It is a step with at least one `.complete` and no *place directive*:
 
@@ -219,9 +222,10 @@ step draws **one pin for each `.goto`, named for the directives behind it** (`En
   it the `.goto` is the pin, its kind and label coming from the directives behind it (a turn-in names the pin before a
   pick-up does).
 - A directive that is satisfied (the quest is in the log, handed in, or complete, for `.accept`, `.turnin`, `.complete`)
-  stops being named. In a step with two or more `.goto` lines a `.goto` whose directives are all satisfied no longer
-  draws: that NPC is done. A step with a single `.goto` keeps its pin for as long as the step is current, as does a
-  `.goto` with nothing behind it that names a pin.
+  stops being named, and a place whose directives are all satisfied draws no pin any more: the rule of a marker that
+  shows where to go next (above) is the engine's `finishedGotos`, and the pins are built on it. So the pin of a place
+  names only the quests still open there, and a place with something else left to ask (a `.level`, say) keeps a bare
+  "Go to ..." pin.
 - A pin's tooltip lists the lines of the quests it names, and the lines about no quest; the step card lists every line of
   the step, each quest with its done mark, whichever NPC it belongs to.
 

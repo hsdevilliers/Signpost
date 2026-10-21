@@ -215,13 +215,16 @@ else the client's `isPrimaryProfession`, else the slot.
   in directive order), available = the quests neither in the quest log nor done, taken = one of them is in the log,
   fulfilled = every one of its optional directives is satisfied }`. The step card, the Journal and `:IsComplete` read it.
 - `:Targets(step, context, states)` → targets of the step's directives (sticky ones marked `sticky = true`), without
-  those of satisfied directives. A directive with a `pin` kind and no position (no pack) marks **the `.goto` before it**
-  (the first `.goto` when none does), so a joined step (each NPC's `.goto` followed by its directives) has one pin and
-  one label for each NPC; an NPC/object pin within a `.goto`'s radius merges into it, same-NPC pins merge. A `.goto` keeps
-  its pin, except in a step with two or more `.goto` lines: there a `.goto` whose directives that name a pin are all
-  satisfied draws nothing (decided before the NPC pins merge, so a finished `.goto` cannot take the pin of an NPC still
-  to visit). A **doing step** has none: its `.goto` and `.complete` are not asked for pins (a sticky place directive
-  keeps its own).
+  those of satisfied directives and without the **`.goto`s that have nothing left to ask**: a pick-up or hand-in step
+  lists each NPC's `.goto` before that NPC's directives, so once every completable directive after a `.goto` (up to the
+  next `.goto`) is satisfied, that place's pin goes (a marker shows where to go next, never where the player has been). A
+  `.goto` with no such directive after it (a waypoint, a lone `.goto`, one beside notes) keeps its pin until the step is
+  done; sticky directives belong to no `.goto`. A directive with a `pin` kind and no position (no pack) marks **the
+  `.goto` before it** (the first `.goto` when none does), so a joined step (each NPC's `.goto` followed by its
+  directives) has one pin and one label for each NPC, naming that NPC's quests (a finished `.goto` has no pin: a claim of
+  a directive after it marks the first `.goto` pin left). An NPC/object pin within a `.goto`'s radius merges into it,
+  same-NPC pins merge. A **doing step** has none: its `.goto` and `.complete` are not asked for pins (a sticky place
+  directive keeps its own).
 - `:IsDoingStep(step)` → boolean: the step has a `.complete` and no place directive (any directive but `.goto` and
   `.complete` that is a travel directive, `def.kind == "travel"`, or whose def has a `pin` other than `"objective"`; only
   the step's own directives count, not its sticky ones). GUIDE-FORMAT "Step kinds" has the rule and the directives.
@@ -375,17 +378,24 @@ route touches.
   boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out of combat) uses the step's `.use` item
   (`args.itemID`).
 - Settings via `RegisterDefaults("account", "stepFrame", { shown, locked, scale, alpha, hideInCombat, hideWhenDead,
-  hideWithJournal, pos })` and `("account", "pins", { minimap, worldMap, showNext, nextCount })`.
-- `/signpost show|hide|lock [on|off]|reset|scale <n>|alpha <n>`. Pins through HereBeDragons-Pins-2.0 (minimap + world
+  hideWithJournal, growUp, pos })` and `("account", "pins", { minimap, worldMap, showNext, nextCount })`.
+- **Which way the card grows** (`growUp`, user 2026-10-21, for a card placed near the bottom of the screen): the card's height follows the step, so the edge it
+  is anchored at stays put and the other edge moves. `growUp = false` (the default) anchors the saved `pos` at the card's top (it grows down), `true` at its bottom
+  (it grows up). `pos` is `{ point, relativePoint, x, y }` as before; `StepFrame:SetGrowUp(up)` (the Journal's Settings checkbox, `/signpost grow up|down`) moves
+  the saved point to the other edge without moving the card (the side of the point and the relative point stay, the vertical offset moves by the card's height; a
+  centred point moves by half of it), and so does `ApplyPosition` for a position saved at the other edge (a drag hands back whatever corner the client moved).
+  With no saved position the default is the top-right place for a card that grows down and the same place anchored at the bottom for one that grows up.
+  `reset` keeps the direction. The item button sits beside the card's top-left corner, so it is placed again after every layout.
+- `/signpost show|hide|lock [on|off]|grow [up|down]|reset|scale <n>|alpha <n>`. Pins through HereBeDragons-Pins-2.0 (minimap + world
   map, waypoint lines on zone maps); atlases per FOREVER-API-NOTES (there is no `Vendor` atlas).
 - APIs: `StepFrame:Render()`, `DescribeLines(step[, quests])` (`quests = { [questID] = true }` leaves out the lines about
   other quests: a pin's tooltip lists the lines of the quests the pin names), `DescribeSticky(step)`,
-  `DescribeActiveSticky(step)`, `OptionalLines(step)`, `SetShown/SetLocked/SetScale/SetAlpha/Reset`; `Pins:Refresh(force)`,
-  `RequestRefresh()`, `Clear()`, `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`, `Collect()`,
-  `IconFor(kind, override)`. Phase 4 hooks, no-ops until the journal exists: right-click → `ns.Journal:Toggle(step)`,
-  world-pin click → `ns.Journal:ShowStep(step)`, `ns.Journal:IsShown()` for `hideWithJournal`. A step with no targets (a
-  doing step) draws nothing, and the pins and edge arrows of the step before are cleared. A joined step has one pin for
-  each of its `.goto` lines (`Conditions:Targets`).
+  `DescribeActiveSticky(step)`, `OptionalLines(step)`, `SetShown/SetLocked/SetGrowUp/SetScale/SetAlpha/Reset`;
+  `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`, `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`,
+  `Collect()`, `IconFor(kind, override)`. Phase 4 hooks, no-ops until the journal exists: right-click →
+  `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`, `ns.Journal:IsShown()` for `hideWithJournal`.
+  A step with no targets (a doing step) draws nothing, and the pins and edge arrows of the step before are cleared. A
+  joined step has one pin for each of its `.goto` lines that still has something to ask (`Conditions:Targets`).
 
 ### UI/Journal.lua — `ns.Journal`
 
