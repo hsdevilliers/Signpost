@@ -436,8 +436,10 @@ quest never taken.
     afterwards takes it back (the pointer, the marks and the furthest step as they were); any other move drops the undo.
   - *Applying*: the steps before the pointer are marked done (their quests are, or they have none) or skipped (their quests are not
     done; a skip the player made by hand on a step with no quest of its own stays), the pointer's step and every step after it are
-    cleared. The flags are set directly and never through `Skip`, which would decline a profession; the stickies of steps passed
-    are not started, those of steps skipped are dismissed. Then `GUIDE_PLACED(result, reason)`, the evaluation (`STEP_CHANGED("place")`;
+    cleared. The flags are set directly and never through `Skip`, which would decline a profession; the sticky directives of the
+    steps marked done are started (`StartStep`, as the walk through them would have: the goal, a skill or a level to reach, is going
+    beside the route unless it is met already, so a character placed at a step has the goals of one that walked to it), those of
+    steps skipped are dismissed. Then `GUIDE_PLACED(result, reason)`, the evaluation (`STEP_CHANGED("place")`;
     inside `SetGuide` it is the load's) and `Settle`: the chat lines, which name the step the engine settled on (it passes steps that are
     done already), the undo, and the second look.
   - *The chat lines* (`ns.L`): "Your place: step 143/368 (The Barrens). 62 of this guide's 185 quests are done, 3 are in your quest

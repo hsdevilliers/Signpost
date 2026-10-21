@@ -759,6 +759,193 @@ describe("a character with progress in the guide", function()
 	end)
 end)
 
+-- A guide whose first step starts an ongoing goal (a sticky directive, as the profession tracks' skill goals are): the
+-- level to reach, which rides beside the route from that step on. Level 15 is above anything these specs reach on
+-- their own, so a goal is ongoing until a spec raises the level.
+local STICKY_TEXT = table.concat({
+	"#chapter 1-12 Sticky",
+	"step",
+	"  .accept 101",
+	"  .sticky .level 15",
+	"step",
+	"  .complete 101",
+	"step",
+	"  .turnin 101",
+	"  .accept 102",
+	"step",
+	"  .complete 102",
+	"step",
+	"  .turnin 102",
+	"",
+}, "\n")
+
+local function stickyGuide(ns)
+	assert.is_true(ns.Chapters:Register("stk", STICKY_TEXT))
+	assert.is_true(ns.Guides:Register({
+		id = "stk-place",
+		name = "Sticky",
+		faction = "*",
+		races = { "*" },
+		classes = { "*" },
+		levels = { 1, 12 },
+		text = "#include stk\n",
+	}))
+end
+
+-- the steps with a goal going beside the route, as ids
+local function ongoing(ns)
+	local ids = {}
+	for _, step in ipairs(ns.Progress:Sticky()) do
+		ids[#ids + 1] = step.id
+	end
+	return ids
+end
+
+local function boars(have)
+	return quest(101, { objectives = { objective("Boars", have or 0, 3) } })
+end
+
+-- A session of the sticky guide; opts as for start(). A character with no completed quest has no list to wait for only
+-- after the wait is over, so those sessions let it pass.
+local function stickySession(opts)
+	opts.noGuide, opts.setup = true, stickyGuide
+	return start(opts)
+end
+
+describe("the goals of the steps a placement passes", function()
+	-- a walker: logs in at level 1 with nothing done and takes the first quest
+	local function walker()
+		local ns, world, mock = stickySession({ level = 1 })
+		world.log = { boars() }
+		mock.fire("QUEST_ACCEPTED", 101)
+		world.advance(1.5)
+		return ns, world, mock
+	end
+
+	it("has the same ongoing goals for a character placed at a step as for one that walked to it", function()
+		local walked = walker()
+		assert.are.equal("stk:2", current(walked))
+		assert.are.same({ "stk:1" }, ongoing(walked))
+		-- the same character at a later login: placed, by the quest in its log and its level (no quest is done, so the
+		-- list of completed quests is empty and the placement waits for it)
+		local placed = stickySession({ level = 4, log = { boars() }, advance = 6 })
+		assert.are.equal("stk:2", current(placed))
+		assert.are.equal("first", placed.char.progress["stk-place"].placed.reason)
+		assert.are.same(ongoing(walked), ongoing(placed))
+		-- and the goal ends the same way: at level 15 neither has it any more
+		local ns, world, mock = stickySession({ level = 4, log = { boars() }, advance = 6 })
+		assert.are.same({ "stk:1" }, ongoing(ns))
+		world.level = 15
+		mock.fire("PLAYER_LEVEL_UP", 15)
+		world.advance(2)
+		assert.are.same({}, ongoing(ns))
+	end)
+
+	it("does not start a goal that is met already, nor the goal of a step it marks skipped", function()
+		-- everything done: the placement is at the end, the first step done and its goal met at level 15
+		local met = stickySession({ level = 15, completed = { 101, 102 } })
+		assert.is_true(met.Progress:IsDone("stk:1"))
+		assert.are.same({}, ongoing(met))
+		-- the same at level 9: the goal is not met, and is going
+		local notYet = stickySession({ level = 9, completed = { 101, 102 } })
+		assert.is_true(notYet.Progress:IsDone("stk:1"))
+		assert.are.same({ "stk:1" }, ongoing(notYet))
+		-- a character that did the end of the guide and not its beginning: step 1 is skipped, and a skipped step's goal is
+		-- dismissed
+		local skipped = stickySession({ level = 9, completed = { 102 } })
+		assert.is_true(skipped.Progress:IsSkipped("stk:1"))
+		assert.are.same({}, ongoing(skipped))
+	end)
+
+	it("starts the goal when the player asks to be placed, and tells the step card", function()
+		local ns, world = walker()
+		wipe(ns.char.progress["stk-place"].sticky) -- a record that did not keep the goal (a walk before it was kept)
+		assert.are.same({}, ongoing(ns))
+		local heard = {}
+		ns.Events:RegisterMessage("STICKY_CHANGED", function(_, list)
+			heard[#heard + 1] = #list
+		end)
+		world.level = 4
+		ns.Context:Invalidate("level")
+		slash("place")
+		assert.are.same({ "stk:1" }, ongoing(ns))
+		world.advance(0.5)
+		assert.are.same({ 1 }, heard)
+	end)
+
+	-- `<` takes a placement back: the pointer, the marks (done, skipped), the goals and the furthest step as they were.
+	-- Each of these has marks that differ before and after the placement, or the undo would look right whatever it did.
+	describe("and `<` right after Find my place", function()
+		it("gives back the goal the placement dismissed", function()
+			local ns, world, mock = walker()
+			assert.are.same({ "stk:1" }, ongoing(ns))
+			-- the quest is dropped and the character is at level 4: nothing says it took step 1, which is now skipped
+			world.log = {}
+			world.level = 4
+			mock.fire("PLAYER_LEVEL_UP", 4)
+			mock.fire("QUEST_REMOVED", 101)
+			world.advance(2)
+			assert.are.equal("stk:2", current(ns))
+			slash("place")
+			assert.is_true(ns.Progress:IsSkipped("stk:1"))
+			assert.are.same({}, ongoing(ns))
+			slash("back")
+			assert.are.equal("stk:2", current(ns))
+			assert.are.same({ "stk:1" }, ongoing(ns))
+			assert.is_false(ns.Progress:IsSkipped("stk:1"))
+			assert.is_true(ns.Progress:IsDone("stk:1"))
+		end)
+
+		it("gives back a skip the placement cleared, on a step other than the one it returns to", function()
+			local ns = stickySession({ level = 4, log = { boars() }, advance = 6 })
+			assert.are.equal("stk:2", current(ns))
+			slash("step 4")
+			slash("skip") -- stk:4 is skipped by hand, and the pointer goes on to stk:5
+			assert.are.equal("stk:5", current(ns))
+			assert.is_true(ns.Progress:IsSkipped("stk:4"))
+			slash("place") -- back to where the quests say, stk:2, with the marks from there on cleared
+			assert.are.equal("stk:2", current(ns))
+			assert.is_false(ns.Progress:IsSkipped("stk:4"))
+			slash("back")
+			assert.are.equal("stk:5", current(ns))
+			assert.is_true(ns.Progress:IsSkipped("stk:4"))
+			assert.is_true(ns.Progress:IsDone("stk:1"))
+		end)
+
+		it("gives back the furthest step reached, which decides whether a press of > is held", function()
+			local ns, world = stickySession({ level = 1 })
+			assert.are.equal("stk:1", current(ns))
+			-- the first quest is done by now: Find my place takes the character to stk:3, the furthest step so far
+			world.completed = { 101 }
+			slash("place")
+			assert.are.equal("stk:3", current(ns))
+			slash("back")
+			assert.are.equal("stk:1", current(ns))
+			-- from the front the engine passes what is done, as for a walker: > goes on to stk:3 (stk:2 is done); with the
+			-- furthest step still stk:3 it would be held at stk:2
+			slash("next")
+			assert.are.equal("stk:3", current(ns))
+		end)
+
+		it("keeps the furthest step reached when it was beyond the step it returns to", function()
+			local ns, world = stickySession({ level = 1 })
+			slash("step 3") -- the furthest step reached is stk:3 ...
+			slash("back")
+			slash("back")
+			assert.are.equal("stk:1", current(ns)) -- ... and the pointer is back at stk:1
+			world.completed = { 101 }
+			slash("place")
+			assert.are.equal("stk:3", current(ns))
+			slash("back")
+			assert.are.equal("stk:1", current(ns))
+			-- behind the furthest step > goes one step at a time, and holds the step it lands on (stk:2 is done, and is
+			-- not passed); with the furthest step lost it would be passed at once
+			slash("next")
+			assert.are.equal("stk:2", current(ns))
+		end)
+	end)
+end)
+
 describe("Find my place (/signpost place)", function()
 	-- a character placed at valley:6 by its quests, who then goes back by hand to valley:2
 	local function wandered()

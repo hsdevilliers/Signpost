@@ -898,8 +898,9 @@ end
 -- Puts the marks and the pointer where `result` (ns.Placement:Find) says. A step before the pointer is done when its
 -- quests are (or it holds none) and skipped when they are not; the pointer's step and every step after it are clear. A
 -- skip the player made by hand on a step with no quest of its own stays. The flags are set here and not through
--- Progress:Skip, which would decline a profession; the stickies of a step passed are not started, those of a step
--- skipped are dismissed. `prune` also drops marks of steps the guide does not have (ids from an older install).
+-- Progress:Skip, which would decline a profession; the sticky directives of a step skipped are dismissed, those of a
+-- step marked done are started (below) as the walk through it would have.
+-- `prune` also drops marks of steps the guide does not have (ids from an older install).
 function Progress:ApplyPlacement(result, prune)
 	local record, pointer = self.record, result.index
 	if prune then
@@ -923,6 +924,15 @@ function Progress:ApplyPlacement(result, prune)
 			end
 		else
 			record.done[id], record.skipped[id] = true, nil
+		end
+	end
+	-- A character that walked the route has the goals of its passed steps going (Advance starts every step it passes: a
+	-- skill to reach, a level to get to), those not satisfied yet. The steps a placement passes were not walked, so the
+	-- ones it marks done are started here, or the same character placed at the same step would have no goal at all.
+	for i = 1, pointer - 1 do
+		local step = self.guide.steps[i]
+		if #(step.sticky or EMPTY) > 0 and record.done[step.id] then
+			self:StartStep(step)
 		end
 	end
 	self.index, self.hold, self.declined = pointer, nil, nil
