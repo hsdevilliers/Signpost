@@ -29,3 +29,5 @@ The Skyborne guide left out Infestation Investigation (92462) although it was ac
 
 - Compare play time only (the planner's headline total includes the class-quest charge).
 - Needs batch 1 on main first (the setting exists only there).
+
+Progress (the quick PR after batch 1, 2026-10-21): the default is F 0.6 / T 45 s in the planner and the Skyborne guide is planned again with it (92462 and 92463 are in; six quests added, none removed). Still to do, in the regeneration pass: the Troll Hunter (one small quest) and the Tauren Druid (none) planned again with it, and the left-out lists recounted. Close this item then.

@@ -494,7 +494,7 @@ planner or in the simulator; **nothing was seen in the real client** unless a li
   bindings, hide/lock settings, `/signpost card` and `/signpost minimap` (docs/INTERACTIONS.md). None of it seen in the game.
 - [x] Route Planner (WP-E1): grind steps say how much to grind; the quest log limit (40); the spread between grains in the report; chapters cut at zone stays;
   nothing dropped silently (each quest the planner takes out is listed and written as `#skipquest ... not finished by this route`); `--completeness` (finish
-  what the route accepts; **off by default, the user chooses**); `--require` (mandatory quests, used for the Skyborne exit); what needs a group quest is
+  what the route accepts; **on by default, T 45 s and F 0.6, the user's choice of 2026-10-21; `--completeness 0` turns it off**); `--require` (mandatory quests, used for the Skyborne exit); what needs a group quest is
   optional too and dungeon quests are optional (normal route) or dropped (HARDCORE).
 - [x] Lint, one price for travel, escorts (WP-E2): the lint rule for a quest whose objectives never appear as `.complete`; one travel price shared by the planner,
   the travel graph and the simulation (the planner and the full simulation agree within about 3%); escorts and events flagged in the pack (`scripted`) and priced;
@@ -505,9 +505,10 @@ planner or in the simulator; **nothing was seen in the real client** unless a li
 - [x] Profession tracks (WP-G1): Skinning, Leatherworking, First Aid, Cooking and Fishing for the Troll Hunter, first cut, every number Classic's (VERIFY(launch)).
   Open: `.hub` markers in the chapters, the early trainers, the recipe data.
 - [x] Profession recorder (WP-G2): trainer services and recipes with difficulty observations, opt-in, no names, chat or gold; the importer files them.
-- [x] Guides to level 30, regenerated with the final tools and the rebuilt pack (completeness off): Troll Hunter 21 chapters, 20h23 planned, 20h12 simulated, 45 `.todo`;
-  Tauren Druid (HARDCORE) 23 chapters, 27h43 planned, 27h36 simulated, 47 `.todo`; Skyborne Druid (HARDCORE) 19 chapters, 24h14 planned, 24h03 simulated, 33 `.todo`
-  (its island part ends with the exit chain and the airship, from research, unverified). Compare play time only: a beam total is chaotic.
-- [ ] The user picks the completeness defaults (F and T): until then 92462 and 92463 stay out of the Skyborne guide, with the reason in the guide.
+- [x] Guides to level 30, regenerated with the final tools and the rebuilt pack (completeness off for the Troll Hunter and the Tauren Druid): Troll Hunter 21 chapters, 20h23 planned, 20h12 simulated, 45 `.todo`;
+  Tauren Druid (HARDCORE) 23 chapters, 27h43 planned, 27h36 simulated, 47 `.todo`; Skyborne Druid (HARDCORE) 19 chapters, 24h17 planned, 24h05 simulated, 36 `.todo`,
+  planned again with completeness on (its island part ends with the exit chain and the airship, from research, unverified). Compare play time only: a beam total is chaotic.
+- [x] The user chose the completeness defaults (T 45 s, F 0.6, 2026-10-21): they are the planner's defaults now and the Skyborne guide is planned again with them
+  (92462 and 92463 are in). The Troll Hunter (one small quest more) and the Tauren Druid (none) wait for the regeneration pass.
 - [ ] To see in the game: the placement at login, the step card's new lines and pins, the launcher (menu, compartment, key bindings, the Settings column), the
   tracker's watch functions, the recorders, the Skyborne exit, Teleport: Moonglade.

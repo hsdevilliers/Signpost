@@ -420,27 +420,28 @@ optimistic at the island's start, which a different line, not a different half l
 measured in the short chapters).
 
 Quest steps from the true place, median / 90th percentile (warp truth, seed 1, every second step, 3 draws each, 2026-10-21, the
-constants above, the three guides as merged that day):
+constants above, the three guides as merged that day; the Skyborne column again after that guide was planned again with completeness on):
 
 | The character | Tauren Druid (HARDCORE) | Troll Hunter | Skyborne Druid (HARDCORE) |
 |---|---|---|---|
 | followed the guide to the step, nothing else | 0 / 0 | 0 / 0 | 0 / 0 |
-| also skipped a fifth of the guide's quests | 0 / 3 | 0 / 3 | 0 / 5 |
-| skipped 30 percent, in runs of about six | 0 / 6 | 0 / 6 | 0 / 8 |
+| also skipped a fifth of the guide's quests | 0 / 3 | 0 / 3 | 0 / 6 |
+| skipped 30 percent, in runs of about six | 0 / 6 | 0 / 6 | 0 / 9 |
 | also did four quests that come later | 0 / 4 | 0 / 1 | 0 / 3 |
 | its level is off by up to two | 0 / 7 | 0 / 8 | 0 / 11 |
 | its quest log is empty | 1 / 3 | 1 / 3 | 1 / 3 |
-| skipped a fifth in runs, did some early, level off by one, log half the time empty | 2 / 8 | 1 / 8 | 2 / 13 |
-| stopped following the guide at 40 percent of the way and levelled elsewhere | 9 / 31 | 6 / 14 | 9 / 23 |
-| did half the quests of the guide that its level allows, in no order | 11 / 26 | 7 / 19 | 10 / 26 |
+| skipped a fifth in runs, did some early, level off by one, log half the time empty | 2 / 8 | 1 / 8 | 2 / 12 |
+| stopped following the guide at 40 percent of the way and levelled elsewhere | 9 / 31 | 6 / 14 | 10 / 24 |
+| did half the quests of the guide that its level allows, in no order | 11 / 26 | 7 / 19 | 11 / 27 |
 | no quest history at all, only the level (level off by one) | 9 / 22 | 7 / 18 | 10 / 23 |
 
 Runs ending three or more levels from the true level: none, except 0.2 percent of the character with all the noise together (Troll) and
 of the one who did half the quests in no order (Tauren). Against the levels the simulator walks (`--truth sim`; the same table, which
-anyone with the pack can reproduce with `python tools/placement_report.py`): the followers 0 / 0, 0 / 3 with a fifth skipped, 1 or 2 / 8
-with all the noise, and 7 to 10 / 18 to 23 with no history, in all three guides; three or more levels off in no run of the Troll and
-Tauren guides except 0.2 percent of the Troll's no-history runs, and in the Skyborne guide 1.9 percent of the no-history runs, 1.3
-of the characters who did half the quests, 0.6 of those who stopped following it, none of the others. Those are the island's first
+anyone with the pack can reproduce with `python tools/placement_report.py`): the followers 0 / 0, 0 / 3 (Skyborne 0 / 4) with a fifth
+skipped, 1 or 2 / 8 with all the noise, and 7 to 10 / 18 to 23 with no history, in all three guides; three or more levels off in no run
+of the Troll and Tauren guides except 0.2 percent of the Troll's no-history runs, and in the Skyborne guide (as planned again with
+completeness on, 2026-10-21) 3.2 percent of the no-history runs, 2.5 of those who stopped following it, 2.3 of the characters who did
+half the quests, 0.8 of the one with all the noise together (the guide merged earlier that day: 1.9, 0.6, 1.3, none). Those are the island's first
 steps, where the line is up to 2 levels too optimistic (above).
 
 What the bounds in the spec are, and what they were measured at (large samples: 10 seeds, every step of every guide, 3 draws each,
