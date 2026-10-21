@@ -3,8 +3,8 @@ positions and zone crossings the /signpost debug recorder kept in SignpostDB.eve
 
 `learned_layer` turns SignpostDB tables (one per SavedVariables source) into layer tables in the pack's schema
 (Data/Schema.lua): NPC and object positions ({ uiMapID, x, y }; sightings averaged into up to three spots), quest
-givers and enders, flight masters, walked zone crossings, the vendors of items the route uses and the trainers of each
-profession. `merge_learned` writes them as layers/learned.json. datapack.build merges that layer last, so learned
+givers and enders, flight masters, walked zone crossings, boat and zeppelin rides, innkeepers, the vendors of items the
+route uses and the trainers of each profession. `merge_learned` writes them as layers/learned.json. datapack.build merges that layer last, so learned
 positions override the other sources; links (quest givers and enders, vendors, trainers) are written together with
 what the other layers already know, so learning one never drops another.
 

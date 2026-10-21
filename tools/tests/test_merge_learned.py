@@ -486,6 +486,39 @@ class CommandLineTest(unittest.TestCase):
         self.assertNotIn(str(root), first["origin"])
         self.assertEqual(objects[1617]["p"], [[1411, 44.0, 70.0]])
 
+    def test_rides_and_inns_come_through_a_saved_variables_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack, guides, dev = root / "pack", root / "Guides", root / "dev"
+            for folder in (guides, dev):
+                folder.mkdir()
+            datapack.init_stub(pack)
+            maps = {**MAPS, 1420: {"n": "Tirisfal Glades", "t": 3}}
+            datapack.write_layer(pack, "client", {"maps": maps}, "client dumpmaps")
+            ride = {
+                "from": {"map": 1411, "x": 50.9, "y": 13.0},
+                "to": {"map": 1420, "x": 60.8, "y": 58.9},
+                "side": "Horde",
+                "kind": "zeppelin",
+                "fromArea": "West Dock",
+                "toArea": "East Dock",
+                "secs": 24,
+                "t": 1790000000,
+                "c": 2,
+            }
+            inn = {"map": 1411, "x": 51.5, "y": 41.6, "n": "Razor Hill", "t": 1790000000, "c": 1}
+            db = {"learned": {"rides": [ride], "inns": {6929: inn}}}
+            luawriter.write_lua(dev / "Signpost.lua", [], [("SignpostDB", db)])
+            printed = self.run_main("--merge-learned", "--from", str(dev), "--pack", str(pack), "--guides", str(guides))
+            travel = datapack.read_table(pack, "travel")
+        self.assertIn("1 transports", printed)
+        self.assertIn("1 inns", printed)
+        self.assertEqual(
+            travel["transports"],
+            [{"kind": "zeppelin", "from": [1411, 50.9, 13.0], "to": [1420, 60.8, 58.9], "side": "Horde", "src": "learned"}],
+        )
+        self.assertEqual(travel["inns"], {6929: {"p": [1411, 51.5, 41.6], "n": "Razor Hill"}})
+
     def test_also_needs_merge_learned(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             self.run_main("--json", "--also", "somewhere")

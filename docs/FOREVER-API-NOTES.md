@@ -303,6 +303,19 @@ Travel (Engine/Travel.lua, Engine/Context.lua, Core/Learn.lua, tools/guide_trave
   (the travel planner assumes 60 min).
 - [ ] `MERCHANT_UPDATE` registers (Learn's vendor items; `MERCHANT_SHOW` alone is enough otherwise).
 - [ ] Each flight master stands in the map `guide_travel.py` picks from the taxi pin (the city map for "Orgrimmar, Durotar").
+- [ ] **Rides recorded** (`Core/Learn.lua`, `learned.rides`; built on the mock, none of it seen in the client): standing on a
+  moving boat or zeppelin `GetUnitSpeed("player")` is about 0 while `UnitPosition` follows the deck (Learn sees "carried"), or
+  the map position is missing (Learn counts that too); `IsInInstance()` and `UnitIsDeadOrGhost("player")` answer plain booleans.
+  Check: type `/signpost ride zeppelin` (or `boat`), ride once, then `/signpost learned` says 1 ride and `python
+  tools/read_savedvars.py learned` shows a `rides` entry whose docks lie within about 50 yd of where you boarded and stepped off,
+  with the area texts (`fromArea`, `toArea`, they tell a boat from a zeppelin) and `secs`; a hearthstone, a flight or an instance
+  entry must leave no ride behind.
+- [ ] **Innkeepers recorded** (`learned.inns`): the gossip option that sets the home carries the `BinderGossipIcon` file (its ID
+  or its path) or the words "inn" and "home"; `GetBindLocation()` changes within a few seconds of setting the home (stored as the
+  inn's `n`; Learn polls it once a second, so `HEARTHSTONE_BOUND` is not needed).
+- [ ] The `.fp` steps the travel generator proposes (`tools/guide_travel.py`, flight masters from the pack's NPC records) are
+  completed by opening that flight master's flight map (`.fp` needs `TAXIMAP_OPENED` and a known node), and a flight master the
+  pack places by NPC record stands where the record says (positions are QuestieDB's Classic baseline).
 
 Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.lua's lists)
 - [ ] Atlases `Waypoint-MapPin-Tracked`, `Waypoint-MapPin-Untracked`, `Objective-Header`; files

@@ -1,6 +1,7 @@
 import contextlib
 import dataclasses
 import io
+import json
 import re
 import unittest
 from unittest import mock
@@ -309,6 +310,52 @@ class PlaceholderTest(unittest.TestCase):
         graph = world()
         plan = guide_travel.plan_travel(graph, Place(20, Coord(20, 50, 50), "start"), Place(40, Coord(40, 50, 50), "goal"))
         self.assertEqual(guide_travel.plan_steps(graph, plan), [[".boat 20,90.0,90.0 > 40,10.0,10.0 >> Take the boat to Isle"]])
+
+
+class MoongladeRewriteTest(unittest.TestCase):
+    """tools/drafts.json turns the generator's placeholders for the trips to and from Moonglade into text that says how a
+    druid goes (tools/rebuild_drafts.py applies it to a drafted guide). It has to match the generator's own words."""
+
+    MAPS = {**MAPS, 60: {"n": "Moonglade", "t": 3, "parent": 100, "world": [1, 100, 100, 0, 0]}}
+
+    @staticmethod
+    def rewrites():
+        manifest = json.loads((guide_travel.REPO_ROOT / "tools" / "drafts.json").read_text(encoding="utf-8"))
+        return {entry["guide"]: entry["rewrites"] for entry in manifest["guides"] if entry.get("rewrites")}
+
+    def placeholder(self, here, there):
+        pack = guide_travel.Pack(guide_travel.Path("."), {}, {"maps": self.MAPS})
+        return guide_travel.placeholder_lines(World(pack, [], "Horde"), here, there)[0]
+
+    @staticmethod
+    def apply(text, rules):
+        for rule in rules:
+            text = re.sub(rule["match"], rule["with"], text)
+        return text
+
+    def test_the_generators_trips_to_and_from_moonglade_are_rewritten(self):
+        rules = self.rewrites()
+        self.assertEqual(sorted(rules), ["horde-tauren-druid", "horde-windshaper-druid"])
+        for guide, guide_rules in rules.items():
+            for here, name in ((10, "Westland"), (40, "Isle")):  # the same continent: walk; another one: get
+                trip = self.placeholder(here, 60)
+                self.assertRegex(trip, r'^\.todo "(Walk|Get) from ' + name + " to Moonglade: ")
+                self.assertTrue(
+                    self.apply(trip, guide_rules).startswith('.todo "Go to Moonglade: cast Teleport: Moonglade'), guide
+                )
+                back = self.apply(self.placeholder(60, here), guide_rules)
+                self.assertTrue(back.startswith(f'.todo "Return from Moonglade to {name} (VERIFY(beta): hearthstone'), back)
+            other = self.placeholder(10, 20)  # a trip that has nothing to do with Moonglade is left alone
+            self.assertEqual(self.apply(other, guide_rules), other)
+
+    def test_chapters_written_with_the_old_wording_are_still_rewritten(self):
+        old_to = '.todo "travel from Thunder Bluff to Moonglade: the travel graph has no route yet"'
+        old_back = '.todo "travel from Moonglade to Thunder Bluff: the travel graph has no route yet"'
+        for guide, guide_rules in self.rewrites().items():
+            self.assertTrue(self.apply(old_to, guide_rules).startswith('.todo "Go to Moonglade:'), guide)
+            self.assertTrue(
+                self.apply(old_back, guide_rules).startswith('.todo "Return from Moonglade to Thunder Bluff (VERIFY'), guide
+            )
 
 
 class SimulateTest(TempProject):

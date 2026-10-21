@@ -12,9 +12,9 @@ adds more learned data to --merge-learned; --contributions DIR (repeatable) read
 tools/share_savedvars.ps1 fills (<id>/Signpost-<game folder>-<time>.lua per contributor): every file of one contributor and
 game folder is folded, oldest first, into one source, so importing again, or importing a later copy, never double-counts;
 --pack DIR is the data pack (default ../Signpost_Data). The maps go into
-layers/client.json, the learned data (Core/Learn.lua, plus the NPC positions and zone crossings in the debug
-recorder's event log) into layers/learned.json (signpost_tools/learned.py), and the pack is rebuilt from every layer
-(datapack.build), learned last.
+layers/client.json, the learned data (Core/Learn.lua: NPCs, quests, flight nodes, zone crossings, boat and zeppelin
+rides, innkeepers, trainers, vendors; plus the NPC positions and zone crossings in the debug recorder's event log) into
+layers/learned.json (signpost_tools/learned.py), and the pack is rebuilt from every layer (datapack.build), learned last.
 """
 
 from __future__ import annotations

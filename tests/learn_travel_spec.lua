@@ -9,9 +9,10 @@ local PLAYER = "Player-1465-0A1B2C3D"
 local PET = "Pet-0-1465-1-47-3100-01004F2B42"
 local BINDER_ICON = "Interface\\GossipFrame\\BinderGossipIcon"
 
--- Two docks on two continents, as the client would report them while the player stands there.
+-- Two docks on two continents, as the client would report them while the player stands there. Their world coordinates
+-- are alike on purpose: only the other world (instance) tells them apart.
 local WEST_DOCK = { map = 1411, x = 0.509, y = 0.13, wx = 1000, wy = 2000, instance = 1, subzone = "West Dock" }
-local EAST_DOCK = { map = 1420, x = 0.608, y = 0.589, wx = 500, wy = 700, instance = 0, subzone = "East Dock" }
+local EAST_DOCK = { map = 1420, x = 0.608, y = 0.589, wx = 1000, wy = 2000, instance = 0, subzone = "East Dock" }
 
 local NONE = {} -- a field set to NONE is taken out of the world (no map position, say)
 
@@ -241,6 +242,96 @@ describe("Learn: boat and zeppelin rides", function()
 		end
 	end)
 
+	it("goes on through a pause of a second (a transport slowing down is not the end of the ride)", function()
+		local ns, mock, world = load()
+		world.speed = 0
+		stand(ns, mock, world, WEST_DOCK, 3)
+		carry(ns, mock, world, 8, 20)
+		stand(ns, mock, world, { x = 0.55 }, 1) -- a second at rest, somewhere else on the map
+		carry(ns, mock, world, 8, 20)
+		loading(mock, world, EAST_DOCK, 8)
+		carry(ns, mock, world, 4, 20)
+		stand(ns, mock, world, {}, 3)
+		local rides = ns.db.learned.rides
+		assert.are.equal(1, #rides)
+		assert.are.same({ map = 1411, x = 50.9, y = 13 }, rides[1].from) -- the dock, not the pause
+	end)
+
+	it("does not take a jump of hundreds of yards in a second for a ride (a summon, a portal)", function()
+		local ns, mock, world = load()
+		world.speed = 0
+		stand(ns, mock, world, WEST_DOCK, 3)
+		carry(ns, mock, world, 20, 500)
+		stand(ns, mock, world, {}, 3)
+		assert.are.same({}, ns.db.learned.rides)
+	end)
+
+	it("does not start a ride from a dock last seen long ago", function()
+		local ns, mock, world = load()
+		world.speed = 0
+		stand(ns, mock, world, WEST_DOCK, 3)
+		mock.now = mock.now + 100 -- the samples stopped for a while
+		stand(ns, mock, world, { x = NONE }, 20)
+		stand(ns, mock, world, { x = 0.3, wx = 2400 }, 3)
+		assert.are.same({}, ns.db.learned.rides)
+	end)
+
+	it("is not fooled by a hearthstone followed by seconds without a map position", function()
+		local ns, mock, world = load()
+		world.speed = 0
+		stand(ns, mock, world, WEST_DOCK, 5)
+		loading(mock, world, EAST_DOCK, 3)
+		stand(ns, mock, world, { x = NONE }, 20)
+		stand(ns, mock, world, { x = 0.3 }, 3)
+		assert.are.same({}, ns.db.learned.rides)
+	end)
+
+	it("keeps no dock on a continent map (the open sea)", function()
+		local ns, mock, world = load()
+		world.maps[1414] = { mapID = 1414, mapType = 2 }
+		ride(
+			ns,
+			mock,
+			world,
+			WEST_DOCK,
+			{ map = 1414, x = 0.4, y = 0.4, wx = 500, wy = 700, instance = 0, subzone = "" }
+		)
+		assert.are.same({}, ns.db.learned.rides)
+	end)
+
+	it("keeps the kind a ride was named when it is ridden again without naming it", function()
+		local ns, mock, world = load()
+		SlashCmdList.SIGNPOST("ride boat")
+		ride(ns, mock, world, WEST_DOCK, EAST_DOCK)
+		loading(mock, world, WEST_DOCK, 5)
+		ride(ns, mock, world, WEST_DOCK, EAST_DOCK)
+		assert.are.same(
+			{ 1, "boat", 2 },
+			{ #ns.db.learned.rides, ns.db.learned.rides[1].kind, ns.db.learned.rides[1].c }
+		)
+	end)
+
+	it("is not fooled by a flight, an instance or death that also takes the map position away", function()
+		local cases = {
+			["a flight"] = { taxi = true },
+			["an instance"] = { instanceType = "party" },
+			["death"] = { dead = true },
+		}
+		for name, state in pairs(cases) do
+			local ns, mock, world = load()
+			world.speed = 0
+			stand(ns, mock, world, WEST_DOCK, 3)
+			local gone = { x = NONE }
+			for key, value in pairs(state) do
+				gone[key] = value
+			end
+			stand(ns, mock, world, gone, 20)
+			stand(ns, mock, world, { x = 0.3, wx = 2400, taxi = false, instanceType = "none", dead = false }, 4)
+			assert.are.same({}, ns.db.learned.rides, name)
+			mocks.uninstall(G)
+		end
+	end)
+
 	it("does not take stopping after a run for a ride", function()
 		local ns, mock, world = load()
 		world.speed = 14
@@ -417,7 +508,11 @@ describe("Learn: innkeepers", function()
 	it("learns no inn from a trainer, a vendor, a player or a pet", function()
 		local ns, mock, world = load()
 		talkTo(world, INNKEEPER, "Vendor")
-		world.gossip = { { name = "I want to browse your goods.", icon = 7 }, { name = "Train me.", icon = 8 } }
+		world.gossip = {
+			{ name = "I want to browse your goods.", icon = 7 },
+			{ name = "Train me.", icon = 8 },
+			{ name = "Where is the nearest inn?", icon = 9 }, -- "inn" alone is not the option that sets the home
+		}
 		mock.fire("GOSSIP_SHOW")
 		for _, who in ipairs({ { PLAYER, "Someplayer" }, { PET, "Fluffy" } }) do
 			talkTo(world, who[1], who[2])

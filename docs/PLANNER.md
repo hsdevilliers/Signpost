@@ -129,7 +129,9 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   says how much faster the result is than the greedy route, and distrust a route that is not clearly faster.
 - **The quest log is not limited** (25 in Classic); the route may hold more at a moment than the game allows (backlog: `limit-the-quest-log`).
 - **Data holes become `.todo` steps**: an objective with no position in the pack is worked where its quest starts, and the step
-  says so; a border with no route yet gets a travel step the lint reports.
+  says so; a zone change the travel data cannot place gets a placeholder step in plain words (docs/GUIDE-FORMAT.md) that the lint counts as a
+  `.todo`. The travel generator also teaches flight paths: where the route passes a flight master and a later zone change would fly from it,
+  it adds a `.fp` step (a flight must save 90 s, or there is no other way), so a written route has more travel steps than the planner priced.
 - **Group quests** in a normal route are tagged `.optional`, not yet shown as a line beside the step.
 - **Walking inside a doing step is not priced**: the planner adds a few seconds for each place of a hub; once the objective areas are joined into one
   doing step the simulator charges only the walk between steps (the step keeps one position). A pick-up and hand-in step keeps the position of
