@@ -106,10 +106,11 @@ local function statesFor(step)
 	end
 end
 
--- The lines of these directives carry a done mark: the quests a step has to accept, complete or turn in, so that the
--- frame says which of them are done (a pick-up of five quests and a hand-in of five read like a doing step of five).
+-- The lines of these directives carry a done mark: the quests a step has to accept, complete or turn in, and the level
+-- it asks for (`.level`; the user, 2026-10-21: "reach level 2" had no checkbox), so that the frame says which of
+-- them are done (a pick-up of five quests and a hand-in of five read like a doing step of five).
 -- The lines of every other directive (travel, .train, .buy, notes, ...) read as they are.
-local MARKED = { accept = true, complete = true, turnin = true }
+local MARKED = { accept = true, complete = true, turnin = true, level = true }
 
 -- The step's display lines from ns.Conditions:Describe, as plain strings (a line may also be a table with `text`).
 -- Lines Describe marks as sticky (its second result) are left to the "Ongoing:" lines (StepFrame:StickyLines). The
