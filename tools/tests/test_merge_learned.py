@@ -220,7 +220,8 @@ class LearnedLayerTest(unittest.TestCase):
 
         self.assertEqual(kind(route("Orgrimmar Zeppelin Tower", "Somewhere")), "zeppelin")
         self.assertEqual(kind(route("Somewhere", "Booty Bay Harbor")), "boat")
-        self.assertIsNone(kind(route("Valanaar Skydocks", "Thendal Village")))  # "docks" does not say what rides
+        self.assertEqual(kind(route("Valanaar Skydocks", "Thendal Village")), "zeppelin")  # an airship is a zeppelin
+        self.assertIsNone(kind(route("Windsong Docks", "Thendal Village")))  # "docks" alone does not say what rides
         self.assertEqual(kind(route("Orgrimmar Zeppelin Tower", "Somewhere", kind="boat")), "boat")  # the player's word wins
         self.assertEqual(kind(route("Somewhere", "Elsewhere", kind="ship")), None)  # not a kind the generator writes
 

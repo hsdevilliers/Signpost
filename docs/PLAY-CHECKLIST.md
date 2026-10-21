@@ -29,7 +29,8 @@ you already know a service a trainer offers, how long a boat or zeppelin ride to
 
 ## The druids
 - Moonglade: how a druid gets there and back is not in the data. Go once and note how (spell, walking, flight) with `/signpost report`.
-- Skyborne: how you leave Zephras Isle is not in the data either. Ride whatever takes you off and name it with `/signpost ride`.
+- Skyborne: when the island story sends you off, ride the airship from Valanaar's southwest dock to Mulgore (type `/signpost ride zeppelin`
+  first), then `/signpost learned`: it should say 1 ride. Note what the airship is called and how long you waited.
 
 ## Check it and hand it on
 `/signpost learned` counts what has been recorded (rides, innkeepers, NPCs, flight nodes, zone crossings). `/reload` writes it to disk.

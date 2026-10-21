@@ -278,8 +278,12 @@ DOCK_SPOT = 2.0  # map percent: rides whose two ends are this close are one tran
 KINDS = ("boat", "zeppelin")
 # Words in the area names recorded at the docks that say what the transport is (none of them is a guess about Forever:
 # the area's own name says "Zeppelin", "Harbor" ...). Anything else leaves the kind to the player's `/signpost ride <kind>`.
+# An airship is a zeppelin to the directives (`.zeppelin` is any aerial ride); Zephras Isle's dock is called Valanaar Skydocks.
 KIND_WORDS = (
     ("zeppelin", "zeppelin"),
+    ("airship", "zeppelin"),
+    ("skyship", "zeppelin"),
+    ("skydock", "zeppelin"),
     ("harbor", "boat"),
     ("harbour", "boat"),
     ("pier", "boat"),

@@ -420,6 +420,13 @@ Travel (Engine/Travel.lua, Engine/Context.lua, Core/Learn.lua, tools/guide_trave
 - [ ] The `.fp` steps the travel generator proposes (`tools/guide_travel.py`, flight masters from the pack's NPC records) are
   completed by opening that flight master's flight map (`.fp` needs `TAXIMAP_OPENED` and a known node), and a flight master the
   pack places by NPC record stands where the record says (positions are QuestieDB's Classic baseline).
+- [ ] **The Skyborne's airship** (`Guides/Travel/Borders.lua`, the `ride` entry; fan guides and the Warcraft Wiki, see "Skyborne exit"
+  above; nothing seen in the game): where it leaves (Valanaar's southwest or westernmost dock; no position is in the data, so the
+  step is a `.todo`), the vehicle's name (airship, zeppelin or skyship), where it lands (Skywatcher Plateau, north-west Mulgore: does
+  `.zone 1412` complete there?), the wait (7 to 8 minutes; priced as 450 s) and whether it can be boarded before the island's quest
+  chain is done. Ride it once after `/signpost ride zeppelin`: `/signpost learned` counts the ride, and the recorded ride replaces the
+  entry, so the step becomes a `.zeppelin` (a dock area with "airship", "skyship" or "skydock" in its name is classed as a zeppelin;
+  QuestieDB's area table calls the island's dock "Valanaar Skydocks").
 
 Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.lua's lists)
 - [ ] Atlases `Waypoint-MapPin-Tracked`, `Waypoint-MapPin-Untracked`, `Objective-Header`; files

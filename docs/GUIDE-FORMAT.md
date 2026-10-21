@@ -158,6 +158,12 @@ above). It has no `.goto`: one in the destination would make the step count as a
 The wording follows what is known (two continents: "they are on different continents, so you need a boat, a zeppelin or another ride, and the
 guide has no dock for it yet") and never carries a coordinate.
 
+A ride the tools know but whose docks nobody has recorded (a hand-authored `ride` entry in `Guides/Travel/Borders.lua`: today the Skyborne's
+airship off Zephras Isle) is a real step of three lines, still with no coordinate and no `.goto`: `.zone <map> >> Take the airship from
+<dock> (<zone>) to <landing> (<zone>)`, `.note Expect to wait about 7 to 8 minutes for it.` and `.todo "Not verified in the game: <what nobody
+has confirmed>. This step is done when you arrive in <zone>."`. `.zeppelin`/`.boat` need both docks' positions, so they take the step over once
+a ride is recorded (the pack's record replaces the entry and keeps its name and wait), and until then the `.todo` marks the gap.
+
 Class directives come from class modules (`Classes/<CLASS>.lua`): e.g. `.tame <npcID>`, `.ammo ...`. Using one in a
 chapter without a `.class` gate is a lint error.
 
