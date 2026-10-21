@@ -197,13 +197,17 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
   Limits: QuestieDB says the delta base supplies no complete objectives, restrictions or gameplay behavior; its `LoadDynamic`
   (faction- and class-conditional) corrections are not read; category "zones" (16941 Crafting, 16611 Ruins of Lordaeron, 16919 Hall of
   Thanes, 16732, 16544) have no uiMapID, so those quests keep no `zone` and are listed in data-gaps.md.
-- **Consequence (2026-10-20):** `Guides/HordeWindshaperDruid.lua` is drafted from these layers (Zephras Isle chapter `zephras-isle-1-12`, 90
-  quests, race bit 8589934592) and the Windshaper's own druid chain is routed from the pack: A Student of Nature 92485, Child of Nature
+- **Consequence (2026-10-20):** `Guides/HordeWindshaperDruid.lua` was first drafted from these layers (Zephras Isle chapter, 90 quests, race
+  bit 8589934592) and the Windshaper's own druid chain is routed from the pack: A Student of Nature 92485, Child of Nature
   94911 (starts with Muln Earthfury in Mulgore, ends with Turak in Thunder Bluff), Moonglade 94913, The Great Ursera Spirit 94006,
-  Strength and Mercy 94638. The Windshaper's Cat Form chain is in too (98340, 98341, 98404, 98738, 98362; `windshaper-cat-form-20`). Still not in the pack: what
-  follows Zephras Isle after level 12, and objective counts and positions for several quests (the chapters carry `.todo` steps naming
-  them). `Core/Learn.lua` remains the way to fill the gaps from play. Objective kill counts are not kept in the pack at all, so
-  `tools/guide_sim.py` uses a parameter for them.
+  Strength and Mercy 94638. The Windshaper's Cat Form chain is in too (98340, 98341, 98404, 98738, 98362). Since 2026-10-21 the guide is the
+  Route Planner's route (docs/PLANNER.md): the drafted chapters (`zephras-isle-1-12`, `skyborne-arrival-12`, `windshaper-cat-form-20`) were
+  replaced by `windshaper-druid-NN-<zone>` chapters, and `tools/drafts.json` keeps their entries only for the planner's `--chain` hints.
+  The pack does know the mainland quests of the Windshaper race (Welcome to Azeroth 95350, Journey to the Crossroads 98024). Still not in the
+  pack: how a Windshaper leaves the island (no transport, crossing or flight master for Zephras Isle; the only link is the island story's last
+  quest, The Earthen Ring 95349, which ends in Mulgore: backlog item "How does a Skyborne character leave Zephras Isle"), and objective
+  counts and positions for several quests (the chapters carry `.todo` steps naming them). `Core/Learn.lua` remains the way to fill the gaps
+  from play. Objective kill counts are not kept in the pack at all, so `tools/guide_sim.py` uses a parameter for them.
 
 ## Observed in the game (user reports)
 - 2026-10-20, a level-1 Troll in the Valley of Trials: Gornek offers **Cutting Teeth** and **Wayward Weapons**, Kaltunk offers **Your Place in the
