@@ -156,6 +156,12 @@ positions learned in game.
   CI green, the full local suite (`tools/check.ps1`) passing, and the diff reviewed. Merge with a merge commit, pull `main`, delete the
   merged branch. Still ask first for anything that is not an ordinary merge: force-pushes, rewriting history, deleting anything that
   is not a merged branch, changing the repository's settings or secrets, and publishing a release (e.g. to CurseForge).
+- **Parallel agents (user, 2026-10-21, standing): Claude may spin up as many agents as the work needs and run them in parallel.** A batch is
+  coordinated by one coordinator agent (`.claude/agents/work-coordinator.md`): the scope of the next PR is confirmed with the user in plain
+  words first, then the coordinator sends workers off, each in its own git worktree and branch; the coordinator integrates, regenerates the
+  guides, has independent reviewers attack the result and opens one PR. Big PRs are welcome. Agents never touch the main checkout, never
+  force-push, never change repository settings or secrets and never publish a release; the merge stays Claude's under the standing merge
+  agreement.
 - **Backlog (user, 2026-10-20, standing): nothing is left only in conversation.** Residuals live in `backlog/` (`python tools/backlog.py`,
   rules in `backlog/README.md`): what the user tells you to note ("add this to the backlog"), written down in their words
   (`--source user`), and every finding you make and do not fix in the same change (`--source claude`). **Before you push a PR and before a

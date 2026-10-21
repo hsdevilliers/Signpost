@@ -503,6 +503,15 @@ local function settingsList()
 			end,
 		},
 		{
+			label = L["Grow the step card upwards (its bottom edge stays where it is)"],
+			get = function()
+				return stepFrameSetting("growUp")
+			end,
+			set = function(value)
+				stepFrame():SetGrowUp(value)
+			end,
+		},
+		{
 			label = L["Hide the step card in combat"],
 			get = function()
 				return stepFrameSetting("hideInCombat")

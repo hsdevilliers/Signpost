@@ -154,7 +154,10 @@ changes: a step completes when every completable directive in it is satisfied.
 | **Hand in** | N `.turnin` (a `.goto` for each NPC when several stand in the area: each is a pin; without the data pack only the first pin is named for the quests) | every quest is turned in | the quest enders |
 | **Hand in + pick up** | `.turnin` and `.accept` at one place | all of them | both |
 
-The guide's markers exist to steer the player **to a place**: where to pick up, where to hand in, and travel. The quest
+The guide's markers exist to steer the player **to a place**: where to pick up, where to hand in, and travel. A marker
+shows where to go **next**, never where the player has been: when every quest at one NPC is accepted or handed in, that
+place's marker goes at once, even while other NPCs of the same step are still open (a `.goto` with nothing after it to
+complete, such as a waypoint, keeps its marker until the step is done). The quest
 log already marks, on the map and the minimap, where each quest's objectives are, so the guide does not repeat it: a
 **doing step** draws no markers at all. It is a step with at least one `.complete` and no *place directive*:
 
