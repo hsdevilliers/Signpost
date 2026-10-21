@@ -4,25 +4,34 @@ A step-by-step leveling guide for **World of Warcraft: Forever**: one small fram
 on the minimap and the world map, and explicit travel steps whenever the route changes zone. The engine, UI and guide
 format are class-, race- and faction-agnostic; guides are plain text files.
 
-**Status: pre-release.** The addon runs in the Forever beta client and its first guides are being tested; levels past 20 are still
-being written. [`docs/PLAN.md`](docs/PLAN.md) has the plan and [`docs/PROGRESS.md`](docs/PROGRESS.md) where it stands.
+**Status: pre-release.** The addon runs in the Forever beta client and its first guides are being tested; the guides stop at level 30
+for now (the beta's cap, the range that can be checked in play). [`docs/PLAN.md`](docs/PLAN.md) has the plan and
+[`docs/PROGRESS.md`](docs/PROGRESS.md) where it stands.
 
 ## Guides
 
 | Guide | Levels now | Notes |
 |---|---|---|
-| Horde Troll Hunter | 1-20 | Skinning and Leatherworking with First Aid, Cooking and Fishing as the default plan |
-| Horde Tauren Druid | 1-21 | Bear Form, Cat Form and the other class chains |
-| Horde Skyborne (Windshaper) Druid | 1-12 | Zephras Isle; what comes after it is not in the data yet |
+| Horde Troll Hunter | 1-30 | A normal route. Skinning and Leatherworking with First Aid, Cooking and Fishing as the default plan; the profession steps are a first cut with Classic's numbers, unverified in Forever |
+| Horde Tauren Druid (HARDCORE) | 1-30 | Bear Form, Cat Form and the other class chains |
+| Horde Skyborne (Windshaper) Druid (HARDCORE) | 1-30 | Starts on Zephras Isle and leaves it by the island story and the airship to Mulgore (from beta-era guides, unverified in the game) |
 
-The guides are built for **hardcore**: quests known to be deadly are skipped, not just flagged. A guide never changes zone without
-travel steps in between, and every step has a pin on the map.
+The two druid guides are built for **hardcore**: quests known to be deadly are skipped, not just flagged. A guide never changes zone
+without a travel step in between (where the data does not know the way yet, the step says so in plain words), and every step has a
+pin on the map. The guides are made by the Route Planner (`docs/PLANNER.md`); a quest it picks up and cannot finish on the way is left
+out with a reason (`#skipquest ... not finished by this route`), never dropped silently.
 
 ## What you get
 
-- A small step frame with the current step (move it, lock it, scale it, hide it in combat).
-- Pins on the world map and the minimap for the current target.
+- A small step frame with the current step: a done mark on each quest, group quests coming up as a line of their own, and the choice
+  to move it, lock it, scale it, let it grow upwards or hide it in combat.
+- Pins on the world map and the minimap for the current target, one for each NPC of a pick-up or hand-in step.
 - A journal window (`/signpost journal`) with every chapter and step, the Skip toggle for dungeon chapters, and manual moves.
+- **Find my place**: start a guide at any level. Signpost reads your level and which of the guide's quests you have done and puts you
+  at the right step (`/signpost place` or the Journal's button asks again; `<` takes it back). After a guide update your place is found
+  again once from your quest history.
+- The minimap button: left-click for the Journal, Shift-click for the step card, right-click for a quick menu (also on the step card
+  and in the AddOn Compartment). The main actions are on the Key Bindings screen under Signpost.
 - The quest tracker follows your step: only the quests of the current step are tracked, so the quest log's own marks show where to go
   (on by default; Journal > Settings turns it off).
 - Optional automation (quest accept and turn-in, gossip, taxi, trainer, vendor), **all off by default**. Hold **Shift** while talking to
@@ -37,12 +46,14 @@ CurseForge once it is published. Signpost runs standalone: guides carry their ow
 
 ## Commands
 
-`/signpost` (alias `/sign`) lists them. The ones you will use: `show`, `hide`, `lock`, `scale`, `alpha`, `journal`, `next`, `back`,
-`skip`, `automation`, `report`, `contribute`, `status`.
+`/signpost` (alias `/sign`) lists them. The ones you will use: `show`, `hide`, `lock`, `grow`, `scale`, `alpha`, `journal`, `next`, `back`,
+`skip`, `place`, `card`, `minimap`, `automation`, `report`, `contribute`, `status`. `/signpost tracking test` checks the client's quest
+watch functions (the result is for the developers).
 
 ## Sharing data (optional)
 
-You can let Signpost record where quest givers, enders and flight masters are and which quests you accept, so the next guide is better.
+You can let Signpost record where quest givers, enders, flight masters, innkeepers and trainers are, where boats and zeppelins dock, what
+profession trainers teach and charge, your recipes and which quests you accept, so the next guide is better.
 Nothing is collected until you agree in the consent window (`/signpost contribute`) and nothing leaves your machine by itself: the
 recorded data sits in your saved variables. [`docs/SHARING-DATA.md`](docs/SHARING-DATA.md) explains what is recorded and how to send it.
 
@@ -52,7 +63,9 @@ The addon folder must be named `Signpost`. On a development machine `tools/dev_l
 the repository into the AddOns folder, using paths from `tools/dev.local.json` (copy `tools/dev.local.example.json`). An optional private
 data pack (`Signpost_Data`) adds names, positions and validation; it is built locally with the tools and is not distributed.
 Guide drafts are generated with `tools/guide_draft.py` and checked with `tools/guide_lint.py`; `tools/guide_sim.py` estimates the time
-a route takes, and `tools/route_planner.py` searches for a faster one and explains what it did ([`docs/PLANNER.md`](docs/PLANNER.md)).
+a route takes, and `tools/route_planner.py` searches for a faster one and explains what it did ([`docs/PLANNER.md`](docs/PLANNER.md): the quest
+log limit `--quest-log`, required quests `--require`, finishing what a route accepts `--completeness`, the spread between grains in the report).
+`docs/PLAY-CHECKLIST.md` lists the short things to do in the game that fill the gaps in the travel data.
 What is left over (findings, open questions, notes) is kept in [`backlog/`](backlog/README.md); `python tools/backlog.py` lists what is open.
 
 `tools/check.ps1` runs every check CI runs: busted, luacheck, StyLua, `tools/check_repo.py` and the Python tool tests.

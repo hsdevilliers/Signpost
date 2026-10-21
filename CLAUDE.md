@@ -55,6 +55,7 @@ in order and only with evidence.
 Signpost/                 PUBLIC repo, MIT
   Signpost.toc            ## Interface: 16001 (generic); ## OptionalDeps: Signpost_Data
   Signpost_Camelot.toc    Forever-flavor TOC (same content)  — keep both in sync
+  Bindings.xml            key bindings (the client loads it without a TOC line; the labels are set in UI/Launcher.lua)
   Core/        init, events, saved vars, util, slash, debug/probe, Learn (position recorder)
   Engine/      directive registry, guide/chapter registry (#include, best-match selection), DSL parser, conditions, progression,
                Travel (waypoint paths, transport state machine, travel-graph routing)
@@ -64,7 +65,7 @@ Signpost/                 PUBLIC repo, MIT
   Guides/      guide files (metadata + #include list + race-specific chapters), Chapters/ (shared zone/dungeon chapter library),
                Professions/ (one route track per profession, inserted into any guide at .hub anchors),
                Travel/Borders.lua (hand-authored zone crossings, overridden by learned ones)
-  UI/          StepFrame (overlay), Journal (big window), Pins (map/minimap), Options
+  UI/          StepFrame (overlay), Journal (big window), Pins (map/minimap), Options, Launcher (minimap button, quick menu, key bindings)
   Automation/  quest accept/turn-in, gossip, taxi, trainer, vendor, hearth
   Libs/        LibStub, CallbackHandler-1.0, HereBeDragons-2.0, LibDataBroker-1.1, LibDBIcon-1.0
   Media/       textures/fonts we own (no copied Blizzard art files; reference Blizzard paths instead)
