@@ -200,6 +200,52 @@ describe("ns.Context", function()
 			assert.are.same({ "quests", "quests" }, fired)
 		end)
 
+		it("knows the client has sent the quest log once a quest is in it, or QUEST_LOG_UPDATE has come", function()
+			-- an empty log at login may be a log the client has not sent yet
+			local ns, world, mock, fired = start()
+			world.advance(1)
+			assert.is_false(ns.Context:QuestLogLoaded())
+			assert.is_false(ns.Context:QuestLogLoaded()) -- asking changes nothing
+			assert.are.equal(0, count(fired, "quests"))
+			-- the client says the log is there (and it is empty): a change the engine has to hear of
+			mock.fire("QUEST_LOG_UPDATE")
+			world.advance(1)
+			assert.is_true(ns.Context:QuestLogLoaded())
+			assert.are.equal(1, count(fired, "quests"))
+			mock.fire("QUEST_LOG_UPDATE")
+			world.advance(1)
+			assert.are.equal(1, count(fired, "quests")) -- once
+			-- and it stays so when the log empties again
+			world.log = { quest(1) }
+			mock.fire("QUEST_ACCEPTED", 1)
+			world.advance(1)
+			world.log = {}
+			mock.fire("QUEST_REMOVED", 1)
+			world.advance(1)
+			assert.is_true(ns.Context:QuestLogLoaded())
+		end)
+
+		it("knows it from the first walk that finds a quest, with no event", function()
+			local ns, world, _, fired = start(function(w)
+				w.log = { quest(1) }
+			end)
+			assert.is_true(ns.Context:QuestLogLoaded())
+			world.advance(1)
+			assert.are.equal(1, count(fired, "quests"))
+			-- the Context says what it knows in the snapshot /signpost context saves
+			assert.is_true(ns.Context:Snapshot().questLogLoaded)
+		end)
+
+		it("does not take a quest event for the log: only the update or a quest in it", function()
+			local ns, world, mock = start()
+			world.advance(1)
+			mock.fire("QUEST_WATCH_UPDATE", 5)
+			mock.fire("UNIT_QUEST_LOG_CHANGED", "player")
+			world.advance(1)
+			assert.is_false(ns.Context:QuestLogLoaded())
+			assert.is_false(ns.Context:Snapshot().questLogLoaded)
+		end)
+
 		it("asks per quest while a collapsed header may hide quests from the walk", function()
 			local ns, world = start(function(w)
 				w.hideCollapsed = true

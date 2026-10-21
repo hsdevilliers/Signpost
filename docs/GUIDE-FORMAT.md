@@ -264,6 +264,9 @@ An optional-only step **never holds the player up**:
 - A quest the player took decides the step as in any other: its directives must be satisfied, so the route waits at "do
   it" until the objectives are finished and at "hand it in" until the quest is handed in; a quest the player took is not
   skipped under their feet. Of a step about several optional quests only the ones in the quest log count.
+- All of this holds once the game has sent the quest log (a moment after login): until then an empty log may only be a log
+  that has not arrived, so the step waits for its quest's directives like any other step and is passed only when they are
+  satisfied (or with `>`); a group quest you hold is never passed because the log was not there yet.
 - The group quest that is **coming up** is a line of the step card, beside the current step: `Optional: <quest> (group
   quest)`, one line for each quest (each once) of the optional-only steps among the next three steps of the route that is
   neither in the quest log nor done, at most two, in the small text of the `Ongoing:` lines and apart from the ten body

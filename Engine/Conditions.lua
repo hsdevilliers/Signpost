@@ -221,6 +221,17 @@ local function turnedIn(context, questID)
 	return found and true or false
 end
 
+-- Whether the client has sent the quest log (ns.Context:QuestLogLoaded): before that an empty log may be a log not sent
+-- yet, so "this quest is not in the log" proves nothing. A context without the query (a stand-in in another module's
+-- specs) counts as loaded; one that raises or answers anything but true does not.
+local function logLoaded(context)
+	if type(context) ~= "table" or type(context.QuestLogLoaded) ~= "function" then
+		return true
+	end
+	local ok, loaded = call(context.QuestLogLoaded, context)
+	return ok and loaded == true
+end
+
 -- Whether one of the quests is in the quest log.
 local function anyInLog(quests, context)
 	for _, questID in ipairs(quests) do
@@ -239,10 +250,13 @@ end
 -- nothing else does, and then only for the quests the player took: an *optional-only step* (see OptionalOnly) is
 -- complete at once while none of its quests is in the quest log, so a group quest the player does not take never holds
 -- the route up, and one the player did take is not skipped under their feet (its directives decide, as in any step);
--- sticky directives never hold the step up, so a step with nothing but sticky ones is complete at once (its stickies
--- stay active beside later steps); a step with nothing completable (notes, text) waits for ">".
--- VERIFY(beta): the quest log is read when the engine first evaluates at PLAYER_LOGIN (FOREVER-API-NOTES "Open
--- probes"); an empty log there would pass the optional-only step a character with its group quest is on.
+-- but only once the client has sent the quest log (ns.Context:QuestLogLoaded): until then an empty log proves
+-- nothing, a quest the player holds may be in the log that has not arrived, and every optional directive counts as in
+-- any other step (the step waits for its quest's directives or for ">"); sticky directives never hold the step up, so
+-- a step with nothing but sticky ones is complete at once (its stickies stay active beside later steps); a step with
+-- nothing completable (notes, text) waits for ">".
+-- VERIFY(beta): the quest log has arrived when the engine first evaluates at PLAYER_LOGIN, or QUEST_LOG_UPDATE says so
+-- soon after (FOREVER-API-NOTES "Open probes").
 function Conditions:IsComplete(step, context, states)
 	if type(step) ~= "table" then
 		return false, {}
@@ -253,8 +267,9 @@ function Conditions:IsComplete(step, context, states)
 	local decisive = found.counted
 	if #decisive == 0 and #found.optionals > 0 then
 		decisive = {}
+		local loaded = logLoaded(context)
 		for _, item in ipairs(found.optionals) do
-			if inLog(context, item.quest) then
+			if not loaded or inLog(context, item.quest) then
 				decisive[#decisive + 1] = item.ok
 			end
 		end

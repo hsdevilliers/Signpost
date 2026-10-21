@@ -216,7 +216,10 @@ else the client's `isPrimaryProfession`, else the slot.
   sticky directives is complete at once. Directives about an `.optional` quest count only when nothing else does, and
   then only those of the quests in the quest log: an **optional-only step** whose quests are none of them in the log is
   complete at once (a group quest the player did not take never holds the route up; `detail[i]` stays false for its
-  directives), while a quest the player took decides it like any other (GUIDE-FORMAT "Optional-only steps").
+  directives), while a quest the player took decides it like any other (GUIDE-FORMAT "Optional-only steps"). That holds only
+  once the client has sent the quest log (`ns.Context:QuestLogLoaded()`): before that an empty log proves nothing, a quest the
+  player holds may be in the log that has not arrived, and every optional directive of the step counts as in any other step (it
+  waits for them, or for `>`). A context without the query counts as loaded.
 - `:OptionalOnly(step, context, states)` → `nil`, or for an optional-only step (its completable directives all belong
   to `.optional` quests; a `.goto`, `.todo` or `.note` beside them do not count) `{ quests = { questID, ... } (each once,
   in directive order), available = the quests neither in the quest log nor done, taken = one of them is in the log,
@@ -251,6 +254,10 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
 - `:QuestInLog(id)`, `:QuestCompleted(id)` (flagged, or turned in this session), `:QuestReady(id)` (in the log, not
   failed, objectives done or `IsComplete`), `:Objectives(id)` → `{ { text, type, finished, have, need } }` (nil when not
   in the log, `{}` without objectives), `:QuestLog()` → `{ [questID] = entry }`, `:QuestEntry(id)`;
+  `:QuestLogLoaded()` → true once the client has told us about the log (a `QUEST_LOG_UPDATE` arrived, or the walk of the log
+  found a quest; it stays true): before that an empty log may be a log not sent yet. The turn to loaded is a change
+  (`CONTEXT_CHANGED("quests")`) even when the log is empty, and `/signpost context` saves it (`questLogLoaded`).
+  VERIFY(beta): the client sends `QUEST_LOG_UPDATE` once the log is there, also for a character with an empty one;
 - `:SpellKnown(spellID)` (any of `IsPlayerSpell`, `C_SpellBook.IsSpellKnown`, `IsSpellKnown`); `:Skill(skillLineID)` →
   rank, max or nil (from `ns.Player.professions`); `:ItemCount(itemID)` (bags only); `:Level()`;
 - `:Position()` → `{ map, x, y, wx, wy, instance, taxi }` or nil (any field but `taxi` may be nil in instances and on

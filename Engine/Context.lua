@@ -9,9 +9,9 @@
 -- TICK seconds: that is the one polled check PLAN §3.3 allows (the .goto distance check), and it covers changes the
 -- client sends no event for. A kind whose events this client rejects is re-read every POLL_TICKS ticks instead.
 --
--- Additions to the ENGINE.md contract: :QuestLog(), :Map(), :MapInfo(mapID), :Continent(mapID), :ReadTaxiMap(),
--- :Invalidate(what), :Snapshot(), `/signpost context`, and SignpostCharDB.taxiNodes (known flight nodes survive a
--- reload, because the client lists them only while a flight map is open).
+-- Additions to the ENGINE.md contract: :QuestLog(), :QuestLogLoaded(), :Map(), :MapInfo(mapID), :Continent(mapID),
+-- :ReadTaxiMap(), :Invalidate(what), :Snapshot(), `/signpost context`, and SignpostCharDB.taxiNodes (known flight nodes
+-- survive a reload, because the client lists them only while a flight map is open).
 local ADDON_NAME, ns = ...
 local L = ns.L
 local Util = ns.Util
@@ -35,6 +35,11 @@ local LIVE = { "zone", "taxi", "position", "bind" }
 local IS_LIVE = { zone = true, position = true, taxi = true, bind = true }
 
 Context.questLog = {} -- [questID] = { id, title, level, objectives, complete, failed, ready }
+-- The client has told us about the quest log: a QUEST_LOG_UPDATE arrived, or the walk of the log found a quest. Before
+-- that an empty log may only be a log the client has not sent yet. VERIFY(beta): the client sends QUEST_LOG_UPDATE once
+-- the log is there, also for a character with an empty one (FOREVER-API-NOTES "Open probes").
+Context.questLogLoaded = false
+Context.questLogUpdated = false -- a QUEST_LOG_UPDATE has arrived
 Context.collapsedHeaders = false
 Context.completed = {} -- [questID] = true
 Context.completedCount = 0
@@ -315,6 +320,13 @@ refreshers.quests = function(self)
 	local log, collapsed = readQuestLog()
 	local changed = not sameLog(self.questLog, log)
 	self.questLog, self.collapsedHeaders = log, collapsed
+	-- The log is loaded once the client said so or the walk found a quest. That is a change worth signalling even when
+	-- the log is empty: the engine passes a step about a quest the player may not have only after it
+	-- (Conditions:IsComplete).
+	if not self.questLogLoaded and (self.questLogUpdated or next(log) ~= nil) then
+		self.questLogLoaded = true
+		changed = true
+	end
 	if self.completedStale and self:LoadCompleted() then
 		changed = true
 	end
@@ -394,6 +406,13 @@ end
 function Context:QuestLog()
 	self:Ensure("quests")
 	return self.questLog
+end
+
+-- Whether the client has told us about the quest log (a QUEST_LOG_UPDATE arrived, or the walk found a quest). Until it
+-- has, an empty log may be a log not sent yet and "this quest is not in the log" proves nothing.
+function Context:QuestLogLoaded()
+	self:Ensure("quests")
+	return self.questLogLoaded
 end
 
 -- Spells, skills, bags, level -----------------------------------------------------------------------------------------
@@ -1014,6 +1033,7 @@ function Context:Snapshot()
 		onTaxi = self:OnTaxi(),
 		bind = self:BindLocation(),
 		quests = quests,
+		questLogLoaded = self.questLogLoaded,
 		completed = self.completedCount,
 		collapsedHeaders = self.collapsedHeaders,
 		spells = self.spells,
@@ -1052,6 +1072,7 @@ end
 ns.SavedVars:RegisterDefaults("char", "taxiNodes", {})
 
 listen("QUEST_LOG_UPDATE", { "quests" }, function(self)
+	self.questLogUpdated = true
 	if self.completedEmpty then
 		self.completedStale = true
 	end

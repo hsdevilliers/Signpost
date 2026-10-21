@@ -296,7 +296,10 @@ Quests and spells (Engine/Context.lua, Engine/Directives.lua, Engine/Progress.lu
   `CONTEXT_CHANGED("quests")` ("auto")? Ties to the `GetAllCompletedQuestIDs` probe above.
 - [ ] At login on a character with a **group quest in the quest log** whose step is current: is the quest log read (`GetNumQuestLogEntries`,
   `GetInfo`) when Progress first evaluates? An optional-only step (Engine/Conditions.lua `IsComplete`) is passed while its quest is not
-  in the log, so an empty log at `PLAYER_LOGIN` would pass the step under the player (the other steps just wait). (Accept a group quest,
+  in the log, so an empty log at `PLAYER_LOGIN` would pass the step under the player (the other steps just wait). Since the batch 1
+  review the step is passed only once `ns.Context:QuestLogLoaded()` (a `QUEST_LOG_UPDATE` arrived, or the walk found a quest), and
+  waits like any step before that. To answer: does `QUEST_LOG_UPDATE` come after the log is there, also for a character whose log is
+  empty, and when (`/signpost context` saves `questLogLoaded`; `/signpost debug on` logs the events)? (Accept a group quest,
   `/reload`, read the step in `/signpost step`.)
 - [ ] **Find my place at login** (`Engine/Placement.lua`, `Progress:Place`; user 2026-10-21; built on the mock, none of it seen in the client):
   with a character that has quest history (say level 10 with a dozen quests turned in) and no progress in a guide, is the placement
