@@ -359,11 +359,18 @@ route touches.
   boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out of combat) uses the step's `.use` item
   (`args.itemID`).
 - Settings via `RegisterDefaults("account", "stepFrame", { shown, locked, scale, alpha, hideInCombat, hideWhenDead,
-  hideWithJournal, pos })` and `("account", "pins", { minimap, worldMap, showNext, nextCount })`.
-- `/signpost show|hide|lock [on|off]|reset|scale <n>|alpha <n>`. Pins through HereBeDragons-Pins-2.0 (minimap + world
+  hideWithJournal, growUp, pos })` and `("account", "pins", { minimap, worldMap, showNext, nextCount })`.
+- **Which way the card grows** (`growUp`, user 2026-10-21, for a card placed near the bottom of the screen): the card's height follows the step, so the edge it
+  is anchored at stays put and the other edge moves. `growUp = false` (the default) anchors the saved `pos` at the card's top (it grows down), `true` at its bottom
+  (it grows up). `pos` is `{ point, relativePoint, x, y }` as before; `StepFrame:SetGrowUp(up)` (the Journal's Settings checkbox, `/signpost grow up|down`) moves
+  the saved point to the other edge without moving the card (the side of the point and the relative point stay, the vertical offset moves by the card's height; a
+  centred point moves by half of it), and so does `ApplyPosition` for a position saved at the other edge (a drag hands back whatever corner the client moved).
+  With no saved position the default is the top-right place for a card that grows down and the same place anchored at the bottom for one that grows up.
+  `reset` keeps the direction. The item button sits beside the card's top-left corner, so it is placed again after every layout.
+- `/signpost show|hide|lock [on|off]|grow [up|down]|reset|scale <n>|alpha <n>`. Pins through HereBeDragons-Pins-2.0 (minimap + world
   map, waypoint lines on zone maps); atlases per FOREVER-API-NOTES (there is no `Vendor` atlas).
 - APIs: `StepFrame:Render()`, `DescribeLines(step)`, `DescribeSticky(step)`, `DescribeActiveSticky(step)`,
-  `SetShown/SetLocked/SetScale/SetAlpha/Reset`; `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`,
+  `SetShown/SetLocked/SetGrowUp/SetScale/SetAlpha/Reset`; `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`,
   `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`, `Collect()`, `IconFor(kind, override)`. Phase 4 hooks,
   no-ops until the journal exists: right-click → `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`,
   `ns.Journal:IsShown()` for `hideWithJournal`. A step with no targets (a doing step) draws nothing, and the pins and edge
