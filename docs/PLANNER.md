@@ -57,6 +57,13 @@ beam compares its best finished routes as they would be written, and against the
   giver has a same-named quest limited to another class, or whose giver's other quests all are), and every quest of a battleground zone
   (`skip_zones` in `tools/hardcore_rules.json`). An explore objective is an area to reach, with positions of its own. A class quest with no
   objective in the pack is given 5 minutes and a `.todo`. The setup says how many quests each rule left out.
+- **Escorts and events** (the pack's `scripted` flag, QuestieDB's "needs event" bit: the game completes the quest by a script, and the pack
+  lists no objective for most of them) are not free deliveries even when they start and end at one NPC (an ambush, a ritual). Such a quest costs
+  `escort_seconds` (it starts and ends at different NPCs: the NPC walks with the player, 7 minutes) or `event_seconds` (one NPC: 3 minutes) from
+  `tools/sim_params.json`, worked where the quest starts; it is written as `.accept`, `.complete` and `.turnin`, and a `.note` says what it is
+  (a HARDCORE route says it as a risk). It is still left out when it is slower than grinding. A class quest keeps its 5 minutes and `.todo`
+  (above), and a quest the pack gives objectives is priced by them. A pack built before the flag existed has none, and the planner then
+  behaves as it did (an escort between two NPCs passes as a delivery).
 - **Profitability**: a quest slower than grinding at the level it is done at is left out (`--threshold`, `--no-skip`), except class
   quests, the quests a kept quest needs, and quests the pack has no experience for.
 - **Grinding** is an edge too: forced when nothing can be done until a level opens something, voluntary (one level) when nothing pays
@@ -128,6 +135,9 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   quests (the druids), and a wider beam is not always better. `thorough` runs several and keeps the best; read the baseline line of the report, which
   says how much faster the result is than the greedy route, and distrust a route that is not clearly faster.
 - **The quest log is not limited** (25 in Classic); the route may hold more at a moment than the game allows (backlog: `limit-the-quest-log`).
+- **The escort and event times are assumptions** (`escort_seconds`, `event_seconds`): Classic's escorts take about 5 to 12 minutes with their
+  pauses, none is measured for Forever. The flag comes from QuestieDB's Classic baseline, so an escort Forever added is not flagged, and what the
+  escort does on the way (where it goes, what attacks it) is not in the data: the note says so.
 - **Data holes become `.todo` steps**: an objective with no position in the pack is worked where its quest starts, and the step
   says so; a border with no route yet gets a travel step the lint reports.
 - **Group quests** in a normal route are tagged `.optional`, not yet shown as a line beside the step.

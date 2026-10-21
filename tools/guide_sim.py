@@ -172,8 +172,19 @@ class Model:
         record = self.npcs.get(npc) or {}
         return RANK_KIND.get(record.get("rank", 0), "normal")
 
+    def scripted_work(self, quest_id: int) -> str | None:
+        """"escort" or "event" for a quest the game completes by a script (the pack's `scripted` flag) and the pack lists no
+        objective for: that work is all the quest asks. An escort starts and ends at different NPCs (one walks with the player from
+        the first to the second); an event is an ambush, a ritual or a summoned fight at one NPC. None for any other quest."""
+        record = self.quests.get(quest_id) or {}
+        if not record.get("scripted") or record.get("o"):
+            return None
+        starts, ends = set((record.get("s") or {}).get("npc") or ()), set((record.get("e") or {}).get("npc") or ())
+        return "escort" if starts and ends and not starts & ends else "event"
+
     def note_risk(self, result: Result, quest_id: int, level: int) -> None:
-        """A hardcore risk mark: a quest whose objective is an elite or rare, or that is well above the character."""
+        """A hardcore risk mark: a quest whose objective is an elite or rare, that is well above the character, or that is an
+        escort or an event (work the game scripts: the data cannot say what comes at the player)."""
         record = self.quests.get(quest_id) or {}
         quest_level = record.get("l") or level
         if any(
@@ -183,6 +194,8 @@ class Model:
             result.risk.append(("elite", quest_id, quest_level, level))
         elif quest_level - level >= self.p["risk_gap"]:
             result.risk.append(("above", quest_id, quest_level, level))
+        elif work := self.scripted_work(quest_id):
+            result.risk.append((work, quest_id, quest_level, level))
 
     def grind_xp_per_second(self, level: int) -> float:
         """Experience per second killing same-level mobs for the missing XP of a level gate."""
@@ -193,6 +206,9 @@ class Model:
         """(seconds, respawn wait among them, XP) for one objective of a quest at this character level."""
         record = self.quests.get(quest_id) or {}
         objectives = record.get("o") or []
+        work = self.scripted_work(quest_id)
+        if work:  # an escort or an event: its time is a parameter, and it gives no experience of its own
+            return self.p[f"{work}_seconds"] * self.speed_factor, 0.0, 0.0
         picks = [objectives[index - 1]] if index and 0 < index <= len(objectives) else objectives
         if not picks:
             picks = [{"k": "kill"}]  # an objective the pack does not describe: assume a few kills
@@ -603,7 +619,7 @@ def report(result: Result, with_steps: bool = False) -> list[str]:
     if under:
         out.append("   under-levelled quests (far below the character: little XP): " + ", ".join(f"{q} (L{ql} at L{cl})" for _, q, ql, cl in under[:10]))
     if result.risk:
-        out.append(f"   hardcore risk: score {risk_score(result)} ({len(result.risk)} marks; elite = 3, each level above the character beyond the gap = 1):")
+        out.append(f"   hardcore risk: score {risk_score(result)} ({len(result.risk)} marks; elite = 3, escort or event = 2, each level above the character beyond the gap = 1):")
         for reason, quest, quest_level, level in sorted(result.risk, key=lambda m: -mark_weight(m))[:8]:
             out.append(f"     {quest}: {reason} (quest L{quest_level} at character L{level})")
     if result.skipped:
@@ -632,6 +648,8 @@ def violation_lines(result: Result, limit: int = 15) -> list[str]:
 
 def mark_weight(mark: tuple[str, int, int, int]) -> int:
     reason, _quest, quest_level, level = mark
+    if reason in ("escort", "event"):
+        return 2
     return 3 if reason == "elite" else max(1, quest_level - level)
 
 

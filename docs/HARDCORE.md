@@ -7,7 +7,7 @@ The Release 1 guides are hardcore routes (PLAN §2). This is how, what we know a
 Feasible as a **safety-leaning route**, not as a guarantee. A hardcore character can die to anything; a route can only avoid the
 known killers, delay the risky content and warn at the dangerous steps. It is not a different route for every zone: the same
 quests are mostly kept, minus what the data can flag (elite kills, quests far above the level) and a hand-kept skip list, plus notes, plus
-a default of skipping dungeon chapters. The data cannot yet flag escorts, group quests or named elite-level targets, so the first
+a default of skipping dungeon chapters. The data flags escorts and events (the pack's `scripted` field) but not yet group quests or named elite-level targets, so the first
 adversarial review of the Tauren Druid guide found several still routed (escorts, Northwatch Hold, named Kolkar leaders): they are now
 on the list, and expect more until someone plays the route. RestedXP does the same: a
 separate survival route and a mode switch on guide steps (our `.hc` gate).
@@ -36,7 +36,9 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
 
 0. **Data-driven criteria** (`guide_draft.py --hardcore`, no list needed): a quest that needs an **elite, rare elite or boss kill** (QuestieDB's
    NPC `rank`, now in the pack), or an item only elites drop (and no object gives), is dropped; a quest whose **level is more than 2 above
-   the chapter's top level** is dropped (`--hardcore-over`). The pack has no escort, group or cave flags, so those still need the list below.
+   the chapter's top level** is dropped (`--hardcore-over`). The pack has no group or cave flags, so those still need the list below. An **escort or
+   event** (the pack's `scripted` flag, QuestieDB's "needs event" bit) is not dropped by the data: the Route Planner prices it and writes a HARDCORE
+   `.note` on it (docs/PLANNER.md), and the list still skips the ones known to kill.
 1. **Skip list** (`tools/hardcore_rules.json`): each rule has a quest ID (from the data pack), an action (`skip` becomes
    `#skipquest <id> >> <reason>`, `note` becomes a `.note` after the `.accept`), a source and a confidence. `tools/guide_draft.py
    --hardcore` applies it. Corrected from play: the contributors' deaths and notes are the best source we will get.
@@ -52,8 +54,9 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
 - **How does the addon know a character is hardcore?** `.hc` is "always false for now" (GUIDE-FORMAT). The Forever API for the
   ruleset is unknown: an open probe (FOREVER-API-NOTES). Until it is answered the Release 1 guides are simply hardcore by
   construction (no `.hc` branching needed).
-- **Escort, group and cave tags** are not in the data pack; those quests are caught only by the skip list (by quest ID) until a source
-  for them exists. The Barrens draft shows the gap: unflagged named targets (Verog, Hezrul, Kuz and Nak) pass the elite rule.
+- **Group and cave tags** are not in the data pack; those quests are caught only by the skip list (by quest ID) until a source
+  for them exists. Escorts and events are flagged (`scripted`), and whether a HARDCORE route should drop every one the data flags, instead of
+  pricing and noting them, is a question for the user (backlog). The Barrens draft shows the gap: unflagged named targets (Verog, Hezrul, Kuz and Nak) pass the elite rule.
 - **Moonglade and Bear Form timing (design call).** Every Tauren druid class chain (Bear Form at 10, Lessons Anew at 14, Aquatic Form at
   16) runs through Moonglade (Dendrite Starblaze, Tajarri), and the travel graph has no route there. The guide has the Bear Form chain
   right after Mulgore and the other two after the Barrens, each with a `.todo` to cast **Teleport: Moonglade**. What the sources say:

@@ -1,6 +1,8 @@
 import dataclasses
 import unittest
+from pathlib import Path
 
+import guide_sim
 import guide_travel
 import planner as engine
 from signpost_tools import availability, steps
@@ -597,6 +599,88 @@ class DataQualityTest(PlannerCase):
         plan = pl.plan("greedy", self.start(pl))
         self.assertNotIn(211, pl.quests)
         self.assertEqual(pl.skipquests(plan).get(211), "battleground (PvP) quest, not leveling content")
+
+
+class ScriptedQuestTest(PlannerCase):
+    """An escort or an event (the pack's `scripted` flag) is priced and written as work, not passed off as a delivery."""
+
+    def quests(self, hardcore_class=False):
+        walk = {"s": START, "e": {"npc": [1003]}, "side": "Horde", "races": 178}  # Giver -> Second Giver: an escort
+        found = {
+            **QUESTS,
+            300: {"n": "Walk With Me", "r": 1, "l": 1, "scripted": True, **walk},
+            301: {"n": "Ambush", "r": 1, "l": 1, "scripted": True, **HOME},  # starts and ends at one NPC: an event
+            302: {"n": "Taming", "r": 1, "l": 1, "classes": 4, "scripted": True, **HOME},  # a class quest, flagged
+            303: {"n": "Kill And Ride", "r": 1, "l": 2, "scripted": True, "o": [{"id": 3001, "k": "kill"}], **HOME},
+            294: {"n": "Talk To Yourself", "r": 1, "l": 1, **HOME},  # no flag, no objective: free experience
+        }
+        return found
+
+    def planner(self, **kw):
+        kw.setdefault("instant_quests", False)
+        return super().planner(quests=self.quests(), **kw)
+
+    def text(self, pl, plan):
+        return "\n".join(chapter.text("West") for chapter in pl.emit(plan, "HUNTER"))
+
+    def test_an_escort_or_an_event_is_not_dropped_as_free_experience(self):
+        pl = self.planner()
+        self.assertIn(300, pl.quests)
+        self.assertIn(301, pl.quests)  # one NPC, no objective: it would be dropped without the flag
+        self.assertIn(294, pl.dropped["no objective in the data (accepted and handed in at one NPC)"])  # the same quest without it still is
+        self.assertEqual((pl.quests[300].scripted, pl.quests[301].scripted, pl.quests[294].scripted if 294 in pl.quests else ""), ("escort", "event", ""))
+
+    def test_one_objective_stands_for_the_work_where_the_quest_starts(self):
+        pl = self.planner()
+        (objective,) = pl.quests[300].objectives
+        self.assertEqual((objective.index, objective.kind), (1, "scripted"))
+        self.assertEqual([(c.map, c.x, c.y) for c in objective.spots], [(c.map, c.x, c.y) for c in pl.quests[300].start_places])
+        self.assertEqual(objective.hubs, pl.quests[300].start_hubs)
+        # and it costs the model's time, with no kill experience of its own
+        self.assertEqual(pl.objective(300, 1, 1), (pl.model.p["escort_seconds"], 0.0, 0.0))
+        self.assertEqual(pl.objective(301, 1, 1), (pl.model.p["event_seconds"], 0.0, 0.0))
+
+    def test_the_route_pays_for_it_and_writes_a_complete_with_a_note(self):
+        pl = self.planner()
+        plan = pl.plan("greedy", self.start(pl))
+        self.assertIn(300, plan.final.done)
+        self.assertIn(301, plan.final.done)
+        paid = sum(v.objective_seconds for v in plan.visits)
+        self.assertGreaterEqual(paid, pl.model.p["escort_seconds"] + pl.model.p["event_seconds"])
+        text = self.text(pl, plan)
+        self.assertRegex(text, r"\.accept 300 -- Walk With Me")
+        self.assertRegex(text, r"\.complete 300,1 -- Walk With Me")  # a place step keeps the per-objective form
+        self.assertIn(".note Walk With Me: " + engine.SCRIPTED_NOTES[("escort", False)], text)
+        self.assertIn(".note Ambush: " + engine.SCRIPTED_NOTES[("event", False)], text)
+        self.assertNotIn(".complete 294", text)
+
+    def test_a_hardcore_route_writes_the_risk_note(self):
+        pl = self.planner(hardcore=True)
+        plan = pl.plan("greedy", self.start(pl))
+        text = self.text(pl, plan)
+        self.assertIn(".note Walk With Me: " + engine.SCRIPTED_NOTES[("escort", True)], text)
+        self.assertTrue(engine.SCRIPTED_NOTES[("escort", True)].startswith("HARDCORE"))
+        self.assertNotIn("HARDCORE", engine.SCRIPTED_NOTES[("escort", False)])
+
+    def test_a_class_quest_and_a_quest_with_objectives_are_priced_as_before(self):
+        pl = self.planner(mandatory=(302,))
+        self.assertEqual(pl.quests[302].scripted, "")  # the class quest keeps unknown_work's five minutes and its `.todo`
+        self.assertTrue(pl.quests[302].unknown_work)
+        self.assertEqual(pl.quests[303].scripted, "")  # its objectives say what it asks
+        self.assertEqual([o.kind for o in pl.quests[303].objectives], ["kill"])
+
+    def test_an_escort_that_is_not_worth_its_time_is_left_out(self):
+        seed = Path(self.pack_dir) / guide_sim.XP_FILE  # quest 300 has an experience of its own, so it is judged by it
+        seed.parent.mkdir(parents=True)
+        seed.write_text("QuestXP.db = {\n  [300] = {1, 3000},\n  [301] = {1, 3000},\n}\n", encoding="utf-8")
+        pack = guide_travel.load_pack(write_pack(self.pack_dir, {"maps": MAPS, "quests": self.quests(), "npcs": NPCS, "travel": TRAVEL, "items": ITEMS}))
+        world = guide_travel.World(pack, [], "Horde")
+        settings = engine.Settings(cap=6, skip_unprofitable=True, instant_quests=False)
+        short = engine.Planner.build(pack, world, HORDE, settings, guide_sim.load_params(overrides=["escort_seconds=60", "event_seconds=30"]))
+        self.assertNotIn(300, short.dropped.get("slower than grinding", []))
+        long = engine.Planner.build(pack, world, HORDE, settings, guide_sim.load_params(overrides=["escort_seconds=100000", "event_seconds=30"]))
+        self.assertIn(300, long.dropped["slower than grinding"])  # the time is what makes the quest not pay
+        self.assertNotIn(301, long.dropped.get("slower than grinding", []))
 
 
 def engine_build(case, exclude, **kw):

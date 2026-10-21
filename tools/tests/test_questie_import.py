@@ -359,6 +359,32 @@ class ImportTest(unittest.TestCase):
         self.assertNotIn(102, alliance["npcs"])  # the Horde trainer
 
 
+class ScriptedTest(unittest.TestCase):
+    """QuestieDB's specialFlags: bit 1 repeatable, bit 2 "needs event" (the quest is completed by a script: an escort, an ambush)."""
+
+    def quests(self, flags: dict[int, str]) -> dict:
+        found = {}
+        for number, (qid, value) in enumerate(flags.items()):
+            found[qid] = {
+                "name": f'"Quest {qid}"', "zoneOrSort": "501", "questLevel": "5", "requiredLevel": "1", "requiredRaces": "178",
+                "startedBy": "{nil,{100}}", "finishedBy": "{nil,{102}}", "specialFlags": value,
+            }
+            if number == 0:
+                found[qid]["objectives"] = "{{{300}},{{101}}}"  # a quest with objectives and the flag keeps both
+        return found
+
+    def test_the_needs_event_bit_is_kept_as_scripted(self):
+        flags = {11: "2", 12: "3", 13: "1", 14: "0", 15: "4", 16: "nil"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_checkout(Path(tmp) / "questiedb", self.quests(flags))
+            quests = qi.Importer(qi.load(root), max_drops=3).run()["quests"]
+        self.assertEqual({qid: record.get("scripted", False) for qid, record in quests.items()}, {11: True, 12: True, 13: False, 14: False, 15: False, 16: False})
+        self.assertEqual({qid: record.get("repeatable", False) for qid, record in quests.items()}, {11: False, 12: True, 13: True, 14: False, 15: False, 16: False})
+        self.assertEqual(quests[11]["o"], [{"k": "kill", "id": 101}, {"k": "item", "id": 300}])  # the flag does not replace objectives
+        self.assertNotIn("o", quests[12])  # an escort or an event: the data lists no objective for it
+        self.assertNotIn("scripted", quests[13])
+
+
 class BuildTest(unittest.TestCase):
     def test_import_layer_writes_the_layer_and_builds_the_pack(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -33,6 +33,14 @@ from signpost_tools.guidefile import Coord  # noqa: E402
 
 GRIND = "grind"
 TERRITORY_MIN = 4  # quests for the character's own faction a zone needs before it counts as theirs
+# The `.note` a guide step carries for a quest the game completes by a script (the pack's `scripted` flag, no objective listed): by
+# what it is (Model.scripted_work) and whether the route is HARDCORE. The time it costs is sim_params.json's escort_seconds / event_seconds.
+SCRIPTED_NOTES = {
+    ("escort", False): "escort: stay with the NPC and let it finish; the data does not say where it goes or what attacks it",
+    ("escort", True): "HARDCORE escort: mobs attack the NPC and you on the way; be healed and buffed, stay close, and leave it if unsure",
+    ("event", False): "event: the quest finishes when something happens here (an ambush, a ritual); read the quest log",
+    ("event", True): "HARDCORE event: enemies may come at you here; be healed and buffed first, and come back later if unsure",
+}
 
 
 @dataclass(frozen=True)
@@ -101,6 +109,7 @@ class PQuest:
     unknown_xp: bool = False  # the data has no experience for it (a quest new to Forever): never left out for being slow
     end_unknown: bool = False  # a class quest whose ender has no position in the pack: handed in at its start, and the step says so
     unknown_work: bool = False  # a class quest with no objective in the pack, accepted and handed in at one NPC: what it asks is not known
+    scripted: str = ""  # "escort" or "event": the game completes it by a script and the pack lists no objective, so one stands for the work
 
 
 @dataclass
@@ -374,9 +383,14 @@ class Planner:
         one_npc = bool(
             set(guide_draft._ids((record.get("s") or {}).get("npc"))) & set(guide_draft._ids((record.get("e") or {}).get("npc")))
         )
-        unknown_work = not objectives and one_npc
+        # an escort or an event (the pack's `scripted` flag) is not free experience whatever its NPCs: it costs the time sim_params.json
+        # gives it, written as a `.complete` with a note; a class quest keeps unknown_work's 5 minutes and `.todo` instead
+        scripted = "" if qid in self.mandatory else (self.model.scripted_work(qid) or "")
+        unknown_work = not objectives and one_npc and not scripted
         if unknown_work and not s.instant_quests and qid not in self.mandatory and qid not in self._required and not record.get("next"):
             return self._drop("no objective in the data (accepted and handed in at one NPC)", qid)
+        if scripted:  # the one objective that stands for the work: done where the quest starts, which is where the escort sets off
+            objectives.append(PObjective(1, "scripted", 0, list(starts)))
         if s.hardcore and elite:
             return self._drop("HARDCORE: needs an elite or boss kill", qid)
         if (record.get("l") or 0) > s.cap + 5:
@@ -401,6 +415,7 @@ class Planner:
             mandatory=qid in self.mandatory,
             end_unknown=end_unknown,
             unknown_work=unknown_work and qid in self.mandatory,
+            scripted=scripted,
         )
 
     def _prune_territory(self, faction: str) -> None:
@@ -1345,6 +1360,8 @@ class Planner:
                     why = "is only in places this guide does not go" if objective is not None and objective.elsewhere else "has no position in the pack"
                     lines.append(f'  .todo "{name}: objective {a.index} {why}"')
                 lines.append(f"  .complete {q.id},{a.index}{gate} -- {name}")
+                if q.scripted:
+                    lines.append(f"  .note {name}: {SCRIPTED_NOTES[(q.scripted, self.s.hardcore)]}")
             if q.optional:
                 optional[q.id] = name
         for qid, name in optional.items():
