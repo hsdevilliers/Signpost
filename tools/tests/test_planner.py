@@ -893,6 +893,137 @@ class ChapterTest(PlannerCase):
 
 
 
+class AreaTest(PlannerCase):
+    """A quest picked up with all its work near is done on the spot (user, 2026-10-21): a quest offered where the player stands, with its
+    objectives in the area of the step in hand, should be taken. The unit fixture's map is 1000 yards wide and 2000 tall: 1% of x is 10 yards, 1% of y
+    is 20 yards."""
+
+    CAMP = {1010: {"n": "Camp Boar", "p": [[10, 40, 52]], "side": "none"}}  # 240 yards south of the giver at 40,40: another hub, inside the area
+    FAR = {1011: {"n": "Far Boar", "p": [[10, 40, 70]], "side": "none"}}  # 600 yards south: outside it
+    ELITE = {1012: {"n": "Camp Chief", "p": [[10, 42, 52]], "side": "none", "rank": 1}}
+
+    def quests(self):
+        return {
+            **QUESTS,
+            300: {"n": "Camp Cleanup", "r": 1, "l": 1, "o": [{"id": 1010, "k": "kill"}], **HOME},
+            301: {"n": "Far Hunt", "r": 1, "l": 1, "o": [{"id": 1011, "k": "kill"}], **HOME},
+            302: {"n": "Camp Report", "r": 1, "l": 1, "preSingle": [300], **HOME},  # offered by the hand-in of 300, at the same NPC
+            303: {"n": "Camp Chief", "r": 1, "l": 1, "o": [{"id": 1012, "k": "kill"}], **HOME},  # an elite: a group quest in a normal route
+        }
+
+    def area(self, yards=350.0, **settings):
+        return self.planner(quests=self.quests(), npcs={**NPCS, **self.CAMP, **self.FAR, **self.ELITE}, area_yards=yards, **settings)
+
+    def first_visit(self, pl):
+        hub = pl.quests[300].start_hubs[0]
+        return hub, pl.visit(pl.start(hub), hub)
+
+    @staticmethod
+    def acts(child, *quests):
+        return [(a.kind, a.quest) for a in child.visit.actions if a.quest in quests]
+
+    def test_the_default_is_on_and_the_area_is_a_minutes_walk(self):
+        self.assertEqual(engine.Settings().area_yards, 350.0)
+
+    def test_a_quest_picked_up_with_all_its_work_near_is_worked_and_handed_in_before_the_visit_ends(self):
+        pl = self.area()
+        hub, child = self.first_visit(pl)
+        self.assertEqual(
+            self.acts(child, 300, 302),
+            [("accept", 300), ("complete", 300), ("turnin", 300), ("accept", 302), ("turnin", 302)],  # 302 is offered by the hand-in, and has no work
+        )
+        work = next(a for a in child.visit.actions if a.kind == "complete" and a.quest == 300)
+        self.assertEqual((work.index, work.place.map, work.place.y), (1, 10, 52.0))  # worked at the camp, a hub of its own
+        self.assertNotEqual(pl.hub_of[(work.place.map, work.place.x, work.place.y)], hub)
+        self.assertNotIn(300, child.active)  # nothing is left in the log for tidy to drop
+        self.assertIn(300, child.done)
+
+    def test_without_the_rule_the_quest_is_only_picked_up_and_stays_in_the_log(self):
+        pl = self.area(0.0)
+        _, child = self.first_visit(pl)
+        self.assertEqual(self.acts(child, 300, 302), [("accept", 300)])
+        self.assertIn(300, child.active)
+
+    def test_work_beyond_the_area_is_left_for_a_later_visit(self):
+        pl = self.area()
+        _, child = self.first_visit(pl)
+        self.assertEqual(self.acts(child, 301), [("accept", 301)])  # 600 yards from the giver: picked up, not done on the spot
+        self.assertIn(301, child.active)
+        wide = self.area(700.0)
+        self.assertEqual(self.acts(self.first_visit(wide)[1], 301), [("accept", 301), ("complete", 301), ("turnin", 301)])
+
+    def test_a_group_quest_is_not_asked_for_on_the_spot(self):
+        pl = self.area()
+        self.assertTrue(pl.quests[303].optional)
+        self.assertEqual(pl.quests[303].bundle, {})
+        self.assertNotIn(303, pl.bundles(350.0)[0])
+        _, child = self.first_visit(pl)
+        self.assertEqual(self.acts(child, 303), [("accept", 303)])
+
+    def test_the_walk_to_the_camp_and_back_is_priced_by_the_map(self):
+        on, off = self.first_visit(self.area())[1], self.first_visit(self.area(0.0))[1]
+        extra = on.visit.travel_seconds - off.visit.travel_seconds
+        self.assertAlmostEqual(extra, 2 * 240 / guide_travel.WALK_SPEED)  # there and back, 240 yards each way: the map's distance, not a flat local_walk
+        self.assertGreater(on.clock, off.clock)  # the visit takes longer: the work is done in it
+        self.assertGreater(on.xp, off.xp)  # and it has levelled the character
+
+    def test_the_bundles_say_where_the_work_is_and_how_near(self):
+        pl = self.area()
+        by_quest, by_hub = pl.bundles(350.0)
+        giver = (10, 40.0, 40.0)
+        bundle = by_quest[300][giver]
+        self.assertEqual([(c.x, c.y) for c in bundle.ends], [(40.0, 40.0)])
+        self.assertEqual([(index, [(c.x, c.y) for c in spots]) for index, spots in bundle.works], [(1, [(40.0, 52.0)])])
+        self.assertIn(pl.quests[300], by_hub[pl.hub_of[giver]])
+        self.assertNotIn(301, by_quest)  # 600 yards
+        self.assertNotIn(300, pl.bundles(200.0)[0])  # 240 yards is outside a smaller area
+        self.assertEqual(pl.quests[300].bundle, by_quest[300])  # what the visits use is the setting's radius
+        self.assertEqual(self.area(0.0).quests[300].bundle, {})
+
+    def test_a_quest_the_search_picked_up_and_never_finished_is_not_dropped_when_the_route_is_written(self):
+        # the Skyborne gap: the beam picks up a free quest, never goes back for its work, and tidy takes it out as 'never finished'
+        off, on = self.area(0.0), self.area()
+        hub = off.quests[300].start_hubs[0]
+        written_off = off.tidy(off._finish(off.visit(off.start(hub), hub)), hub)
+        self.assertNotIn(300, written_off.final.done)  # accepted by the search, left in the log, taken out
+        self.assertIn(300, written_off.stats["removed"])
+        self.assertIn(300, [qid for qid, _hub, _level in off.area_misses(written_off, 350.0)])  # and the audit names it
+        written_on = on.tidy(on._finish(on.visit(on.start(hub), hub)), hub)
+        self.assertIn(300, written_on.final.done)
+        self.assertIn(302, written_on.final.done)
+        self.assertNotIn(300, written_on.stats["removed"])
+        self.assertEqual([qid for qid, _hub, _level in on.area_misses(written_on) if qid in (300, 302)], [])
+
+    def test_every_search_takes_the_free_quests_and_the_audit_finds_none_left(self):
+        pl = self.area(width=10, branch=6)
+        hub = self.start(pl)
+        for preset in ("greedy", "lookahead", "beam"):
+            plan = pl.plan(preset, hub)
+            self.assertTrue(plan.complete, preset)
+            self.assertTrue({300, 302} <= plan.final.done, preset)
+            self.assertEqual(pl.area_misses(plan), [], preset)
+
+    def test_the_audit_lists_what_a_route_without_the_rule_left_out_with_the_hub_and_level(self):
+        pl = self.area(0.0)
+        hub = pl.quests[300].start_hubs[0]
+        written = pl.tidy(pl._finish(pl.visit(pl.start(hub), hub)), hub)
+        missed = {qid: (h, level) for qid, h, level in pl.area_misses(written, 350.0)}
+        self.assertEqual(missed[300][0], hub)
+        self.assertGreaterEqual(missed[300][1], 1)
+        self.assertNotIn(301, missed)  # its work is too far to count
+        self.assertEqual(len([m for m in pl.area_misses(written, 350.0) if m[0] == 300]), 1)  # named once
+        self.assertEqual(pl.area_misses(written, 100.0), [m for m in pl.area_misses(written, 100.0) if m[0] != 300])  # with a smaller area it is not named
+
+    def test_the_written_steps_pick_up_work_and_hand_in_in_that_order(self):
+        pl = self.area(width=10, branch=6)
+        plan = pl.plan("greedy", self.start(pl))
+        text = "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+        accept, work, turnin = (text.index(f".{kind} 300") for kind in ("accept", "complete", "turnin"))
+        self.assertLess(accept, work)
+        self.assertLess(work, turnin)
+        self.assertIn(".goto 10,40.0,52.0", text[accept:work])  # the camp has a step of its own, with its place
+
+
 class SettingsTest(unittest.TestCase):
     def test_settings_are_frozen_and_replaceable(self):
         s = engine.Settings()

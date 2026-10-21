@@ -291,6 +291,7 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
         group_yards=options.group_yards,
         quest_log_limit=options.quest_log,
         chapter_min_steps=options.chapter_steps,
+        area_yards=options.area_yards,
         instant_quests=options.instant_quests,
         skip_unprofitable=not options.no_skip,
         profit_threshold=options.threshold,
@@ -515,6 +516,10 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         else f"a normal route: quests up to {pl.accept_over} levels above you are accepted and worked on up to {pl.work_over}; group quests are tagged optional",
         f"the quest log holds at most {s.quest_log_limit} quests; no quest is accepted while it is full (--quest-log N; Forever's is 40, confirmed "
         f"by the user in the game, 2026-10-21; Classic's is 25)",
+        (f"a quest picked up with all its work within {s.area_yards:g} yards of where it is picked up (a place to hand it in, a place for every objective) "
+         f"is done on the spot, in the same visit (--area-yards; the user's rule, 2026-10-21)")
+        if s.area_yards > 0
+        else "same-area quests are not done on the spot (--area-yards 0): a quest picked up may be left in the log and dropped when the route is written",
         f"{len(job.mandatory)} class quests are mandatory: each is done or accounted for with a #skipquest reason; there is no deadline, "
         f"but each costs the route {s.class_push / 60:.0f} min for every level it is undone past the level it opens at"
         + (f" (+{s.class_grace})" if s.class_grace else "")
@@ -646,6 +651,22 @@ def report_grinds(out: Out, pl: engine.Planner, plan: engine.Plan) -> None:
         )
 
 
+def report_area(out: Out, pl: engine.Planner, plan: engine.Plan) -> None:
+    """The same-area quests the route left out (docs/PLANNER.md): offered where it stood, with all their work near where they start."""
+    radius = pl.s.area_yards or engine.Settings.area_yards
+    misses = pl.area_misses(plan, radius)
+    if not misses:
+        out(f"same area     no quest is left out that was offered where the route stood with all its work within {radius:g} yards of where it starts")
+        return
+    named = ", ".join(f"{qid} {pl.quests[qid].name} (level {level}, {pl.hubs[hub].label.split(': ', 1)[-1]})" for qid, hub, level in misses[:6])
+    for line in labelled(
+        "same area     ",
+        f"{len(misses)} quest(s) were offered where the route stood, with all their work within {radius:g} yards of where they start, and are left "
+        f"out: {named}" + (" ..." if len(misses) > 6 else "") + ("" if pl.s.area_yards > 0 else " (--area-yards 0: the rule is off)"),
+    ):
+        out(line)
+
+
 def route_log_peak(route) -> int:
     """The most quests a written route holds in the quest log at once, counted on the guide's own steps (an accept adds one, a hand-in takes one out)."""
     active: set = set()
@@ -728,6 +749,7 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
     held, held_level, held_clock = plan.log_peak()
     out(f"quest log     the most quests held at once: {held} (at level {held_level}, {hms(held_clock)} in); the log holds {pl.s.quest_log_limit} "
         f"(--quest-log N; Forever's is {engine.Settings.quest_log_limit}, confirmed by the user in the game)")
+    report_area(out, pl, plan)
     slow = pl.dropped.get("slower than grinding", [])
     out(f"left out      {len(slow)} quests were slower than grinding; the slowest, by experience per minute against grinding at the level it is done at:")
     scored = sorted((pl.quests[q] for q in slow), key=lambda q: q.rate / max(pl.model.grind_xp_per_second(max(q.req, q.level - 1, 1)), 1e-9))
@@ -1002,6 +1024,8 @@ def write_outputs(job: Job, outcome: Outcome, pl: engine.Planner, out_dir: Path,
         quests_done=sorted(outcome.plan.final.done),
         quest_log_limit=pl.s.quest_log_limit,
         quest_log_peak=outcome.plan.log_peak()[0],
+        area_yards=pl.s.area_yards,
+        area_misses=[dict(quest=qid, hub=pl.hubs[hub].label, level=level) for qid, hub, level in pl.area_misses(outcome.plan)],
         grinds=grinds_of(pl, outcome.plan),
         grains=outcome.plan.stats.get("grains", []),
         simulated_seconds=ev.sim.seconds,
@@ -1028,6 +1052,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--class-grace", type=int, default=0, help="levels past the one it opens at before that cost starts (default 0)")
     parser.add_argument("--group-yards", type=float, default=250.0,
                         help="yards within which neighbouring steps of one kind are written as one: pick up, doing, hand in (default 250)")
+    parser.add_argument("--area-yards", type=float, default=engine.Settings.area_yards, metavar="YARDS",
+                        help="a quest picked up with all its work (a place to hand it in and a place for each objective) within this many yards of "
+                             "where it is picked up is done on the spot; 0 turns it off (default %(default)g; docs/PLANNER.md, same-area quests)")
     parser.add_argument("--quest-log", type=int, default=engine.Settings.quest_log_limit, metavar="N",
                         help="quests the log holds at once; no quest is accepted while it is full (default %(default)s: Forever's, confirmed by the user "
                              "in the game; Classic's is 25)")

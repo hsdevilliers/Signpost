@@ -69,6 +69,10 @@ class Settings:
     # limit has been bumped up from 25 to 40 for WoW Forever").
     quest_log_limit: int = 40
     chapter_min_steps: int = 3  # a change of zone starts a new chapter only when the new zone lasts at least this many steps (counted once joined)
+    # A quest picked up with all its work (a place to hand it in, and a place for each objective) within this many yards of where it is picked up is
+    # done on the spot, in the same visit (0: off; docs/PLANNER.md, "Same-area quests"). The user's rule, 2026-10-21: a quest offered where the player
+    # stands, with its objectives in the area of the step in hand, should be taken. About 50 seconds of walking each way.
+    area_yards: float = 350.0
 
 
 @dataclass
@@ -79,6 +83,14 @@ class PObjective:
     spots: list
     hubs: tuple = ()
     elsewhere: bool = False  # the pack has positions for it, but none where this route goes
+
+
+class Bundle(NamedTuple):
+    """All the work of a quest that lies near one of the places it starts at: the places where it can be handed in and, for each objective, the
+    places where it can be worked, each within `Settings.area_yards` of that starting place."""
+
+    ends: tuple  # places (Coord) to hand it in
+    works: tuple  # ((objective index, (places...)), ...)
 
 
 @dataclass
@@ -107,6 +119,7 @@ class PQuest:
     unknown_xp: bool = False  # the data has no experience for it (a quest new to Forever): never left out for being slow
     end_unknown: bool = False  # a class quest whose ender has no position in the pack: handed in at its start, and the step says so
     unknown_work: bool = False  # a class quest with no objective in the pack, accepted and handed in at one NPC: what it asks is not known
+    bundle: dict = field(default_factory=dict)  # starting place (map, x, y) -> Bundle, for each place where all its work is near; {} if none or off
 
 
 @dataclass
@@ -270,6 +283,7 @@ class Planner:
         self.home: Coord | None = None  # where the character begins
         self.core: set[int] = set()  # the class quests and the quests they need: all that is done once the cap is reached
         self.forbidden: set[int] = set()  # quests a tidied route no longer accepts (it never turned them in)
+        self._bundles: dict[float, tuple] = {}  # radius -> ({quest: {starting place: Bundle}}, {hub: [quests that start there with a Bundle]})
         self.accept_over = settings.hardcore_over if settings.hardcore else settings.accept_over
         self.work_over = settings.hardcore_over if settings.hardcore else settings.work_over
 
@@ -618,6 +632,65 @@ class Planner:
                 for c in o.spots or q.start_places:  # no position in the data: worked where it starts, and the guide says so
                     self.objs_by_place.setdefault(note(c), []).append((q, o))
         self.places_at = {hub: list(found.values()) for hub, found in places.items()}
+        for q in self.window:
+            q.bundle = {}
+        if self.s.area_yards > 0:
+            for qid, found in self.bundles(self.s.area_yards)[0].items():
+                self.quests[qid].bundle = found
+
+    def bundles(self, radius: float) -> tuple:
+        """The quests whose work lies near where they start, for a radius in yards: ({quest: {starting place (map, x, y): Bundle}}, {hub: [quests
+        with a Bundle at a starting place in that hub]}). A starting place has a Bundle when a place to hand the quest in and a place for every
+        one of its objectives are within `radius` yards of it (an objective the pack has no position for is worked where the quest starts). Group
+        quests (`optional`) have none: a normal guide tags them optional and does not ask for them on the spot."""
+        if radius not in self._bundles:
+            by_quest: dict[int, dict] = {}
+            by_hub: dict[int, list] = {}
+            for q in self.window:
+                if q.optional:
+                    continue
+                found: dict[tuple, Bundle] = {}
+                for g in q.start_places:
+                    ends = tuple(c for c in q.end_places if self._near(g, c, radius))
+                    if not ends:
+                        continue
+                    works = []
+                    for o in q.objectives:
+                        spots = tuple(c for c in (o.spots or q.start_places) if self._near(g, c, radius))
+                        if not spots:
+                            break
+                        works.append((o.index, spots))
+                    else:
+                        found[(g.map, g.x, g.y)] = Bundle(ends, tuple(works))
+                if found:
+                    by_quest[q.id] = found
+                    for key in found:
+                        hub_quests = by_hub.setdefault(self.hub_of[key], [])
+                        if q not in hub_quests:
+                            hub_quests.append(q)
+            self._bundles[radius] = (by_quest, by_hub)
+        return self._bundles[radius]
+
+    def area_misses(self, plan: "Plan", radius: float | None = None) -> list:
+        """The quests a route left out although it stood where they were offered and all their work lies within `radius` yards (default
+        `Settings.area_yards`, else 350) of the place where they start: [(quest, hub, level)] in the order the route passed them. The user's rule
+        (2026-10-21): a quest offered where the player stands, with its objectives in the area of the step in hand, should be taken."""
+        by_hub = self.bundles(radius or self.s.area_yards or 350.0)[1]
+        path, st = [], plan.final
+        while st is not None and st.visit is not None:
+            path.append(st)
+            st = st.parent
+        missed: dict[int, tuple] = {}
+        for st in reversed(path):
+            hub = st.visit.hub
+            if hub is None:
+                continue
+            for q in by_hub.get(hub, ()):
+                if q.id in missed or q.id in plan.final.done or q.id in st.done or q.id in st.active or q.id in st.gone:
+                    continue
+                if self.offered(q, st.level, st.done, st.active, st.gone):
+                    missed[q.id] = (q.id, hub, st.level)
+        return list(missed.values())
 
     # distances and the model's numbers -------------------------------------------------------------------------------
 
@@ -626,6 +699,27 @@ class Planner:
         if d is not None:
             return d
         return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5 * 10 if a.map == b.map else 6000.0
+
+    def _near(self, a: Coord, b: Coord, radius: float) -> bool:
+        return a.map == b.map and (a == b or self._yards(a, b) <= radius)
+
+    def _nearest(self, here: Coord | None, places: tuple) -> Coord:
+        """Of the places, the one nearest to where the character stands (the first one when it stands nowhere yet)."""
+        if len(places) == 1 or here is None:
+            return places[0]
+        return min(places, key=lambda c: self._yards(here, c))
+
+    def _legs(self, actions: list) -> float:
+        """The walking between the places of a visit's actions, in turn: a flat `local_walk` between two places of one hub, the walk itself
+        (by the map's distance and the detour factor) between places of two hubs."""
+        total = 0.0
+        for a, b in zip(actions, actions[1:]):
+            if a.place != b.place:
+                if self.hub_of[(a.place.map, a.place.x, a.place.y)] == self.hub_of[(b.place.map, b.place.x, b.place.y)]:
+                    total += self.s.local_walk
+                else:
+                    total += self._yards(a.place, b.place) / guide_travel.WALK_SPEED * self.s.detour
+        return total
 
     def _walk(self, a: int, b: int) -> float | None:
         d = self.world.geo.distance(self.hubs[a].center, self.hubs[b].center)
@@ -761,7 +855,9 @@ class Planner:
         return worth
 
     def visit(self, st: PState, hub: int) -> PState | None:
-        """Go to a hub and do everything worthwhile there until nothing new turns up; None when there is nothing to do."""
+        """Go to a hub and do everything worthwhile there until nothing new turns up; None when there is nothing to do. A quest picked up here with
+        all its work near (`Settings.area_yards`, see `bundles`) is not left in the log for later: its objectives are worked and it is handed in
+        before the visit ends, which may take the character a little way from the hub."""
         s, p = self.s, self.model.p
         progress = guide_sim.Progress(self.model, st.level, st.xp)
         done, gone = set(st.done), set(st.gone)
@@ -770,6 +866,8 @@ class Planner:
         actions: list[Action] = []
         interact_s = p["interact_seconds"]
         interact = objective = longest_wait = gained = owed = 0.0
+        fresh: list = []  # (quest, Bundle) picked up in this visit with all its work near, not finished yet
+        away = False  # some action was taken beyond the hub's own places
         sweeps = 0
         progressed = True
         while progressed and sweeps < 8:
@@ -801,6 +899,8 @@ class Planner:
                         actions.append(Action("accept", q.id, None, place))
                         active[q.id] = {o.index for o in q.objectives}
                         gone.update(x for x in q.excl if x not in done)
+                        if q.bundle and key in q.bundle:
+                            fresh.append((q, q.bundle[key]))
                         changed = True
                     for q, o in self.objs_by_place.get(key, ()):
                         if progress.level >= s.cap and q.id not in self.core:
@@ -814,13 +914,47 @@ class Planner:
                             active[q.id].discard(o.index)
                             changed = True
                     progressed = progressed or changed
+            for entry in list(fresh):  # what was picked up here with all its work near is done before moving on (the user's rule, 2026-10-21)
+                q, b = entry
+                if q.id not in active:
+                    fresh.remove(entry)
+                    continue
+                open_ = active[q.id]
+                if open_ and self.soon(q, progress.level) and (progress.level < s.cap or q.id in self.core):
+                    for index, spots in b.works:
+                        if index in open_:
+                            place = self._nearest(actions[-1].place, spots)
+                            seconds, wait, xp = self.objective(q.id, index, progress.level)
+                            objective += seconds - wait
+                            longest_wait = max(longest_wait, wait)
+                            gained += progress.gain(xp)
+                            actions.append(Action("complete", q.id, index, place))
+                            open_.discard(index)
+                            away = progressed = True
+                if not open_:
+                    place = self._nearest(actions[-1].place, b.ends)
+                    gained += progress.gain(self.reward(q.id, progress.level))
+                    owed += self.lateness(q, progress.level)
+                    interact += interact_s
+                    actions.append(Action("turnin", q.id, None, place))
+                    del active[q.id]
+                    done.add(q.id)
+                    gone.update(q.excl)
+                    fresh.remove(entry)
+                    away = progressed = True
         if not actions:
             return None
-        switches = sum(1 for a, b in zip(actions, actions[1:]) if a.place != b.place)
-        walk = self.travel(st.hub, hub) + switches * s.local_walk
+        stand = hub
+        if away:  # some actions were taken away from the hub's own places: the walk between them is priced by the map, and the visit ends where the last one was
+            walk = self.travel(st.hub, hub) + self._legs(actions)
+            last = actions[-1].place
+            stand = self.hub_of[(last.map, last.x, last.y)]
+        else:
+            switches = sum(1 for a, b in zip(actions, actions[1:]) if a.place != b.place)
+            walk = self.travel(st.hub, hub) + switches * s.local_walk
         seconds = walk + interact + objective + longest_wait
         new = PState()
-        new.hub, new.zone = hub, self.hubs[hub].zone
+        new.hub, new.zone = stand, self.hubs[hub].zone
         new.level, new.xp = progress.level, progress.xp
         zone_change = new.zone != st.zone
         new.clock = st.clock + seconds
