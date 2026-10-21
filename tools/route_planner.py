@@ -291,8 +291,8 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
         group_yards=options.group_yards,
         quest_log_limit=options.quest_log,
         chapter_min_steps=options.chapter_steps,
-        area_yards=options.area_yards,
-        repair=not options.no_repair,
+        completeness=options.completeness,
+        completeness_trip=options.completeness_trip,
         walk_by_map=options.walk_by_map,
         instant_quests=options.instant_quests,
         skip_unprofitable=not options.no_skip,
@@ -518,10 +518,11 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         else f"a normal route: quests up to {pl.accept_over} levels above you are accepted and worked on up to {pl.work_over}; group quests are tagged optional",
         f"the quest log holds at most {s.quest_log_limit} quests; no quest is accepted while it is full (--quest-log N; Forever's is 40, confirmed "
         f"by the user in the game, 2026-10-21; Classic's is 25)",
-        (f"a quest picked up with all its work within {s.area_yards:g} yards of where it is picked up (a place to hand it in, a place for every objective) "
-         f"is done on the spot, in the same visit (--area-yards; the user's rule, 2026-10-21)")
-        if s.area_yards > 0
-        else "same-area quests are not done on the spot (--area-yards 0): a quest picked up may be left in the log and dropped when the route is written",
+        (f"a quest the route picked up and did not finish is finished when its objectives are at most {s.completeness_trip:g} s of walking away and it pays "
+         f"at least {s.completeness:.0%} of the route's pace (--completeness, --completeness-trip); the rest are taken out and listed with the reason")
+        if s.completeness > 0
+        else "a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason (--completeness F finishes the "
+             "ones that are a short walk away and pay at least F of the route's pace; off)",
         f"{len(job.mandatory)} class quests are mandatory: each is done or accounted for with a #skipquest reason; there is no deadline, "
         f"but each costs the route {s.class_push / 60:.0f} min for every level it is undone past the level it opens at"
         + (f" (+{s.class_grace})" if s.class_grace else "")
@@ -571,12 +572,15 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
         names = ", ".join(pl.quests[q].name for q in p["removed"][:6] if q in pl.quests)
         out(f"tidied        {len(p['removed'])} quests the search had accepted but never finished were taken out of the route (a guide may not leave them in the log): {names}"
             + (" ..." if len(p["removed"]) > 6 else ""))
-    if p.get("moved"):
-        names = ", ".join(pl.quests[q].name for q in p["moved"][:6] if q in pl.quests)
+    if p.get("completed"):
+        names = ", ".join(pl.quests[q].name for q in p["completed"][:6] if q in pl.quests)
+        unplaced = len(p.get("completed_unplaced", ()))
         for line in labelled(
-            "repaired      ",
-            f"{len(p['moved'])} more quests the search had accepted too late to finish were saved: their pick-up was moved to an earlier visit that stood "
-            f"next to their giver, before the route went to their objectives, which it does anyway: {names}" + (" ..." if len(p["moved"]) > 6 else ""),
+            "completed     ",
+            f"{len(p['completed'])} more quests the search left unfinished were finished instead (completeness {pl.s.completeness:.2f}, trips up to "
+            f"{pl.s.completeness_trip:g} s): the route stops at their objectives right after the pick-up: {names}" + (" ..." if len(p["completed"]) > 6 else "")
+            + (f"; {unplaced} of them have an objective with no position in the data, which the planner works where the quest is picked up, with no walk"
+               if unplaced else ""),
         ):
             out(line)
     if plan.trace:
@@ -661,20 +665,32 @@ def report_grinds(out: Out, pl: engine.Planner, plan: engine.Plan) -> None:
         )
 
 
-def report_area(out: Out, pl: engine.Planner, plan: engine.Plan) -> None:
-    """The same-area quests the route left out (docs/PLANNER.md): offered where it stood, with all their work near where they start."""
-    radius = pl.s.area_yards or engine.Settings.area_yards
-    misses = pl.area_misses(plan, radius)
-    if not misses:
-        out(f"same area     no quest is left out that was offered where the route stood with all its work within {radius:g} yards of where it starts")
+def report_left_out(out: Out, pl: engine.Planner, plan: engine.Plan, limit: int = 12) -> None:
+    """What tidy took out of the route, with the reason and the numbers (`Planner._left_out`): nothing is dropped silently. Each is also a #skipquest
+    line of the guide and a record in plan.json."""
+    records = plan.stats.get("left_out", [])
+    if not records:
+        out("unfinished    none: the search left no quest unfinished")
         return
-    named = ", ".join(f"{qid} {pl.quests[qid].name} (level {level}, {pl.hubs[hub].label.split(': ', 1)[-1]})" for qid, hub, level in misses[:6])
-    for line in labelled(
-        "same area     ",
-        f"{len(misses)} quest(s) were offered where the route stood, with all their work within {radius:g} yards of where they start, and are left "
-        f"out: {named}" + (" ..." if len(misses) > 6 else "") + ("" if pl.s.area_yards > 0 else " (--area-yards 0: the rule is off)"),
-    ):
-        out(line)
+    codes: dict[str, int] = {}
+    for r in records:
+        codes[r["code"]] = codes.get(r["code"], 0) + 1
+    names = {"price": "near but not worth the trip", "far": "objectives too far", "handin": "hand-in too far", "level": "could not be worked",
+             "unfinished": "stop added, still unfinished"}
+    near_first = {"price": 0, "unfinished": 1, "handin": 2, "far": 3, "level": 4}  # the ones a setting would get back come first
+    summary = ", ".join(f"{n} {names.get(code, code)}" for code, n in sorted(codes.items(), key=lambda kv: (-kv[1], near_first.get(kv[0], 5))))
+    unplaced = sum(1 for r in records if r.get("unplaced"))
+    out(f"unfinished    {len(records)} quests the search picked up on the way and did not finish are not in the route ({summary})"
+        + (f"; {unplaced} of them have an objective with no position in the data:" if unplaced else ":"))
+    shown = sorted(records, key=lambda r: (near_first.get(r["code"], 5), -r["ratio"]))[:limit]
+    for r in shown:
+        for line in labelled(
+            "              ",
+            f"{r['quest']} {r['name']} (level {r['level']}, picked up at level {r['picked_level']}, {r['hub'].split(': ', 1)[-1]}): {r['why']}",
+        ):
+            out(line)
+    if len(records) > len(shown):
+        out(f"              ... {len(records) - len(shown)} more (all of them in plan.json, and as #skipquest lines in the guide)")
 
 
 def route_log_peak(route) -> int:
@@ -759,7 +775,7 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
     held, held_level, held_clock = plan.log_peak()
     out(f"quest log     the most quests held at once: {held} (at level {held_level}, {hms(held_clock)} in); the log holds {pl.s.quest_log_limit} "
         f"(--quest-log N; Forever's is {engine.Settings.quest_log_limit}, confirmed by the user in the game)")
-    report_area(out, pl, plan)
+    report_left_out(out, pl, plan)
     slow = pl.dropped.get("slower than grinding", [])
     out(f"left out      {len(slow)} quests were slower than grinding; the slowest, by experience per minute against grinding at the level it is done at:")
     scored = sorted((pl.quests[q] for q in slow), key=lambda q: q.rate / max(pl.model.grind_xp_per_second(max(q.req, q.level - 1, 1)), 1e-9))
@@ -1034,10 +1050,11 @@ def write_outputs(job: Job, outcome: Outcome, pl: engine.Planner, out_dir: Path,
         quests_done=sorted(outcome.plan.final.done),
         quest_log_limit=pl.s.quest_log_limit,
         quest_log_peak=outcome.plan.log_peak()[0],
-        area_yards=pl.s.area_yards,
-        area_misses=[dict(quest=qid, hub=pl.hubs[hub].label, level=level) for qid, hub, level in pl.area_misses(outcome.plan)],
-        removed_by_tidy=outcome.plan.stats.get("removed", []),
-        moved_by_tidy=outcome.plan.stats.get("moved", []),
+        completeness=pl.s.completeness,
+        completeness_trip=pl.s.completeness_trip,
+        left_out=outcome.plan.stats.get("left_out", []),
+        completed=outcome.plan.stats.get("completed", []),
+        completed_unplaced=outcome.plan.stats.get("completed_unplaced", []),
         grinds=grinds_of(pl, outcome.plan),
         grains=outcome.plan.stats.get("grains", []),
         simulated_seconds=ev.sim.seconds,
@@ -1064,15 +1081,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--class-grace", type=int, default=0, help="levels past the one it opens at before that cost starts (default 0)")
     parser.add_argument("--group-yards", type=float, default=250.0,
                         help="yards within which neighbouring steps of one kind are written as one: pick up, doing, hand in (default 250)")
-    parser.add_argument("--area-yards", type=float, default=engine.Settings.area_yards, metavar="YARDS",
-                        help="a quest picked up with all its work (a place to hand it in and a place for each objective) within this many yards of "
-                             "where it is picked up is done on the spot; 0 turns it off (default %(default)g; docs/PLANNER.md, same-area quests)")
+    parser.add_argument("--completeness", type=float, default=engine.Settings.completeness, metavar="F",
+                        help="finish a quest the route picked up and did not finish, when its objectives are a short walk away (--completeness-trip) and it pays at "
+                             "least F times the route's pace in experience per second (0.6: at least 60%%); 0 is off, the quest is taken out and listed "
+                             "with the reason (default %(default)g; docs/PLANNER.md, Completeness)")
+    parser.add_argument("--completeness-trip", type=float, default=engine.Settings.completeness_trip, metavar="SECONDS",
+                        help="the longest walk from where a quest was picked up to its objectives, and to where it is handed in, that --completeness "
+                             "will make (default %(default)g)")
     parser.add_argument("--walk-by-map", action="store_true",
                         help="charge the walk between the places of one hub by the map's distance, not a flat 8 s (Settings.local_walk) for each change of place "
                              "(an experiment: docs/PLANNER.md, Measurements)")
-    parser.add_argument("--no-repair", action="store_true",
-                        help="when the route is written, drop every quest the search left unfinished (the repair would move a pick-up to an earlier visit "
-                             "that stood near its giver, when the route goes on to the quest's objectives and hand-in anyway)")
     parser.add_argument("--quest-log", type=int, default=engine.Settings.quest_log_limit, metavar="N",
                         help="quests the log holds at once; no quest is accepted while it is full (default %(default)s: Forever's, confirmed by the user "
                              "in the game; Classic's is 25)")

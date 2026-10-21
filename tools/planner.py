@@ -70,13 +70,13 @@ class Settings:
     # limit has been bumped up from 25 to 40 for WoW Forever").
     quest_log_limit: int = 40
     chapter_min_steps: int = 3  # a change of zone starts a new chapter only when the new zone lasts at least this many steps (counted once joined)
-    # A quest picked up with all its work (a place to hand it in, and a place for each objective) within this many yards of where it is picked up is
-    # done on the spot, in the same visit (0: off; docs/PLANNER.md, "Same-area quests"). The user's rule, 2026-10-21: a quest offered where the player
-    # stands, with its objectives in the area of the step in hand, should be taken. About 50 seconds of walking each way.
-    area_yards: float = 350.0
-    # When the route is written, a quest the search picked up and never finished is not simply dropped: if an earlier visit stood near its giver and the
-    # route goes on to the quest's objectives and to where it is handed in, the pick-up is moved to that visit (Planner.tidy; docs/PLANNER.md).
-    repair: bool = True
+    # Finishing what the route picks up (docs/PLANNER.md, "Completeness"). The search accepts a quest wherever it passes (an accept costs it nothing)
+    # and works it only when that is the better use of the time; one still in the log at the end is taken out when the route is written
+    # (`Planner.tidy`). With `completeness` F > 0, tidy first tries to finish it: a stop at its objectives, right after the pick-up, when they are at
+    # most `completeness_trip` seconds of walking away and the quest pays at least F times the route's pace (experience per second, the trip
+    # included). 0 is off: the quest is taken out, and the report says why (the numbers are in `Planner.left_out`).
+    completeness: float = 0.0
+    completeness_trip: float = 30.0
 
 
 @dataclass
@@ -87,15 +87,6 @@ class PObjective:
     spots: list
     hubs: tuple = ()
     elsewhere: bool = False  # the pack has positions for it, but none where this route goes
-
-
-class Bundle(NamedTuple):
-    """All the work of a quest that lies near one of the places it starts at: the places where it can be handed in and, for each objective, the
-    places where it can be worked, each within `Settings.area_yards` of that starting place."""
-
-    place: Coord  # the starting place
-    ends: tuple  # places (Coord) to hand it in
-    works: tuple  # ((objective index, (places...)), ...)
 
 
 @dataclass
@@ -124,7 +115,6 @@ class PQuest:
     unknown_xp: bool = False  # the data has no experience for it (a quest new to Forever): never left out for being slow
     end_unknown: bool = False  # a class quest whose ender has no position in the pack: handed in at its start, and the step says so
     unknown_work: bool = False  # a class quest with no objective in the pack, accepted and handed in at one NPC: what it asks is not known
-    bundle: dict = field(default_factory=dict)  # starting place (map, x, y) -> Bundle, for each place where all its work is near; {} if none or off
 
 
 @dataclass
@@ -288,11 +278,8 @@ class Planner:
         self.home: Coord | None = None  # where the character begins
         self.core: set[int] = set()  # the class quests and the quests they need: all that is done once the cap is reached
         self.forbidden: set[int] = set()  # quests a tidied route no longer accepts (it never turned them in)
-        self.lifted: frozenset = frozenset()  # ... except the ones tidy moved to the visit being replayed (`_moves`)
-        self._bundles: dict[float, tuple] = {}  # radius -> ({quest: {starting place: Bundle}}, {hub: [(quest, starting place)]})
-        self.bundled_at: dict[int, list] = {}  # hub -> [(quest, starting place)] with a Bundle there, for the setting's radius
-        self.nearby: dict[int, list] = {}  # hub -> [(quest, starting place)] with a Bundle in a hub next to it (centres within a hub radius)
-        self._next_door: dict[int, tuple] | None = None
+        self.lifted: frozenset = frozenset()  # ... except the ones tidy is finishing at the visit being replayed (`_finishable`)
+        self._ratio: dict[tuple, float] = {}  # (quest, level) -> what the quest pays against the route's pace (`finish_ratio`)
         self.accept_over = settings.hardcore_over if settings.hardcore else settings.accept_over
         self.work_over = settings.hardcore_over if settings.hardcore else settings.work_over
 
@@ -641,88 +628,6 @@ class Planner:
                 for c in o.spots or q.start_places:  # no position in the data: worked where it starts, and the guide says so
                     self.objs_by_place.setdefault(note(c), []).append((q, o))
         self.places_at = {hub: list(found.values()) for hub, found in places.items()}
-        for q in self.window:
-            q.bundle = {}
-        self.bundled_at, self.nearby = {}, {}
-        if self.s.area_yards > 0:
-            by_quest, self.bundled_at = self.bundles(self.s.area_yards)
-            for qid, found in by_quest.items():
-                self.quests[qid].bundle = found
-            for h in self.hubs:
-                entries = [entry for n in self.next_door(h.id) for entry in self.bundled_at.get(n, ())]
-                if entries:
-                    self.nearby[h.id] = entries
-
-    def next_door(self, hub: int) -> tuple:
-        """The hubs on the same map whose centres are within a hub radius of this hub's centre: what the character can see from here. (Hubs are cut
-        by the order of their places, so two NPCs a few yards apart can belong to hubs of their own.)"""
-        if self._next_door is None:
-            found: dict[int, list] = {h.id: [] for h in self.hubs}
-            by_map: dict[int, list] = {}
-            for h in self.hubs:
-                by_map.setdefault(h.map, []).append(h)
-            for same_map in by_map.values():
-                for i, a in enumerate(same_map):
-                    for b in same_map[i + 1 :]:
-                        if self._yards(a.center, b.center) <= self.s.hub_radius:
-                            found[a.id].append(b.id)
-                            found[b.id].append(a.id)
-            self._next_door = {hub_id: tuple(ids) for hub_id, ids in found.items()}
-        return self._next_door.get(hub, ())
-
-    def bundles(self, radius: float) -> tuple:
-        """The quests whose work lies near where they start, for a radius in yards: ({quest: {starting place (map, x, y): Bundle}}, {hub: [(quest,
-        starting place) with a Bundle there, for the starting places in that hub]}). A starting place has a Bundle when a place to hand the quest in and a place for every
-        one of its objectives are within `radius` yards of it (an objective the pack has no position for is worked where the quest starts). Group
-        quests (`optional`) have none: a normal guide tags them optional and does not ask for them on the spot."""
-        if radius not in self._bundles:
-            by_quest: dict[int, dict] = {}
-            by_hub: dict[int, list] = {}
-            for q in self.window:
-                if q.optional:
-                    continue
-                found: dict[tuple, Bundle] = {}
-                for g in q.start_places:
-                    ends = tuple(c for c in q.end_places if self._near(g, c, radius))
-                    if not ends:
-                        continue
-                    works = []
-                    for o in q.objectives:
-                        spots = tuple(c for c in (o.spots or q.start_places) if self._near(g, c, radius))
-                        if not spots:
-                            break
-                        works.append((o.index, spots))
-                    else:
-                        found[(g.map, g.x, g.y)] = Bundle(g, ends, tuple(works))
-                if found:
-                    by_quest[q.id] = found
-                    for key in found:
-                        by_hub.setdefault(self.hub_of[key], []).append((q, key))
-            self._bundles[radius] = (by_quest, by_hub)
-        return self._bundles[radius]
-
-    def area_misses(self, plan: "Plan", radius: float | None = None) -> list:
-        """The quests a route left out although it stood where they were offered (in the hub it was visiting or one next door), they could be
-        worked at that level, and all their work lies within `radius` yards (default `Settings.area_yards`, else 350) of the place where they
-        start: [(quest, hub they start in, level)] in the order the route passed them. The user's rule (2026-10-21): a quest offered where the
-        player stands, with its objectives in the area of the step in hand, should be taken."""
-        by_hub = self.bundles(radius or self.s.area_yards or 350.0)[1]
-        path, st = [], plan.final
-        while st is not None and st.visit is not None:
-            path.append(st)
-            st = st.parent
-        missed: dict[int, tuple] = {}
-        for st in reversed(path):
-            hub = st.visit.hub
-            if hub is None:
-                continue
-            for near in (hub, *self.next_door(hub)):
-                for q, key in by_hub.get(near, ()):
-                    if q.id in missed or q.id in plan.final.done or q.id in st.done or q.id in st.active or q.id in st.gone:
-                        continue
-                    if self.offered(q, st.level, st.done, st.active, st.gone) and self.soon(q, st.level):  # offered, and its work could be done now
-                        missed[q.id] = (q.id, near, st.level)
-        return list(missed.values())
 
     # distances and the model's numbers -------------------------------------------------------------------------------
 
@@ -732,25 +637,12 @@ class Planner:
             return d
         return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5 * 10 if a.map == b.map else 6000.0
 
-    def _near(self, a: Coord, b: Coord, radius: float) -> bool:
-        return a.map == b.map and (a == b or self._yards(a, b) <= radius)
-
-    def _nearest(self, here: Coord | None, places: tuple) -> Coord:
-        """Of the places, the one nearest to where the character stands (the first one when it stands nowhere yet)."""
-        if len(places) == 1 or here is None:
-            return places[0]
-        return min(places, key=lambda c: self._yards(here, c))
-
     def _legs(self, actions: list) -> float:
-        """The walking between the places of a visit's actions, in turn: a flat `local_walk` between two places of one hub (unless
-        `Settings.walk_by_map`), the walk itself (by the map's distance and the detour factor) between places of two hubs."""
+        """The walking between the places of a visit's actions, in turn, by the map's distance and the detour factor (`Settings.walk_by_map`)."""
         total = 0.0
         for a, b in zip(actions, actions[1:]):
             if a.place != b.place:
-                if not self.s.walk_by_map and self.hub_of[(a.place.map, a.place.x, a.place.y)] == self.hub_of[(b.place.map, b.place.x, b.place.y)]:
-                    total += self.s.local_walk
-                else:
-                    total += self._yards(a.place, b.place) / guide_travel.WALK_SPEED * self.s.detour
+                total += self._yards(a.place, b.place) / guide_travel.WALK_SPEED * self.s.detour
         return total
 
     def _walk(self, a: int, b: int) -> float | None:
@@ -887,9 +779,7 @@ class Planner:
         return worth
 
     def visit(self, st: PState, hub: int) -> PState | None:
-        """Go to a hub and do everything worthwhile there until nothing new turns up; None when there is nothing to do. A quest picked up here with
-        all its work near (`Settings.area_yards`, see `bundles`) is not left in the log for later: its objectives are worked and it is handed in
-        before the visit ends, which may take the character a little way from the hub."""
+        """Go to a hub and do everything worthwhile there until nothing new turns up; None when there is nothing to do."""
         s, p = self.s, self.model.p
         progress = guide_sim.Progress(self.model, st.level, st.xp)
         done, gone = set(st.done), set(st.gone)
@@ -898,12 +788,6 @@ class Planner:
         actions: list[Action] = []
         interact_s = p["interact_seconds"]
         interact = objective = longest_wait = gained = owed = 0.0
-        fresh: dict[int, tuple] = {}  # quest id -> (quest, Bundle): all its work is near; picked up in this visit or held in the log from an earlier one
-        near = self.nearby.get(hub, ())  # quests that start in a hub next to this one and have all their work near
-        for q, key in (*self.bundled_at.get(hub, ()), *near):  # held since an earlier visit (its level was too high to work it): finished now if it can be
-            if q.id in active:
-                fresh[q.id] = (q, q.bundle[key])
-        away = False  # some action was taken beyond the hub's own places
         sweeps = 0
         progressed = True
         while progressed and sweeps < 8:
@@ -935,8 +819,6 @@ class Planner:
                         actions.append(Action("accept", q.id, None, place))
                         active[q.id] = {o.index for o in q.objectives}
                         gone.update(x for x in q.excl if x not in done)
-                        if q.bundle and key in q.bundle:
-                            fresh[q.id] = (q, q.bundle[key])
                         changed = True
                     for q, o in self.objs_by_place.get(key, ()):
                         if progress.level >= s.cap and q.id not in self.core:
@@ -950,107 +832,16 @@ class Planner:
                             active[q.id].discard(o.index)
                             changed = True
                     progressed = progressed or changed
-            for qid in sorted(self.lifted):  # a pick-up tidy moved to this visit: its giver is in a hub next door (one in this hub was taken above)
-                q = self.quests[qid]
-                if q.id in done or q.id in active or q.id in gone or not self.offered(q, progress.level, done, active, gone):
-                    continue
-                if not self.soon(q, progress.level) or (progress.level >= s.cap and q.id not in self.core):
-                    continue
-                centre = self.hubs[hub].center
-                starts = tuple(c for c in q.start_places if self.hub_of[(c.map, c.x, c.y)] != hub and self._near(centre, c, s.hub_radius))
-                if not starts:
-                    continue
-                place = self._nearest(actions[-1].place if actions else centre, starts)
-                gated = max(gated, q.req) if q.req > 1 else gated
-                if q.unknown_work:
-                    objective += s.unknown_work
-                interact += interact_s
-                actions.append(Action("accept", q.id, None, place))
-                active[q.id] = {o.index for o in q.objectives}
-                gone.update(x for x in q.excl if x not in done)
-                if q.bundle and (place.map, place.x, place.y) in q.bundle:
-                    fresh[q.id] = (q, q.bundle[(place.map, place.x, place.y)])
-                away = progressed = True
-            # The user's rule (2026-10-21): a quest offered where the player stands, with its objectives in the area of the step in hand, is taken.
-            # What starts in a hub next to this one and has all its work near is picked up from here (its giver is a short walk away) ...
-            for q, key in near:
-                if q.id in done or q.id in active or q.id in gone or not self.offered(q, progress.level, done, active, gone):
-                    continue
-                if not self.soon(q, progress.level) or (progress.level >= s.cap and q.id not in self.core):
-                    continue  # a pick-up from next door is only for what can be worked now: it would be held in the log and dropped
-                b = q.bundle[key]
-                gated = max(gated, q.req) if q.req > 1 else gated
-                if q.unknown_work:
-                    objective += s.unknown_work
-                interact += interact_s
-                actions.append(Action("accept", q.id, None, b.place))
-                active[q.id] = {o.index for o in q.objectives}
-                gone.update(x for x in q.excl if x not in done)
-                fresh[q.id] = (q, b)
-                away = progressed = True
-            for qid in [qid for qid in fresh if qid not in active]:  # handed in already, by the places above
-                del fresh[qid]
-            # ... and its work is done before the visit ends: first the objectives of everything picked up (the nearest place first, so quests with
-            # work in one area share one trip to it), then the hand-ins (the nearest first).
-            while fresh:
-                here = actions[-1].place if actions else self.hubs[hub].center
-                best = None
-                for q, b in fresh.values():
-                    if not active[q.id] or not self.soon(q, progress.level) or (progress.level >= s.cap and q.id not in self.core):
-                        continue
-                    for index, spots in b.works:
-                        if index in active[q.id]:
-                            place = self._nearest(here, spots)
-                            d = 0.0 if place == here else self._yards(here, place)
-                            if best is None or d < best[0]:
-                                best = (d, q, index, place)
-                if best is None:
-                    break
-                _d, q, index, place = best
-                seconds, wait, xp = self.objective(q.id, index, progress.level)
-                objective += seconds - wait
-                longest_wait = max(longest_wait, wait)
-                gained += progress.gain(xp)
-                actions.append(Action("complete", q.id, index, place))
-                active[q.id].discard(index)
-                away = progressed = True
-            while fresh:
-                here = actions[-1].place if actions else self.hubs[hub].center
-                best = None
-                for q, b in fresh.values():
-                    if not active[q.id]:
-                        place = self._nearest(here, b.ends)
-                        d = 0.0 if place == here else self._yards(here, place)
-                        if best is None or d < best[0]:
-                            best = (d, q, place)
-                if best is None:
-                    break
-                _d, q, place = best
-                gained += progress.gain(self.reward(q.id, progress.level))
-                owed += self.lateness(q, progress.level)
-                interact += interact_s
-                actions.append(Action("turnin", q.id, None, place))
-                del active[q.id]
-                done.add(q.id)
-                gone.update(q.excl)
-                del fresh[q.id]
-                away = progressed = True
         if not actions:
             return None
-        stand = hub
-        if away or s.walk_by_map:  # some actions were taken away from the hub's own places (or the walk is always priced by the map)
-            walk = self.travel(st.hub, hub) + self._legs(actions)
-            if s.walk_by_map:
-                walk += self._yards(self.hubs[hub].center, actions[0].place) / guide_travel.WALK_SPEED * s.detour
-            if away:  # the visit ends where the last action was
-                last = actions[-1].place
-                stand = self.hub_of[(last.map, last.x, last.y)]
+        if s.walk_by_map:  # (an experiment) the walk between the places of the hub is priced by the map, from the hub's centre to the first one too
+            walk = self.travel(st.hub, hub) + self._legs(actions) + self._yards(self.hubs[hub].center, actions[0].place) / guide_travel.WALK_SPEED * s.detour
         else:
             switches = sum(1 for a, b in zip(actions, actions[1:]) if a.place != b.place)
             walk = self.travel(st.hub, hub) + switches * s.local_walk
         seconds = walk + interact + objective + longest_wait
         new = PState()
-        new.hub, new.zone = stand, self.hubs[hub].zone
+        new.hub, new.zone = hub, self.hubs[hub].zone
         new.level, new.xp = progress.level, progress.xp
         zone_change = new.zone != st.zone
         new.clock = st.clock + seconds
@@ -1275,27 +1066,31 @@ class Planner:
     def tidy(self, plan: Plan, start_hub: int) -> Plan:
         """A guide must not accept a quest it never turns in: the quests a search left in the log at the end (it reached the cap first) are taken
         out of the route, and the same hubs are walked again without them (more than once if that leaves others unfinished); a level that falls
-        short is ground at the end.
+        short is ground at the end. Nothing is taken out silently: `plan.stats["left_out"]` has a record for each quest, with the reason and the
+        numbers (`Planner._left_out`).
 
-        Not every such quest is lost for good. A search accepts a free quest wherever it passes, and one it accepted *after* working the area of its
-        objectives is never finished. If an earlier visit stood near its giver and the route goes on to its objectives and to where it is handed in,
-        the repair (`Settings.repair`, `_moves`) moves the pick-up to that visit, and the route finishes the quest on a trip it makes anyway. A
-        quest moved and still not finished is dropped for good."""
+        With `Settings.completeness` F > 0 a quest is finished before it is taken out, if that is cheap (`_finishable`): the walk is repeated with
+        a stop at its objectives right after the pick-up (and one at the place to hand it in, if the route does not pass it later). A quest finished
+        this way is in `plan.stats["completed"]`; one that still is not finished after that is taken out for good."""
         stats, trace, preset = dict(plan.stats), plan.trace, plan.preset
         alternatives, decisions = plan.alternatives, plan.decisions
         removed: set[int] = set()
-        gave_up: set[int] = set()  # moved to an earlier visit, and the route still did not finish them
+        gave_up: set[int] = set()  # a stop was added for them and they still were not finished
         lifted_before: set[int] = set()
-        for _ in range(6 if self.s.repair else 4):
+        found: dict[int, tuple] = {}  # quest -> (character's level, place, hub) when it was picked up, from the plan it was first found unfinished in
+        for _ in range(6 if self.s.completeness > 0 else 4):
             active = set(plan.final.active) if plan.final else set()
             stuck = active & lifted_before
             unseen = active - removed
             if not (stuck or unseen):
                 break
+            levels = self._pickups(plan)
+            for qid in unseen:
+                found.setdefault(qid, levels.get(qid))
             gave_up |= stuck
             removed |= unseen | stuck
-            moves = self._moves(plan, removed - gave_up) if self.s.repair else {}
-            lifted_before = {qid for ids in moves.values() for qid in ids}
+            lifts, stops = self._finishable(plan, removed - gave_up) if self.s.completeness > 0 else ({}, {})
+            lifted_before = {qid for ids in lifts.values() for qid in ids}
             self.forbidden = set(removed)
             st = self.start(start_hub)
             for index, v in enumerate(plan.visits):
@@ -1303,70 +1098,151 @@ class Planner:
                     target = v.actions[0].index
                     child = self._grind_to(st, target) if target > st.level else None
                 else:
-                    self.lifted = frozenset(moves.get(index, ()))
+                    self.lifted = frozenset(lifts.get(index, ()))
                     child = self.visit(st, v.hub)
                     self.lifted = frozenset()
                 if child is not None:
                     st = child
+                for hub in stops.get(index, ()):  # a stop at the objectives (or the place to hand in) of a quest picked up at this visit
+                    stop = self.visit(st, hub)
+                    if stop is not None:
+                        st = stop
             plan = self._finish(self.rollout(st))
         self.forbidden, self.lifted = set(), frozenset()
-        moved = {qid for qid in lifted_before if plan.final and qid in plan.final.done}
+        completed = {qid for qid in lifted_before if plan.final and qid in plan.final.done}
         plan.stats, plan.trace, plan.preset = stats, trace, preset
         plan.alternatives, plan.decisions = alternatives, decisions
-        plan.stats["removed"] = sorted((removed - moved) | set(stats.get("removed", ())))  # a plan tidied twice still says what was taken out
-        plan.stats["moved"] = sorted(moved | set(stats.get("moved", ())))  # and what was saved by moving its pick-up
+        gone = sorted(removed - completed)
+        plan.stats["removed"] = sorted(set(gone) | set(stats.get("removed", ())))  # a plan tidied twice still says what was taken out
+        plan.stats["completed"] = sorted(completed | set(stats.get("completed", ())))  # and what was saved by finishing it
+        plan.stats["completed_unplaced"] = [qid for qid in plan.stats["completed"] if self.unplaced(qid)]  # (how many of those the data cannot place)
+        records = {r["quest"]: r for r in stats.get("left_out", ())}
+        for qid in gone:
+            records[qid] = self._left_out(qid, found.get(qid), qid in gave_up)
+        plan.stats["left_out"] = [records[qid] for qid in sorted(records, key=lambda i: (records[i]["picked_level"] or 0, i))]
         return plan
 
-    def _moves(self, plan: Plan, candidates: set) -> dict[int, set]:
-        """For each quest of `candidates` that this route did not finish, the visit at which to pick it up: {visit index: {quest}}. The latest visit
-        before the one that picked it up (any, if it was never picked up) such that the character stood near the giver (the visit's hub is a
-        giver's hub, or a giver's place is within a hub radius of its centre), the quest was offered and could be worked then, and the route goes
-        on, from that visit, to a hub of every objective and then to a hub where the quest is handed in. A quest this route did finish is kept
-        where it is picked up."""
+    def xp_pace(self, level: int) -> float:
+        """The experience per second the route makes at a level: the pace of the greedy walk the searches are calibrated with (grinding's, before
+        a calibration)."""
+        return self.rate_curve.get(level) or self.model.grind_xp_per_second(level)
+
+    def finish_ratio(self, q: PQuest, level: int) -> float:
+        """What a quest pays when it is picked up on the route and finished (experience per second, the walk to its objectives and the hand-in
+        included, at this level) against the route's pace at that level: 1 is the same, 0.8 a fifth less."""
+        key = (q.id, level)
+        if key not in self._ratio:
+            self._ratio[key] = self._quest_rate(q, level) / max(self.xp_pace(level), 1e-9)
+        return self._ratio[key]
+
+    def trip(self, q: PQuest, place: Coord) -> tuple:
+        """What finishing a quest picked up at `place` asks, beyond the pick-up: (seconds of walking, from there, to the farthest of its objectives
+        (0 for a quest with none); the hubs of the nearest places to work them, nearest first; seconds of walking to the nearest place to hand it
+        in; the hub of that place)."""
+        speed, detour = guide_travel.WALK_SPEED, self.s.detour
+        ways: dict[int, float] = {}
+        for o in q.objectives:
+            nearest = min(o.spots or q.start_places, key=lambda c: self._yards(place, c))
+            hub = self.hub_of[(nearest.map, nearest.x, nearest.y)]
+            ways[hub] = min(ways.get(hub, float("inf")), self._yards(place, nearest) * detour / speed)
+        end = min(q.end_places, key=lambda c: self._yards(place, c))
+        far = max((seconds for seconds in ways.values()), default=0.0)
+        return far, sorted(ways, key=ways.get), self._yards(place, end) * detour / speed, self.hub_of[(end.map, end.x, end.y)]
+
+    def unplaced(self, qid: int) -> bool:
+        """True when an objective of the quest has no position in the data: the planner works it where the quest is picked up, with no walk to it
+        (`_index`, `_quest_rate`), and the guide says so in a .todo. Such a quest looks cheaper to finish than it is; the reports count them."""
+        q = self.quests.get(qid)
+        return q is not None and any(not o.spots for o in q.objectives)
+
+    def _pickups(self, plan: Plan) -> dict[int, tuple]:
+        """Where each quest of this route was picked up: {quest: (the character's level, the place, the hub's name)}, the first time."""
+        found: dict[int, tuple] = {}
         path, st = [], plan.final
         while st is not None and st.visit is not None:
             path.append(st)
             st = st.parent
         path.reverse()
-        hubs = [v.hub for v in plan.visits]
-        moves: dict[int, set] = {}
-        self.lifted = frozenset(candidates)  # (they are forbidden by now: whether they were offered is the question)
-        try:
-            self._place_moves(plan, candidates, path, hubs, moves)
-        finally:
-            self.lifted = frozenset()
-        return moves
+        for state in path:
+            for a in state.visit.actions:
+                if a.kind == "accept" and a.quest not in found:
+                    found[a.quest] = (state.level, a.place, self.hubs[state.visit.hub].label if state.visit.hub is not None else "")
+        return found
 
-    def _place_moves(self, plan: Plan, candidates: set, path: list, hubs: list, moves: dict) -> None:
+    def _finishable(self, plan: Plan, candidates: set) -> tuple[dict, dict]:
+        """Tidy's completeness: of the quests this route left unfinished, the ones worth finishing and how. Returns ({visit index: {quests that
+        must be picked up there even though they are forbidden}}, {visit index: [hubs to stop at after that visit]}). A quest qualifies when it
+        could be worked at the level it was picked up at, pays at least `Settings.completeness` of the route's pace, and its objectives and the
+        place to hand it in are at most `Settings.completeness_trip` seconds of walking from where it was picked up. The stops are the hubs of its
+        objectives (nearest first) and, unless the route passes the hand-in later, the hand-in's hub. A quest this route did finish (an earlier
+        round of tidy) keeps its pick-up where it is."""
+        s = self.s
+        hubs = [v.hub for v in plan.visits]
+        path, st = [], plan.final
+        while st is not None and st.visit is not None:
+            path.append(st)
+            st = st.parent
+        path.reverse()
+        lifts: dict[int, set] = {}
+        stops: dict[int, list] = {}
         for qid in sorted(candidates):
             q = self.quests[qid]
             picked = next((i for i, v in enumerate(plan.visits) if any(a.kind == "accept" and a.quest == qid for a in v.actions)), None)
-            if qid in plan.final.done:
-                if picked is not None:
-                    moves.setdefault(picked, set()).add(qid)
+            if picked is None:
                 continue
-            for i in range((len(hubs) if picked is None else picked) - 1, -1, -1):
-                if hubs[i] is None:
-                    continue
-                state = path[i]
-                centre = self.hubs[hubs[i]].center
-                if hubs[i] not in q.start_hubs and not any(self._near(centre, c, self.s.hub_radius) for c in q.start_places):
-                    continue
-                if state.level >= self.s.cap and qid not in self.core:
-                    continue
-                if qid in state.done or qid in state.gone or not self.offered(q, state.level, state.done, state.active, state.gone) or not self.soon(q, state.level):
-                    continue
-                last = i
-                for o in q.objectives:
-                    at = next((k for k in range(i, len(hubs)) if hubs[k] in o.hubs), None)
-                    if at is None or (path[at].level >= self.s.cap and qid not in self.core):
-                        last = None
-                        break
-                    last = max(last, at)
-                if last is None or not any(hubs[k] in q.end_hubs for k in range(last, len(hubs))):
-                    continue
-                moves.setdefault(i, set()).add(qid)
-                break
+            if qid in plan.final.done:
+                lifts.setdefault(picked, set()).add(qid)
+                continue
+            level = path[picked].level
+            if not self.soon(q, level) or (level >= s.cap and qid not in self.core) or self.finish_ratio(q, level) < s.completeness:
+                continue
+            place = next(a.place for a in plan.visits[picked].actions if a.kind == "accept" and a.quest == qid)
+            far, objective_hubs, end_seconds, end_hub = self.trip(q, place)
+            if far > s.completeness_trip or end_seconds > s.completeness_trip:
+                continue
+            visiting = list(objective_hubs)
+            if end_hub not in set(h for h in hubs[picked + 1 :] if h is not None) and (not visiting or visiting[-1] != end_hub):
+                visiting.append(end_hub)
+            lifts.setdefault(picked, set()).add(qid)
+            stops.setdefault(picked, []).extend(visiting)
+        return lifts, stops
+
+    def _left_out(self, qid: int, found: tuple | None, tried: bool) -> dict:
+        """Why a quest the search picked up is not in the written route, with the numbers: the record `plan.stats["left_out"]` and the `#skipquest`
+        line carry. `code` is one of price (its work is near but pays less than the route's pace asks), far (its objectives are beyond the trip the
+        route walks), handin (the place to hand it in is), level (it could not be worked then), unfinished (a stop was added and it still was not
+        finished)."""
+        q, s = self.quests[qid], self.s
+        picked_level, place, hub = found if found else (None, q.start_places[0], "")
+        level = max(1, picked_level or 1)
+        far, _hubs, end_seconds, _end = self.trip(q, place)
+        rate, pace = self._quest_rate(q, level), self.xp_pace(level)
+        ratio = rate / max(pace, 1e-9)
+        reach = s.completeness_trip
+        work = sum(self.objective(qid, o.index, level)[0] for o in q.objectives)
+        if tried:
+            code, why = "unfinished", "a stop at its objectives was added and the route still did not finish it"
+        elif not self.soon(q, level) or (level >= s.cap and qid not in self.core):
+            code = "level"
+            why = (f"it could not be worked at level {level} (a level {q.level} quest) and the route did not come back when it could"
+                   if level < s.cap else "the route had reached the cap")
+        elif far > reach:
+            code, why = "far", f"its objectives are {far:.0f} s of walking away (the route walks up to {reach:.0f} s for a quest it picked up)"
+        elif end_seconds > reach:
+            code, why = "handin", f"it is handed in {end_seconds:.0f} s of walking away and the route does not pass there"
+        else:
+            code = "price"
+            where = f"its work is {far:.0f} s away" if q.objectives else f"it is handed in {end_seconds:.0f} s away"
+            asked = f"completeness is {s.completeness:.2f}" if s.completeness > 0 else f"completeness {ratio:.2f} or less would finish it"
+            why = f"{where} and pays {rate:.2f} XP/s against the route's {pace:.2f} ({ratio:.0%}); {asked}"
+        if self.unplaced(qid) and code != "unfinished":
+            why += "; an objective of it has no position in the data, so the planner works it where the quest is picked up, with no walk"
+        record = dict(
+            quest=qid, name=q.name, level=q.level, picked_level=picked_level, hub=hub, code=code, why=why,
+            trip=round(far, 1), handin=round(end_seconds, 1), work=round(work, 1), rate=round(rate, 3), pace=round(pace, 3), ratio=round(ratio, 3),
+            unplaced=self.unplaced(qid),
+        )
+        return record
 
     def _finish(self, final: PState) -> Plan:
         plan = Plan(final=final, seconds=final.clock, penalty=final.penalty, late=final.late)
@@ -1395,6 +1271,7 @@ class Planner:
         # no level is paced slower than grinding: the walk can always do that
         for n in range(1, self.s.cap):
             self.rate_curve[n] = max(self.rate_curve.get(n, 0.0), self.model.grind_xp_per_second(n))
+        self._ratio.clear()
 
     def _lookahead(self, start_hub: int, progress) -> Plan:
         st = self.start(start_hub)
@@ -1623,6 +1500,8 @@ class Planner:
             for other in self.quests[qid].excl:
                 if other not in done and other in self.quests and other not in skips:
                     skips[other] = f"alternative to quest {qid}, which is routed"
+        for record in plan.stats.get("left_out", ()):  # nothing is dropped silently: what tidy took out is named, with its reason
+            skips.setdefault(record["quest"], f"picked up on the way and not finished: {record['why']}")
         return skips
 
     def hub_near(self, coord: Coord) -> int | None:
