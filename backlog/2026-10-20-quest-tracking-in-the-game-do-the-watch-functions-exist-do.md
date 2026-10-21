@@ -39,3 +39,11 @@ step's quests, or what differs is turned into items.
 
 The feature itself is the item `the-guide-sets-the-quest-tracker`. The default (on or off for a player who has not chosen) is
 `Tracking.DEFAULT_ENABLED`, a user decision.
+
+How to answer it with almost no effort (batch 1 WP-D, branch feat/quest-tracking): the user, in game, out of combat, with one quest
+in the log, runs `/signpost tracking test`, waits two seconds, runs `/reload`; then `python tools/read_savedvars.py probe` shows
+`probe.tracking` (which watch functions exist, each call's answer and what the list said right after, the watch events seen, the
+limits the client names), `probe.trackingSeen` (what the game did to the tracker as quests were accepted or advanced during normal
+play, up to twelve observations) and, after `/signpost probe`, `probe.questLogMax`. `/signpost tracking` prints the module's state.
+Still open after that read: whether the player's own tracking comes back as it was (turn the setting off), whether the card shown
+again sets the tracking, and the minimap and the check box layout (play).

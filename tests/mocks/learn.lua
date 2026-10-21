@@ -28,6 +28,12 @@ local GLOBALS = {
 	"issecretvalue",
 }
 
+-- travel recorder (WP-F): what Core/Learn.lua's rides and innkeepers read besides the above
+local TRAVEL_GLOBALS = { "C_GossipInfo", "GetBindLocation", "GetFileIDFromPath", "GetSubZoneText", "UnitIsDeadOrGhost" }
+for _, name in ipairs(TRAVEL_GLOBALS) do
+	GLOBALS[#GLOBALS + 1] = name
+end
+
 function M.install(G)
 	local world = {
 		-- where the player is: map percent as the client reports it (0-1), world yards, instance, taxi, own speed
@@ -142,6 +148,30 @@ function M.install(G)
 	}
 
 	G.Enum = { TooltipDataType = { Spell = 1 }, FlightPathState = { Current = 0, Reachable = 1, Unreachable = 2 } }
+
+	-- travel recorder (WP-F) --------------------------------------------------------------------------------------
+	world.subzone = "" -- GetSubZoneText()
+	world.dead = false -- UnitIsDeadOrGhost("player")
+	world.gossip = {} -- C_GossipInfo.GetOptions(): { { name = ..., icon = ... }, ... }
+	world.bind = nil -- GetBindLocation()
+	world.files = {} -- GetFileIDFromPath(path) -> file ID
+	G.GetSubZoneText = function()
+		return world.subzone
+	end
+	G.UnitIsDeadOrGhost = function()
+		return world.dead
+	end
+	G.GetBindLocation = function()
+		return world.bind
+	end
+	G.GetFileIDFromPath = function(path)
+		return world.files[path]
+	end
+	G.C_GossipInfo = {
+		GetOptions = function()
+			return world.gossip
+		end,
+	}
 	return world
 end
 

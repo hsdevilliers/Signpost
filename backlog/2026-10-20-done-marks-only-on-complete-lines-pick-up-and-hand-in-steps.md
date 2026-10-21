@@ -1,12 +1,14 @@
 ---
 title: Done marks only on .complete lines: pick-up and hand-in steps with several quests show none
 kind: question
-status: open
+status: done
 priority: normal
 area: ui
 source: claude
 raised: 2026-10-20
 raised_in: PR feat/step-ui (doing steps)
+closed: 2026-10-21
+resolution: batch 1, branch feat/step-card-polish (decided: yes): UI/StepFrame.lua MARKED holds accept, complete and turnin, so every quest line of a step starts with [x] or [ ] (the Journal's marks); other lines are unchanged and the ten-line limit and the layout hold with ten marked lines. Specs in tests/ui_spec.lua and tests/integration_spec.lua; docs/GUIDE-FORMAT.md 'Step kinds', docs/ENGINE.md.
 ---
 
 ## What

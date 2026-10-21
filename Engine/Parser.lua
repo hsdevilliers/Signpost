@@ -288,6 +288,7 @@ local function newState(opts, guideId)
 		included = {},
 		stack = {},
 		onStack = {},
+		texts = {}, -- every source read, as its id and then its text: what the guide's fingerprint is made of
 	}
 end
 
@@ -707,6 +708,8 @@ processSource = function(state, source, text, kind)
 	stack[#stack + 1] = source
 	state.onStack[source] = true
 	state.source = source
+	state.texts[#state.texts + 1] = source
+	state.texts[#state.texts + 1] = text
 	local frame = { source = source, kind = kind, steps = 0, count = 0 }
 	for line, statement in statements(text) do
 		frame.count = frame.count + 1
@@ -883,6 +886,14 @@ function Parser:ParseGuide(def, opts)
 			addError(errors, source, 0, L["guide has no text"])
 		end
 	end)
+	-- The guide's fingerprint: a checksum of the source texts (the guide's own and every chapter it included, with their
+	-- ids), which is what the step ids are positions in. It does not depend on the player or on the profession plan:
+	-- the same texts give the same fingerprint for everyone. Progress compares it with the one saved with a character's
+	-- progress (docs/ENGINE.md "Engine/Progress.lua"). Profession tracks are separate texts and are not in it.
+	if state and ns.Util and ns.Util.Checksum then
+		local ok, fingerprint = pcall(ns.Util.Checksum, state.texts)
+		guide.fingerprint = ok and fingerprint or nil
+	end
 	local name = isTable and def.name
 	guide.name = (type(name) == "string" and name ~= "" and name) or guide.headers.guide or source
 	for _, chapter in ipairs(guide.chapters) do

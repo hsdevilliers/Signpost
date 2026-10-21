@@ -35,7 +35,8 @@ architecture is PLAN §4.
 | `PROFESSION_PLAN_CHANGED` | Engine/Professions | plan (synchronously, from `Decline`/`Restore` too) |
 | `CONTEXT_CHANGED` | Engine/Context; Engine/Directives (`"casts"`) | what: `"quests"`, `"spells"`, `"skills"`, `"bags"`, `"level"`, `"zone"`, `"position"`, `"taxi"` (also known flight nodes), `"bind"`, `"casts"` (a `.craft` cast counted) |
 | `GUIDE_LOADED` | Engine/Progress | guide |
-| `STEP_CHANGED` | Engine/Progress | step, index, reason (`"load"`, `"auto"`, `"manual"`) |
+| `STEP_CHANGED` | Engine/Progress | step, index, reason (`"load"`, `"auto"`, `"manual"`, `"place"`) |
+| `GUIDE_PLACED` | Engine/Progress | the result of `ns.Placement:Find`, reason (`"first"`, `"lost"`, `"refine"`, `"manual"`); before the evaluation that follows it |
 | `STICKY_CHANGED` | Engine/Progress | the steps with active sticky directives (`ns.Progress:Sticky()`), after STEP_CHANGED |
 | `DUNGEON_SKIP_OFFER` | Engine/Progress | chapterIndex, chapter (once per dungeon chapter, 5+ levels above it) |
 | `TRANSPORT_STATE` | Engine/Travel | stepId, state (`.fly`, `.boat`, `.zeppelin`; on changes, not for the initial `"waiting"`) |
@@ -58,6 +59,7 @@ guide = {
 	skipQuests = { [questID] = reason },
 	plan = plan, -- the plan the tracks were merged with
 	errors = { { source = sourceId, line = 12, message = "..." } }, -- line 0: the source as a whole
+	fingerprint = "4d09f3e9-5d3d7c6e-1234", -- Util.Checksum of the texts it was parsed from: see below
 }
 
 step = {
@@ -90,6 +92,11 @@ plan = { primary = { "skinning", "leatherworking" }, secondary = { "firstaid", "
 	declined = { [key] = true }, -- declined and not learned
 	learned = { [key] = true }, unknown = { key, ... } } -- unknown: suggestions without a profession module
 ```
+
+`guide.fingerprint` is `ns.Util.Checksum` (an arithmetic checksum, `"<8 hex>-<8 hex>-<length>"`) of the guide's own text and of every
+chapter it included, each with its id, in the order they were read. Step ids are positions in those texts, so it says which text a
+step id belongs to. It is the same for every player and every profession plan (gates and tracks are applied after the texts are read
+and profession tracks are separate texts), and any change to a text changes it, a comment too. Nil when the checksum could not be made.
 
 Parsed directive arguments (what `def.parse` returns; other modules read them):
 
@@ -134,7 +141,10 @@ else the client's `isPrimaryProfession`, else the slot.
   (`races`: the chain is for those races only, as Classic's druid chains differ per race; the lint skips it for other races),
   `directives = { [name] = directiveDef }` (registered into `ns.Directives` for every class, one by one, so one bad def
   does not stop the rest), `classTab`, `automation`, `onLevelUp(level)` (called by Registry at `PLAYER_LEVEL_UP` for the
-  player's class, after `ns.Player.level` is updated; nothing else calls it).
+  player's class, after `ns.Player.level` is updated; nothing else calls it), and `travelHints = { [uiMapID] = { to, back,
+  unsafe } }` (read by `tools/guide_travel.py`, never by the addon: the words the travel generator writes for a trip to or from that
+  zone in a guide of this class, in place of "find your own way", because the class has a way of its own there and the road is not one
+  to walk: a druid's Teleport: Moonglade; each word is a string or a list of lines; GUIDE-FORMAT, "Travel").
 
 ### Engine/Professions.lua — `ns.Professions`
 
@@ -184,7 +194,8 @@ else the client's `isPrimaryProfession`, else the slot.
     being called again on the same state, and a state restored from SavedVariables must keep working without it
     (Progress does not repeat it after a reload);
   - `kind` — `"quest"`, `"travel"`, `"profession"`, `"misc"` (icon hint; Progress reads `"quest"` for dungeon chapters);
-  - `pin` — the target kind the step's first `.goto` pin takes when the directive has no position of its own. Any kind but
+  - `pin` — the target kind the pin of the `.goto` before the directive takes when it has no position of its own (the first
+    `.goto` when none stands before it; Conditions `:Targets`). Any kind but
     `"objective"`, like `kind = "travel"`, makes the directive a *place directive* (Conditions "Step kinds");
   - `progress(args, context, state)` → extra lines under the directive's line (`.train`'s class quest line; `.complete` has
     none: the quest log shows the progress of a quest's objectives);
@@ -205,22 +216,36 @@ else the client's `isPrimaryProfession`, else the slot.
 
 - `:IsComplete(step, context, states)` → `complete, detail`: `detail[i]` is a boolean per completable
   `step.directives[i]`; `detail.manual = true` when only the player's `>` can complete it. A step with nothing but
-  sticky directives is complete at once.
+  sticky directives is complete at once. Directives about an `.optional` quest count only when nothing else does, and
+  then only those of the quests in the quest log: an **optional-only step** whose quests are none of them in the log is
+  complete at once (a group quest the player did not take never holds the route up; `detail[i]` stays false for its
+  directives), while a quest the player took decides it like any other (GUIDE-FORMAT "Optional-only steps"). That holds only
+  once the client has sent the quest log (`ns.Context:QuestLogLoaded()`): before that an empty log proves nothing, a quest the
+  player holds may be in the log that has not arrived, and every optional directive of the step counts as in any other step (it
+  waits for them, or for `>`). A context without the query counts as loaded.
+- `:OptionalOnly(step, context, states)` → `nil`, or for an optional-only step (its completable directives all belong
+  to `.optional` quests; a `.goto`, `.todo` or `.note` beside them do not count) `{ quests = { questID, ... } (each once,
+  in directive order), available = the quests neither in the quest log nor done, taken = one of them is in the log,
+  fulfilled = every one of its optional directives is satisfied }`. The step card, the Journal and `:IsComplete` read it.
 - `:Targets(step, context, states)` → targets of the step's directives (sticky ones marked `sticky = true`), without
   those of satisfied directives and without the **`.goto`s that have nothing left to ask**: a pick-up or hand-in step
   lists each NPC's `.goto` before that NPC's directives, so once every completable directive after a `.goto` (up to the
   next `.goto`) is satisfied, that place's pin goes (a marker shows where to go next, never where the player has been). A
   `.goto` with no such directive after it (a waypoint, a lone `.goto`, one beside notes) keeps its pin until the step is
-  done; sticky directives belong to no `.goto`. An NPC/object pin within a `.goto`'s radius merges into it, same-NPC pins
-  merge, a directive with a `pin` kind and no position marks the first `.goto` pin. A **doing step** has none: its
-  `.goto` and `.complete` are not asked for pins (a sticky place directive keeps its own).
+  done; sticky directives belong to no `.goto`. A directive with a `pin` kind and no position (no pack) marks **the
+  `.goto` before it** (the first `.goto` when none does), so a joined step (each NPC's `.goto` followed by its
+  directives) has one pin and one label for each NPC, naming that NPC's quests (a finished `.goto` has no pin: a claim of
+  a directive after it marks the first `.goto` pin left). An NPC/object pin within a `.goto`'s radius merges into it,
+  same-NPC pins merge. A **doing step** has none: its `.goto` and `.complete` are not asked for pins (a sticky place
+  directive keeps its own).
 - `:IsDoingStep(step)` → boolean: the step has a `.complete` and no place directive (any directive but `.goto` and
   `.complete` that is a travel directive, `def.kind == "travel"`, or whose def has a `pin` other than `"objective"`; only
   the step's own directives count, not its sticky ones). GUIDE-FORMAT "Step kinds" has the rule and the directives.
 - `:Describe(step, context, states)` → `lines, info`: the step's own lines (each followed by its progress lines), then
-  the sticky ones; `info[i] = { directive = index, name = the directive's name, sticky = true|nil, progress = true|nil,
-  done = bool }`. A `.complete` line is the quest (`Complete "<quest>"`) with no objective lines; `done` is whether the
-  quest is complete, for the step frame's done mark.
+  the sticky ones; `info[i] = { directive = index, name = the directive's name, quest = the directive's quest or nil,
+  sticky = true|nil, progress = true|nil, done = bool }`. A `.complete` line is the quest (`Complete "<quest>"`) with no
+  objective lines; `done` is whether the directive is satisfied (a quest accepted, complete, handed in), for the step
+  frame's done mark on `.accept`, `.complete` and `.turnin` lines; `quest` lets a pin's tooltip pick the lines of its quests.
 - `:StickyComplete(step, context, states)` → done, detail; `:Start(step, context, states)` → states (every `onStart`);
   `:Kind(step)` → icon-hint kind.
 - `states` is `ns.Progress:State(step.id)`: `states[i]` for `step.directives[i]`, `states.sticky[j]` for `step.sticky[j]`.
@@ -232,6 +257,10 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
 - `:QuestInLog(id)`, `:QuestCompleted(id)` (flagged, or turned in this session), `:QuestReady(id)` (in the log, not
   failed, objectives done or `IsComplete`), `:Objectives(id)` → `{ { text, type, finished, have, need } }` (nil when not
   in the log, `{}` without objectives), `:QuestLog()` → `{ [questID] = entry }`, `:QuestEntry(id)`;
+  `:QuestLogLoaded()` → true once the client has told us about the log (a `QUEST_LOG_UPDATE` arrived, or the walk of the log
+  found a quest; it stays true): before that an empty log may be a log not sent yet. The turn to loaded is a change
+  (`CONTEXT_CHANGED("quests")`) even when the log is empty, and `/signpost context` saves it (`questLogLoaded`).
+  VERIFY(beta): the client sends `QUEST_LOG_UPDATE` once the log is there, also for a character with an empty one.
 - `:SpellKnown(spellID)` (any of `IsPlayerSpell`, `C_SpellBook.IsSpellKnown`, `IsSpellKnown`); `:Skill(skillLineID)` →
   rank, max or nil (from `ns.Player.professions`); `:ItemCount(itemID)` (bags only); `:Level()`;
 - `:Position()` → `{ map, x, y, wx, wy, instance, taxi }` or nil (any field but `taxi` may be nil in instances and on
@@ -256,7 +285,10 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
 - `:RegisterBorders(list)` — `Guides/Travel/Borders.lua` calls it with `{ { name, from = { map[, x, y] }, to = { map[, x,
   y] }, side, todo }, ... }` (a point is `{ map }` until the crossing is learned; `todo` says why); `:Borders(mapA, mapB)`
   → copies, the pack's learned crossings (`travel.crossings`) replacing hand entries for the same pair of zones; one map
-  gives the crossings touching it, two the ones between them.
+  gives the crossings touching it, two the ones between them. An entry with `ride = { kind = "boat" | "zeppelin", label?,
+  wait?, waitText?, fromText?, toText?, verify? }` (and `oneWay = true`) is a ride, not a crossing: a boat, zeppelin or airship
+  between the two zones whose docks nobody has recorded (map IDs only). `:Borders()` leaves it out; `:Rides(mapA, mapB)` lists
+  copies the same way; a ride that is no boat or zeppelin is rejected (`borderErrors`).
 - `:TransportState(stepId)` → `"waiting"`, `"boarded"`, `"arrived"` (nil for a step without `.fly`/`.boat`/
   `.zeppelin`); fires `TRANSPORT_STATE`; `:TransitText(stepId)` → "Sailing to X..." while boarded.
 - Also: `FindTaxiNode(name, mapHint, context)`, `NearestTaxiNode(context)`, `NodeKnown(name, mapHint, context)`,
@@ -267,6 +299,169 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
 - Directive states are plain data (path `{ next }`, fly `{ since, phase, announced, flew }`, boat/zeppelin `{ since,
   phase, announced, away, dockAt, dockInstance, dockWorld, boardedAt }`, home `{ since, done }`); `GetTime()` stamps
   saved before a computer restart are dropped. Reads `travel.inns[npcID].n` (an inn's bind-location name) when present.
+
+### Engine/Placement.lua — `ns.Placement`
+
+Where in a guide a character is, from what it has already done (user, 2026-10-21: a level 32 character "decides to start using the
+add-on", and the guide should "slot in at the appropriate level and place"). A pure function over a parsed guide and a snapshot of the
+player; it reads no game state, so the specs and the simulation drive it directly. `ns.Progress` runs it (see "Placement" under
+`Engine/Progress.lua`).
+
+- `:Find(guide, snapshot, opts?)` → result, or nil for a guide without steps. `snapshot = { level, done(questID), active(questID),
+  ready(questID)? }`: `done` is flagged completed (or turned in), `active` in the quest log, `ready` in the log with every objective
+  done; a missing function knows nothing. `opts` overrides the constants (`openWeight`, `doneWeight`, `levelWeight`, `bias`, `tolBase`,
+  `tolSpan`, `gateLow`, `gateHigh`, and `curve` for the levels) for the simulation. The result: `index` (the step the pointer goes on, 1 .. #steps), `split` (1 .. #steps + 1: everything before it is behind
+  the character), `mode`, `confidence`, `sharpness`, `level`, `expected` (the guide's expected level at the split), `top` (the guide's
+  top level), `done`, `active`, `total` (distinct quests of the guide), `skipped` (steps before the pointer that are not done), `ahead`
+  (steps at or after it that are done) and `labels` (one per step).
+- `:Labels(guide, snapshot)` → labels, stats; `:Levels(guide, curve?)` → lv, top, span; `:Fit(labels, stats, lv, top, span, snapshot,
+  opts)` → result: the parts of `:Find`, apart so that the simulation works out the labels once and tries many constants.
+  `:ExperienceAt(level)` and `:LevelAt(experience)` are the experience table and its inverse (below).
+
+**Labels.** A step is *done* when it has quest directives (`.accept`, `.turnin`, `.complete`) and the snapshot satisfies all of them by
+the rules `ns.Conditions` uses (`.accept`: in the log or done; `.turnin`: done; `.complete`: done, or ready to hand in), *open* when it
+has some and not all, *neutral* when it has none (a trip, a training, `.level`, `.todo`, a profession step: no evidence either way). A
+quest the step marks `.optional` counts only when nothing else in the step does, and then only as evidence of progress.
+
+**Expected levels.** `lv[i]`, i = 1 .. #steps + 1: each chapter's `levels` interpolated over its steps (its first level at its first
+step, its last at the step after its last), never below an earlier step's, a `.level N` gate seen so far, or the top level of a chapter
+already left. A dungeon chapter's levels say where it is on offer, not where the route is, so they add nothing. `false` where the guide
+says nothing; `top` is the higher of `lv[#steps + 1]` and the guide's declared top level; `span[i]` is the number of levels the chapter
+of step *i* spans (0 where it has no line).
+
+The line through a chapter is straight in **experience**, not in level (`CURVE "xp"`). The step at the fraction *f* of a chapter is
+where the experience is `XP(low) + f × (XP(high) − XP(low))`, turned back into a level; `XP` is `XP_TO_NEXT` summed, Classic's table,
+which `tools/sim_params.json` assumes (`VERIFY(launch)`: Forever's; only its shape matters, and a different table moves the lines a
+fraction of a level). The reason is that the quests of a chapter give about the same experience each and the first levels cost little, so
+in a chapter that spans many levels (Mulgore, Durotar and the Skyborne island run from level 1 to 10 or 15) a character has most of its
+levels early, which a line straight in level cannot show. Measured on the three shipped guides against the levels `tools/guide_sim.py`
+walks, as the real level minus the line's (2026-10-21, the number of steps in brackets):
+
+| | straight in level | straight in experience |
+|---|---|---|
+| chapters of 0 to 1 levels (424 steps) | mean +0.48, worst 1.00 | the same (the line is the same) |
+| chapters of 2 to 3 levels (254) | mean +0.34, 90th percentile of the error 0.76 | mean +0.32, 0.74 |
+| chapters of 4 to 8 levels (44) | mean +0.19, 0.33 | mean +0.08, 0.23 |
+| chapters of 9 or more levels (169) | mean +1.68, 90th percentile of the error 3.18, worst 4.07 | mean −0.12, 1.10, worst 1.99 |
+
+The constant +0.48 in the short chapters is `BIAS` (a chapter's levels are whole levels). What remains in the long chapters is that the
+quests are not equal: they give more as the character levels, so the line is optimistic at the start of such a chapter (by up to
+about 2 levels in the first steps of the Skyborne island) and a little pessimistic after (the 90th percentile of the real level
+minus the line's is +0.74).
+
+**The fit.** The split k minimises `OPEN_WEIGHT × (open steps before k) + DONE_WEIGHT × (done steps at or after k) + LEVEL_WEIGHT ×
+max(0, distance(lv[k] + BIAS, [level, level + 1)) − tolerance(k))` (prefix sums, O(n); ties go to the earliest k, so a trip between the
+last quest done and the next one open is the step shown). It is a changepoint fit, robust to a few skipped quests and quests done early:
+a step skipped costs `OPEN_WEIGHT`, a step done early `DONE_WEIGHT`, a level the guide does not expect `LEVEL_WEIGHT` per level (less
+the tolerance, below). The pointer, `index`, is
+the split moved past the steps that are done already (the engine would pass them at once, and the chat line names the step the player
+sees). The *mode* says what the placement went by: `none` (no quest of the guide done or in the log and the level 2 or below, unknown, or
+the guide says nothing about levels: the first step), `history` (some quest done or in the log), `level` (none, but a level above 2: a
+guess from the level alone, and the quest steps before the pointer are marked skipped) and `end` (the split is #steps + 1: the character
+has done the guide or is above its top level; the pointer goes on the last step). The *confidence* comes from the boundary: of the last 6
+steps with a quest before the split the share that are done, and of the first 6 after it the share that are open, averaged
+(`sharpness`): `high` from 0.85, `medium` from 0.7, else `low`; `level` is always `low`, `none` always `high`.
+
+**The tolerance.** The line is good to a fraction of a level in a short chapter and to a level or more in a long one (the table above),
+and a character who has handed in the quests one after the other should not be pulled to where the line says its level belongs. So in
+`history` mode the first levels of difference are free: `tolerance(k) = (TOL_BASE + TOL_SPAN × span(k)) × gate(share(k))`, where
+`span(k)` is the number of levels the chapter of step *k* spans, `share(k)` is `done / (done + open)` among the steps before *k* (0
+when there are none: nothing shows the character playing the guide up to there) and `gate(s)` rises from 0 at `GATE_LOW` to 1 at
+`GATE_HIGH`. The gate is what keeps the tolerance from helping the wrong characters: one who scattered over the guide or stopped
+following it looks like a follower only up to where its quests stop, and its level is exactly what it has to go by; a history that is
+half gaps has no tolerance at all. With no history (`level` mode) there is none either. Before it, with a line straight in level and no
+tolerance, a character who had followed the Skyborne guide to the step and nothing else was put up to 19 steps from its place (90th
+percentile 10 quest steps, and 0.7 percent three or more levels off) against the simulator's levels, and the Troll and Tauren guides
+1 quest step at the 90th percentile: the line is a level and more off inside the island chapter (levels 1 to 15), and the level term
+outweighed a history that had no gap in it.
+
+| Constant | Value | |
+|---|---|---|
+| `OPEN_WEIGHT` | 0.25 | a step not done before the pointer; players skip quests, in runs, and 0.5 or more drags the pointer back over them. 0 when nothing is done at all (every quest step is open then only for want of evidence) |
+| `DONE_WEIGHT` | 1 | a step done at or after the pointer: it says the pointer is late |
+| `LEVEL_WEIGHT` | 6 | one level between the character and the guide's expected level: a level far from the history's is not put there on the strength of a few quests, and a clean history wins over a level off by one |
+| `BIAS` | 0.5 | a chapter's levels are whole levels, so the line runs about half a level under the level a character has at that step (0.48 in the short chapters, against the simulator's levels) |
+| `CURVE` | `"xp"` | the line through a chapter's levels is straight in experience (above); `"linear"`, straight in level, is the first version, kept for the simulation to compare with |
+| `TOL_BASE`, `TOL_SPAN` | 0.3, 0.05 | the levels of difference the level term lets pass while the history shows the character playing the guide: 0.3 and 0.05 more for each level the chapter spans (0.75 for Mulgore's or Durotar's 9, 1.0 for the island's 14), about the size of the line's own error there |
+| `GATE_LOW`, `GATE_HIGH` | 0.5, 0.8 | the tolerance is whole when at least 0.8 of the steps before the pointer are done, nothing at 0.5 or less, and rises between |
+| `NO_EVIDENCE_LEVEL` | 2 | up to this level a character with nothing done is at the first step |
+| `SHARP_WINDOW`, `SHARP_HIGH`, `SHARP_MEDIUM` | 6, 0.85, 0.7 | the confidence |
+
+**How the constants were chosen, and how well it works.** By simulation over the shipped guides, not by taste:
+`tests/helpers/placement_sim.lua` parses each guide with the real parser, builds a character who followed it to step *t* (the quests of
+the steps before *t* handed in, those accepted before and handed in after in the log, the level the guide has at *t*), spoils it the way
+real play does (10 to 30 percent of the quests skipped, also in runs of six; four quests done early; the level off by one or two; the
+quest log empty; no history at all; and characters who did not follow the guide: half its quests done in no order, or who stopped
+following it part of the way), places it with `:Fit` and measures the error in steps, in quest steps (a trip between two quests cannot be
+told from either) and in levels. The true level at each step comes from four models (`--truth`): the placement's own line (`model`); the
+same line with a smooth bump inside every chapter, alternately ahead of it and behind (`warp`, the default and the one
+`tests/placement_spec.lua` uses: its size, 0.45 levels plus 0.07 per level the chapter spans, follows the line's own error against the
+simulator's levels at the 90th percentile, 0.5 in the short chapters and 1.1 in the long ones; 1.43 in the island); the older stress
+that bends each chapter's pace
+(`warp-linear`, wrong by up to 17 percent of a chapter's span and in the direction the real levels never run); and the levels
+`tools/guide_sim.py` walks (`sim`: quest experience from the data pack, the model that found `BIAS`, which the spec cannot use because the
+pack is private). `tools/placement_report.lua` prints the tables, compares sets of constants (`--set`, `--tol`, `--gate`, `--curve`) and
+searches them (`--tune`), and can tell the placement that every chapter header is wider than it is (`--widen -1,1`: `#chapter 5-8` reads
+`4-9`, the guide of a coarser planner); `python tools/placement_report.py` runs it all in one command and prints the tables below. The
+spec holds the numbers to bounds with fixed seeds: for the characters who followed the guide the 90th percentile of the error, for the
+others the share three or more levels off. Re-run the tool and paste its tables here after a guide is regenerated.
+
+What the level term needed (2026-10-21, after the Skyborne guide, whose island chapter spans levels 1 to 15, placed a character who had
+followed it to the step up to 10 quest steps away; the Troll and Tauren guides, whose longest chapters span 9, were off by 1). Two
+things were wrong, and either one alone leaves the bounds broken: the line was straight in level (above), and the level term outweighed
+a clean history whenever the line was a level off. The experience line alone brings the worst follower of the three guides to 7 quest
+steps at the 90th percentile under `warp` (16 steps at worst); the tolerance with its gate brings it to 0, and the worst run to 4. A
+tolerance without a gate (the same dead band for every character) fixes the followers just as well but lets the level do less for the
+others: against the simulator's levels 6.2 percent of the characters who stopped following the Skyborne guide at 40 percent of the way
+ended three or more levels off, against 0.7 percent with the gate, and 3.8 percent of those who did a sixth of its quests, against
+none. Tried and not kept: a band around the character's level from its experience fraction; limiting the split to a window around
+the level; `BIAS` 0.4 or 0.3 (they bring the no-history tail of the island from 1.6 percent to 0.7, but only because the line is
+optimistic at the island's start, which a different line, not a different half level, would answer; `BIAS` stays the 0.48 that was
+measured in the short chapters).
+
+Quest steps from the true place, median / 90th percentile (warp truth, seed 1, every second step, 3 draws each, 2026-10-21, the
+constants above, the three guides as merged that day):
+
+| The character | Tauren Druid (HARDCORE) | Troll Hunter | Skyborne Druid (HARDCORE) |
+|---|---|---|---|
+| followed the guide to the step, nothing else | 0 / 0 | 0 / 0 | 0 / 0 |
+| also skipped a fifth of the guide's quests | 0 / 3 | 0 / 3 | 0 / 5 |
+| skipped 30 percent, in runs of about six | 0 / 6 | 0 / 6 | 0 / 8 |
+| also did four quests that come later | 0 / 4 | 0 / 1 | 0 / 3 |
+| its level is off by up to two | 0 / 7 | 0 / 8 | 0 / 11 |
+| its quest log is empty | 1 / 3 | 1 / 3 | 1 / 3 |
+| skipped a fifth in runs, did some early, level off by one, log half the time empty | 2 / 8 | 1 / 8 | 2 / 13 |
+| stopped following the guide at 40 percent of the way and levelled elsewhere | 9 / 31 | 6 / 14 | 9 / 23 |
+| did half the quests of the guide that its level allows, in no order | 11 / 26 | 7 / 19 | 10 / 26 |
+| no quest history at all, only the level (level off by one) | 9 / 22 | 7 / 18 | 10 / 23 |
+
+Runs ending three or more levels from the true level: none, except 0.2 percent of the character with all the noise together (Troll) and
+of the one who did half the quests in no order (Tauren). Against the levels the simulator walks (`--truth sim`; the same table, which
+anyone with the pack can reproduce with `python tools/placement_report.py`): the followers 0 / 0, 0 / 3 with a fifth skipped, 1 or 2 / 8
+with all the noise, and 7 to 10 / 18 to 23 with no history, in all three guides; three or more levels off in no run of the Troll and
+Tauren guides except 0.2 percent of the Troll's no-history runs, and in the Skyborne guide 1.9 percent of the no-history runs, 1.3
+of the characters who did half the quests, 0.6 of those who stopped following it, none of the others. Those are the island's first
+steps, where the line is up to 2 levels too optimistic (above).
+
+What the bounds in the spec are, and what they were measured at (large samples: 10 seeds, every step of every guide, 3 draws each,
+about 9,000 runs per guide and scenario, under `warp`): the character with all the noise together is three or more levels off in 0.010
+percent of the Tauren guide's runs, 0.012 percent of the Troll's and none of the Skyborne's. The spec's bound is 0.3 percent, drawn
+over every step twice: the other checks draw one step in five (about 60 runs), which cannot show a rate that low (one run in 60 is
+1.6 percent, and with the old bound of none at all the spec passed for 38 of 40 other seeds). With no history at all a character was
+never three levels off: none in 27,000 runs, the worst 2.76 levels. With the headers one level too wide at each end the followers
+stay within the same bounds (the spec checks that for all three guides; the 90th percentile in quest steps is 0 for the exact follower,
+4 with a fifth skipped, 9 with all the noise together), while the characters the level has to place suffer as the headers lie: 0 to 2.7 percent of
+the no-history runs and 0.1 to 0.3 percent of the noisy ones are three or more levels off (against the simulator's levels, 8.0 and 1.5
+percent in the worst guide). Headers two levels too wide at each end, chapters four levels wider than they are, are beyond what a
+tolerance of this size can take: the clean follower is then 2 to 3 quest steps off at the 90th percentile (the spec's bound is 2), and
+14 to 20 percent of the no-history characters are three or more levels off, because the level itself is wrong.
+
+In words: with a real history the pointer is within a handful of quest steps (the median is 0 to 2, the 90th percentile 0 to 13
+depending on the noise); with none it is in the character's level or the next one (the 90th percentile is about two levels), which is
+7 to 10 quest steps at the median in these guides; it puts a character in a chapter three levels from its own only when the guide's
+own chapter levels are wrong, or in the first steps of a chapter that spans most of the game's first levels. Limits: the experience
+table is Classic's (`VERIFY(launch)`); the line has no notion of the quests' own sizes (the island's start); the player's position is
+not used (a possible addition for the no-history case); a quest the character abandoned looks like a quest never taken.
 
 ### Engine/Progress.lua — `ns.Progress` (and the engine's start-up)
 
@@ -289,54 +484,155 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
   to skip at 5+ levels above it (`DUNGEON_SKIP_OFFER`). Also `:IsDone(stepId)`, `:IsSkipped(stepId)`, `:Describe(step)`.
 - Saves `SignpostCharDB.progress[guideId] = { current = stepId, skipped = { [stepId] = true }, done = { [stepId] = true },
   sticky = { [stepId] = { [directive line] = active } }, states = { [stepId] = { started, d = { [line] = state } } },
-  offered = { [first step id of a dungeon chapter] = true } }` (states: the current step and steps with active stickies).
-- Fires `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED`, `DUNGEON_SKIP_OFFER`. Registers `/signpost next|back|skip
-  [chapter]|step [n|id]`. With `SignpostDB.debug.chat` it prints every step change (the Phase 2 acceptance walk).
+  offered = { [first step id of a dungeon chapter] = true }, placed = { step, index, reason, mode, time },
+  fingerprint = "..." }` (states: the current step and steps with active stickies; `placed`: a placement ran, see below;
+  `fingerprint`: the `guide.fingerprint` of the text the record was made for, stamped when the guide loads).
+- **The record belongs to one text of the guide.** A step id is a position in the guide's text, and a regenerated chapter keeps its
+  ids while its steps change, so a saved place is trusted only for the text it was made for. When a guide loads (not when it is parsed
+  again for a profession plan) for a character that is not new to it, `SetGuide` compares `record.fingerprint` with `guide.fingerprint`;
+  when they differ, or the record has none (an older version wrote none), the record is dropped (`Progress:Forget`: the marks, the
+  stickies, the saved states, the offers and the place, all keyed by step id) and the character is placed from its quest history as for a
+  lost place (`reason "lost"`, with its own chat line: "Your saved place may not match this version of the guide, so it is found again
+  from your quest history."). In plain words: after a guide update the add-on finds your place again from your quest history. The new
+  fingerprint is stored at once, so a record for the same text keeps its place exactly as before. A guide without a fingerprint is
+  trusted as before (nothing to compare).
+- **Placement** (`Progress:Place(opts)`; user, 2026-10-21; the algorithm and its numbers are under `Engine/Placement.lua`): puts the
+  pointer and the marks where `ns.Placement:Find` says, from the live `ns.Context` (`Level`, `QuestCompleted`, `QuestInLog`,
+  `QuestReady`; a stand-in without them knows nothing, which places no one). It runs by itself in three cases, and on demand:
+  - *First use* (`reason "first"`): `SetGuide` for a guide the character has never been in (`:IsFresh()`: no step done or skipped, no
+    `placed`, the saved step absent or the first one; a different guide than the one loaded, never a re-parse of the same one after
+    a profession plan change) places before the first evaluation, so the load is one `STEP_CHANGED("load")` on the right step. Above
+    level 2 it first waits for the quest history, the completed-quest list the client fills a moment after login (`historyReady`: the
+    list is loaded and not empty; a quest in the quest log does not count as the list, because the log is read separately and a
+    placement by the log alone marks everything the character did before it as skipped; VERIFY(beta), FOREVER-API-NOTES "Open
+    probes"). It places on the first `CONTEXT_CHANGED("quests")` that finds the list, or after 5 s by what there is (the quest log
+    and the level). A placement made without the list is made once more, with `reason "refine"`, when it turns up, if the pointer is
+    still on the step the first one ended on. A move by the player's hand (`>`, `<`, skip, a jump, a dungeon chapter's skip:
+    `Progress:PlayerMoved`) ends either wait for good: a placement made later would move the pointer under the player and turn the
+    steps they marked done into skipped ones.
+  - *A lost place* (`reason "lost"`): the record has progress that matches nothing in the guide (an install changed the step ids;
+    `Resume`'s second result), or it is for another text of the guide (the fingerprint above: the second chat line, and the whole
+    record is dropped). The character is placed instead of sent to step 1, after a chat line that the guide was updated; the
+    old ids are dropped from the record. A record where some marks still match and whose fingerprint is the guide's keeps the old rule
+    (after the furthest one).
+  - *On demand* (`reason "manual"`): the Journal's "Find my place" and `/signpost place`, any time. It is a manual move: `<` right
+    afterwards takes it back (the pointer, the marks and the furthest step as they were); any other move drops the undo.
+  - *Applying*: the steps before the pointer are marked done (their quests are, or they have none) or skipped (their quests are not
+    done; a skip the player made by hand on a step with no quest of its own stays), the pointer's step and every step after it are
+    cleared. The flags are set directly and never through `Skip`, which would decline a profession; the sticky directives of the
+    steps marked done are started (`StartStep`, as the walk through them would have: the goal, a skill or a level to reach, is going
+    beside the route unless it is met already, so a character placed at a step has the goals of one that walked to it), those of
+    steps skipped are dismissed. Then `GUIDE_PLACED(result, reason)`, the evaluation (`STEP_CHANGED("place")`;
+    inside `SetGuide` it is the load's) and `Settle`: the chat lines, which name the step the engine settled on (it passes steps that are
+    done already), the undo, and the second look.
+  - *The chat lines* (`ns.L`): "Your place: step 143/368 (The Barrens). 62 of this guide's 185 quests are done, 3 are in your quest
+    log, and you are level 17.", then "N earlier steps you have not done are marked skipped." with "Wrong? Click a step in the Journal,
+    or type /signpost place to try again."; for a placement by the level alone "None of this guide's quests are done yet, so this is a
+    guess from your level (17)." with "Not sure about this one: ..." (also for a low `confidence`); at the end "This guide ends at level
+    30 and you are level 32: your place is its last step" or "All of this guide's quests are done"; nothing at first use for a
+    character with nothing to go on, "nothing to go on yet" when asked.
+- `:Reset()` and `/signpost reset progress`: forgets this character's record of the guide and loads it again as for a new
+  character (so it is placed again). Typed twice, at most 30 s apart: the first time it says what it will do.
+- Fires `GUIDE_LOADED`, `GUIDE_PLACED`, `STEP_CHANGED`, `STICKY_CHANGED`, `DUNGEON_SKIP_OFFER`. Registers `/signpost next|back|skip
+  [chapter]|step [n|id]|place|reset progress`: `Core/Slash.lua` looks a two-word command up before its first word, so `/signpost
+  reset` stays the step frame's. With `SignpostDB.debug.chat` it prints every step change (the Phase 2 acceptance walk).
 
 ### Engine/Tracking.lua — `ns.Tracking`
 
 The quest log's tracked quests follow the current step (user, 2026-10-20): the quest tracker and the minimap then show the
 quests of the step, and the tracker shows their progress (which is why the step frame lists the quests and leaves their
-objectives to the quest log).
+objectives to the quest log). One state machine, written out in the comment at the top of the module (states, the events that
+move between them, the saved fields); `Tracking.state.mode` is its state for the step in hand.
 
-- **When it acts:** `Tracking:Active()`: the setting is on (`Tracking:Enabled()`), a guide is active (`ns.Progress:Guide()`),
-  the step card is shown and the client has not refused a step's quests this session (`Tracking.failed`). The card's flag is
-  the saved one, `SignpostDB.stepFrame.shown` (`/signpost hide`, the Journal's "Show the step card"), not the hides the card
-  does by itself in combat, when dead or while the Journal is open. Otherwise it does nothing at all: no client call, not even
-  for a change of the quest log. Showing the card again takes effect at the next step or change of the quest log's quests.
-- **A step becomes current** (`STEP_CHANGED` for another step id; `Tracking:SetEnabled(true)` forces it): the quests the step
-  is about are tracked first, those of its `.complete` and `.turnin` directives (`Tracking.NamedQuests(step)`: in directive
-  order, each once) that are in the quest log (`ns.Context:QuestInLog`, which also finds a quest under a collapsed header).
-  Only when the client tracks at least one of them are all the other tracked quests untracked, and the step's quests a full
-  tracker refused are added again. If none got tracked (AddQuestWatch raised or refused it: a full tracker looks the same) it
-  changes nothing else, records one entry in the error log ("Signpost: quest tracking stopped: ...", `ns.Errors`) and stops
-  until the setting is toggled either way. A step that names no quest in the log (a pick-up, a trip) changes nothing and makes
-  no client call. The first successful application for the step also gives the first of its quests that is not complete to
-  `C_SuperTrack.SetSuperTrackedQuestID`, unless `GetSuperTrackedQuestID` already returns one of them; later applications for
-  the same step do not move the focus.
+- **States:** `idle` (nothing is managed: no step yet, the module could not act when the step began, the client has no watch
+  functions, or the tracker was just given back), `following` (the tracker is set to the step's quests, and set again when the
+  quest log's set of quests changes), `player` (backed off for the player: they tracked or untracked a quest by hand during the
+  step; `Tracking.state.manual` is true), `client` (backed off for the client: it tracked none of the step's quests) and
+  `restoring` (transient, while the player's earlier tracking is given back).
+- **When it acts:** `Tracking:Active()`, which is `Tracking:Paused() == nil`: the setting is on (`Tracking:Enabled()`), a guide is
+  active (`ns.Progress:Guide()`), the step card is shown and `/signpost tracking test` is not running (`Paused()` says which
+  of `"off"`, `"noguide"`, `"hidden"`, `"testing"` stops it). The card's flag is the saved one, `SignpostDB.stepFrame.shown`
+  (`/signpost hide`, the Journal's "Show the step card"), not the hides the card does by itself in combat, when dead or while the
+  Journal is open (so opening or closing the Journal changes nothing here). Otherwise it does nothing at all: no client call, not
+  even for a change of the quest log. When the card's flag turns on again (`StepFrame:SetShown(true)`, `StepFrame:Reset()`; the
+  module wraps those two methods at `DB_READY` and watches the flag, so the card's file does not know about it)
+  `Tracking:OnCardShown()` sets the tracking for the current step as a new start. Hiding the card gives nothing back: it pauses
+  the module.
+- **A step becomes current** (`STEP_CHANGED` for another step id; `Tracking:SetEnabled(true)` and the card shown again force it):
+  a new start. The quests the step is about are tracked first, those of its `.complete` and `.turnin` directives
+  (`Tracking.NamedQuests(step)`: in directive order, each once) that are in the quest log (`ns.Context:QuestInLog`, which also
+  finds a quest under a collapsed header). Only when the client tracks at least one of them are all the other tracked quests
+  untracked, and the step's quests a full tracker refused are added again. If none got tracked the module backs off for the
+  client (below). A step that names no quest in the log (a pick-up, a trip) changes nothing and makes no client call. The first
+  successful application for the step also gives the first of its quests that is not complete to
+  `C_SuperTrack.SetSuperTrackedQuestID`, unless `GetSuperTrackedQuestID` already returns one of them; later applications for the
+  same step do not move the focus.
 - **The same step announced again** (the engine parsed the guide again: `PROFESSION_PLAN_CHANGED`, `GUIDE_SELECTED`) is not a
-  new start: when the module stayed hands off it still does, otherwise it sets the tracking again without the focus. A reload
-  or login is a new session and a new start.
+  new start: when the module backed off for the player it still does, otherwise it sets the tracking again without the focus. A
+  reload or login is a new start, except for the saved fact below.
 - **The quest log changes while the step is current** (`CONTEXT_CHANGED("quests")`): only when the *set* of quests changed (a
   quest accepted or removed; progress inside a quest, or a header collapsed or expanded, changes nothing and costs no call)
-  the tracking is set again for the step, without the focus. Unless one of the quests the log already had has been tracked or
-  untracked since the module last set it (by the player, or by the game tracking a quest as its progress changes: the module
-  cannot tell them apart): then `Tracking.state.manual` is true and the module leaves the tracking alone until the next step,
-  even if the change is put back.
-- The player's earlier tracking is not remembered and not given back when the step ends or the setting is turned off (v1).
+  the tracking is set again for the step, without the focus, unless the player has changed the tracker meanwhile (next item).
+  A quest that arrived is not compared: it is untracked unless the step is about it.
+- **Who changed the tracker.** The module reads the tracker back after every write and keeps that as `left` (`state.left`; saved
+  as `SignpostCharDB.tracking.left`). A quest the log already had whose tracked state differs from `left` was changed by
+  somebody else, and the game is told from the player by (1) the watch type, `C_QuestLog.GetQuestWatchType` against
+  `Enum.QuestWatchType` (Automatic is the game's own tracking, as when it tracks a quest as its progress changes; Manual is
+  not; a watch of the game's that the step is about is left standing, and the game dropping it is not the player's doing), (2)
+  when the change is seen as it happens (the event `QUEST_WATCH_LIST_CHANGED`, where the client has it; a bunch of events is
+  looked at once, 0.3 s after the first), a `QUEST_ACCEPTED` or `QUEST_WATCH_UPDATE` within `GAME_WINDOW` (2 s) before it is the
+  game's own tracking (and is then taken into `left`, so it is not judged again), (3) otherwise the player's: the module backs
+  off, `Tracking.state.mode` is `player`, and `SignpostCharDB.tracking.handsOff` holds the step's id. Without watch types and
+  without that event a change by the game still looks like the player's (documented limit: it fails safe, the player is never
+  fought). The check runs at the next change of the quest log's set of quests, at the watch list event, and at `PLAYER_LOGOUT`
+  (a reload is a logout too, so a change made just before a reload is remembered).
+- **Backed off for the player** lasts until the next step (a new start), until the player toggles the setting, or until the step
+  card is shown again. The saved fact is honoured only by the first start after a reload and only for the step it names; any
+  other start forgets it.
+- **Backed off for the client** (`Tracking.state.mode == "client"`): the tracker was left as it was, one entry goes to the error
+  log for the streak ("Signpost: quest tracking backed off: ...", `ns.Errors`), and the module tries again: on a timer 5, 15, 45,
+  120 and 300 s after the 1st to 5th failure in a row, and at a step, a change of the quest log's quests or a watch list event
+  that comes after the back-off, never earlier (`BACKOFF`, `due()`: a burst of steps or quest log changes costs one try). After
+  the fifth failure there is no more timer and the back-off stays 300 s. A success ends the streak; toggling the setting or the
+  card shown again start over. A full tracker is recovered this way once the player frees a slot; the module does not free one
+  itself (it could lose a quest of the player's).
+- **Giving back** (`Tracking:Release()`): the first time the module is about to change the tracker it remembers what the player
+  had tracked (`SignpostCharDB.tracking.before`, in tracker order, quests in the log only; once, until it is given back). When
+  the setting is turned off (also while the card is hidden: it is the player's own act) or a guide choice leaves no guide
+  active (`GUIDE_SELECTED`), it puts that back, once: what the module added and the player did not untrack since is untracked,
+  what it removed and the player did not track again since is tracked again (quests the player changed after the module's last
+  write are theirs, as is what the player tracked by hand), only quests still in the log count, and when none of the earlier
+  tracking is left the tracker stays as it is rather than ending up empty. It says what it did in chat. A guide that reaches its
+  last step keeps that step current: nothing ends and nothing is given back.
 - `Tracking:Enabled()`, `Tracking:SetEnabled(on)`: `SignpostDB.settings.trackStepQuests` holds only the player's own choice
   (Journal > Settings > Quest tracker); until they choose, `Tracking.DEFAULT_ENABLED` (true, the user's choice) is the answer
-  and the one place the default lives.
-- Client API, all through `Util.Call` so a missing or failing function costs this feature and never the step engine.
-  Retail shape: `C_QuestLog.GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`, `GetQuestWatchType(questID)` (any value
-  but nil and false is tracked, `Enum.QuestWatchType.Automatic` (0) too; the watch list answers when it is missing),
+  and the one place the default lives. Either way it is a new start (back-off and the saved hands-off fact forgotten); turned
+  on it takes effect for the current step at once, turned off it gives the earlier tracking back.
+- **`/signpost tracking`** prints the setting, the state, the step, what the module last set, what it keeps to give back, the
+  back-off, the quests tracked now (with the client's watch type) and which watch functions the client has.
+  **`/signpost tracking test`** (out of combat only) watches one quest of the log and unwatches it again (the quest tracked
+  last when every quest is tracked: it is taken off and put back, so the order stays), reads the tracker back after each call and
+  once more 1.5 s later, notes the watch events that arrive meanwhile, puts the tracker back once more if it is not as it was,
+  says in chat what it did, and records it in `SignpostDB.probe.tracking` (shape, which functions exist, `Enum.QuestWatchType`,
+  each call's return or error with the readback, counts before and after, events, `restored`, `limits`). The module is paused
+  while it runs and picks up afterwards (a step or the setting changed meanwhile is applied then). The module also keeps the
+  first twelve observations of the game's own tracking in `SignpostDB.probe.trackingSeen` (what the client says about a quest
+  that arrived and how a change was told). `/signpost probe` keeps both (`Probe.keep`).
+- Client API, all through `Util.Call` (pcall in the test) so a missing or failing function costs this feature and never the
+  step engine. Retail shape: `C_QuestLog.GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`, `GetQuestWatchType(questID)`
+  (any value but nil and false is tracked, `Enum.QuestWatchType.Automatic` (0) too; the watch list answers when it is missing),
   `AddQuestWatch(questID, Enum.QuestWatchType.Manual)`, `RemoveQuestWatch(questID)`; `C_SuperTrack.GetSuperTrackedQuestID()`
   and `SetSuperTrackedQuestID(questID)`. Where `C_QuestLog` lacks `AddQuestWatch` or `RemoveQuestWatch`, the Classic shape on
   quest log numbers: `AddQuestWatch(number)`, `RemoveQuestWatch(number)`, `IsQuestWatched(number)`, `GetNumQuestWatches()`,
   `GetQuestIndexForWatch(i)` (a quest's number from `C_QuestLog.GetLogIndexForQuestID`, else a walk of `C_QuestLog.GetInfo`;
-  the quest at a number from `GetQuestIDForLogIndex`, else `GetInfo`). Unverified on Forever (API notes, "Open probes";
-  `/signpost probe` lists which names exist). `QUEST_WATCH_LIST_CHANGED` is probed but not used: the watch list is compared when
-  it matters.
+  the quest at a number from `GetQuestIDForLogIndex`, else `GetInfo`). Unverified on Forever (API notes, "Open probes").
+  `QUEST_WATCH_LIST_CHANGED`, `QUEST_ACCEPTED` and `QUEST_WATCH_UPDATE` are used as described; the module works without the
+  first.
+- **`Core/Probe.lua`'s quest log capacity** (`SignpostDB.probe.questLogMax = { canAccept, canAcceptKind, legacyGlobal, entries,
+  quests, numQuests }`): `C_QuestLog.GetMaxNumQuestsCanAccept()`, the Classic global `MAX_QUESTLOG_QUESTS`, the entries of the
+  quest log (headers too), the quests among them counted by walking the log, and the client's own count (the second result of
+  `GetNumQuestLogEntries`). The quest log holds 40 quests on Forever: confirmed by the user in game, 2026-10-21; the probe records
+  the client's own answer as the evidence and a cross-check. Nothing in the engine reads it yet.
 
 ### Core/Learn.lua — `ns.Learn`
 
@@ -352,14 +648,87 @@ the record seen longest ago goes). `:Get(table, key)`, `:Counts()`, `:Count(name
 positions override the other layers, quest/vendor/trainer links are unioned with them, vendor items only for items the
 route touches.
 
+**Profession part (`Core/LearnProfessions.lua`, `Learn.Professions`; built on the mock, none of it seen in the client).**
+Same opt-in as the rest (`Learn:Recording()`: the player's yes on a release build, dev builds always), same guards (a
+player or a pet is never an NPC, secret values are skipped), read-only (no window is clicked or filtered), nothing leaves
+the SavedVariables file. No player name, no chat and none of the player's gold is read; `known` and the skill value are
+the only things about the character, and the importer drops `known`.
+- `trainers[npcID].services = { { id = spellID, item = itemID, n = name, r = rank text, cost = copper, lvl = required level,
+  need = required skill, line = skill line ID, known = true }, ... }`, filed at `TRAINER_SHOW` (always) and
+  `TRAINER_UPDATE` (not within a second of a read that found services). A service is one entry by spell ID, else by name and
+  rank; the latest reading of a service replaces the older one, and a service the window does not list stays (the window's
+  own filters hide some). Headers and rows that told nothing beyond an ID are skipped (`trainers[npcID].spells` keeps the
+  IDs). Class trainers are recorded too (`line` absent). At most `LIMITS.servicesPerTrainer` (150) per trainer.
+- `recipes[spellID] = { n, line = skill line ID, item = what it makes, reagents = { [itemID] = count }, obs = { { skill,
+  cat }, ... }, t }`, filed from the trade skill window one `SCAN_DELAY` (0.5 s) after the last of `TRADE_SKILL_SHOW`,
+  `TRADE_SKILL_LIST_UPDATE`, `TRADE_SKILL_DATA_SOURCE_CHANGED`, `TRADE_SKILL_UPDATE`. `cat` is the difficulty the game showed
+  at the character's skill (`optimal` orange, `medium` yellow, `easy` green, `trivial` grey; only for recipes the character
+  knows), `skill` the character's skill in that profession (the first sane value of the child profession, the modern
+  `GetTradeSkillLine` rank, the Classic `GetTradeSkillLine` rank, `ns.Player.professions` and the base profession, in that
+  order); of the observations only the lowest and highest skill seen in each difficulty are kept (at most eight), which is
+  all the colour thresholds can be read from. A linked or guild trade skill window is never read. At most `LIMITS.recipes`
+  (2000) recipes (the one seen longest ago goes), `reagentsPerRecipe` (12) reagents each. Without a skill line for the
+  window nothing is filed.
+- Client API, every call through `Util.Call`, both shapes tried: trainer `C_TrainerUI.<name>` else the global of the same
+  name (`GetNumTrainerServices`, `GetTrainerServiceInfo` (name, rank text, type, or one table), `GetTrainerServiceCost`,
+  `GetTrainerServiceLevelReq`, `GetTrainerServiceSkillLine` (an ID or the profession's name), `GetTrainerServiceSkillReq`,
+  `GetTrainerServiceItemLink`, spell IDs also from `C_TooltipInfo.GetTrainerService`); trade skill the modern
+  `C_TradeSkillUI.GetAllRecipeIDs/GetRecipeInfo/GetRecipeSchematic` and `GetChildProfessionInfo/GetBaseProfessionInfo/
+  GetTradeSkillLine`, else (when it lists nothing) the Classic globals `GetNumTradeSkills`, `GetTradeSkillInfo`,
+  `GetTradeSkillRecipeLink`, `GetTradeSkillItemLink`, `GetTradeSkillNumReagents/ReagentInfo/ReagentItemLink`,
+  `GetTradeSkillLine`. Unverified: API notes, "Open probes", "Profession recorder".
+- `SignpostDB.recorder = { trainer = {...}, tradeSkill = {...} }` is the last window's report (which API answered, how many
+  services or recipes were read, how many had a name, a cost, a level, a skill, a skill line, an item, reagents or a
+  difficulty, where the skill value came from, why a window was skipped): counts and function names only, so that the real
+  client's behaviour is readable with `tools/read_savedvars.py recorder`. `/signpost probe` adds a `recorder` section (which
+  functions exist in both shapes, everything the client's `C_TrainerUI` and `C_TradeSkillUI` hold, the enums) and the report.
+- `/signpost learned` and the consent window count `trainer services` and `recipes` (`Learn.Professions:Counts()`).
+  Size: a window holds a few dozen services or recipes at about 100 to 250 bytes each, so a play-through of the default
+  professions is well under 200 KB (an estimate, not measured); the caps allow a few MB at most.
+- Importer (`tools/signpost_tools/learned.py`): `professions[skillLine].services[npcID]` and `.recipes[spellID]` in the
+  pack's schema (`Data/Schema.lua`). A service belongs to the profession it names, else to the trainer's one (a service that
+  names none, at a trainer of several professions, is not filed); class trainers are reported in the gap report until the
+  classes table takes them. Merge rules (the record's `t` orders the readings, across the sources of one import and across
+  imports): the newest reading of a service replaces the older one, and for a recipe the newest reading's fields win field
+  by field; the services and recipes another layer holds stay unless a learned reading replaces them; the observations of
+  every reading are unioned and compacted again (`compact_observations`); `skill_bounds(obs)` reads where each colour starts
+  as far as they say. Only
+  the schema's fields are read: a name or text in a SavedVariables file cannot reach the archive or the pack. The reagents of
+  learned recipes count as route items, so the vendors that sell them are kept.
+- Specs: `tests/learn_professions_spec.lua` (the mock `tests/mocks/profession_windows.lua` scripts every API variant, present
+  or absent), `tools/tests/test_learned_professions.py`, and the fixture `tests/fixtures/profession-recorder/Signpost.lua`,
+  which the Lua spec writes with `SIGNPOST_WRITE_FIXTURES=1 busted tests/learn_professions_spec.lua` and fails on when the
+  recorder stops writing exactly it, and which the Python test imports (the round trip).
+
+Travel records (boat and zeppelin rides, innkeepers). `rides = { { from = { map, x, y }, to = { map, x, y }, side, kind?,
+fromArea?, toArea?, secs, t, c }, ... }` (a list, up to `LIMITS.rides`): the dock the player left and the one they arrived at,
+told from the one-second position samples (`:TrackTravel(pos)`, called by `:Sample()`) and not from a signal the client may not
+send: at least three samples in a row of being carried (moving more than the player's own speed plus 4 yd) or without a map
+position, with no flight, instance or death to explain it, then the player on the ground again. The dock is the last ground
+sample before that (at most 15 s old when the position goes missing), the arrival the first of two ground samples after it.
+The ride goes on through the loading screen of a zeppelin that crosses continents; it is dropped when it lasts less than 15 s or
+more than 15 min, or the docks are less than 300 yd apart in one world; a loading screen with no ride under way (hearthstone,
+summon, instance) forgets the dock. `side` is the rider's faction, `kind` what `/signpost ride boat|zeppelin` named (used once,
+good for ten minutes), the areas are the game's own zone texts, `secs` the time it took. `inns[npcID] = { map, x, y, n?, t, c }`:
+an NPC whose gossip offers to make the inn the player's home (the binder icon, or the words "inn" and "home") with the player's
+position at that window; `n` is the bind location's name, stored when `GetBindLocation()` changes within two minutes of the
+window. Both follow the contribute choice like the rest (a release build records nothing without the player's yes), and
+`/signpost learned` counts them. The tables are made when first used. `tools/signpost_tools/learned.py` joins the rides there and
+back into `travel.transports` (a ride whose kind nobody named is left out, with a problem line that says how to name it) and
+writes `travel.inns`; `tools/guide_travel.py` turns them into `.boat`/`.zeppelin` steps and uses the inns for `.home`.
+
 ### UI/StepFrame.lua and UI/Pins.lua — `ns.StepFrame`, `ns.Pins`
 
 - React to `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED` (at once), `CONTEXT_CHANGED`, `TRANSPORT_STATE` (coalesced,
   0.2 s); read `ns.Progress:Current()`/`:Sticky()`/`:ActiveSticky()`/`:State()`, `ns.Conditions:Describe`/`:Targets`
   and `ns.Travel:TransportState`.
-- The step frame's body is Describe's non-sticky lines, up to ten (a step lists all of its quests); a `.complete` line
-  starts with its done mark (`ns.UI.MARK`: `[x]` done, `[ ]` not yet, the Journal's own marks), never with objective
-  counters; every active sticky directive (the current step's too) is an "Ongoing:" line; an in-transit line while
+- The step frame's body is Describe's non-sticky lines, up to ten (a step lists all of its quests); an `.accept`,
+  `.complete` or `.turnin` line starts with its done mark (`ns.UI.MARK`: `[x]` done, `[ ]` not yet, the Journal's own
+  marks), never with objective counters, and no other line has one; every active sticky directive (the current step's
+  too) is an "Ongoing:" line; below those, up to two "Optional: <quest> (group quest)" lines name the group quests
+  coming up (`StepFrame:OptionalLines(step)`: the quests of `ns.Conditions:OptionalOnly(...).available` of the next three
+  steps of the route, each once, and never a quest one of the current step's own directives names, which its body lists already;
+  a font string of its own, not counted in the ten body lines); an in-transit line while
   boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out of combat) uses the step's `.use` item
   (`args.itemID`).
 - Settings via `RegisterDefaults("account", "stepFrame", { shown, locked, scale, alpha, hideInCombat, hideWhenDead,
@@ -373,12 +742,15 @@ route touches.
   `reset` keeps the direction. The item button sits beside the card's top-left corner, so it is placed again after every layout.
 - `/signpost show|hide|lock [on|off]|grow [up|down]|reset|scale <n>|alpha <n>`. Pins through HereBeDragons-Pins-2.0 (minimap + world
   map, waypoint lines on zone maps); atlases per FOREVER-API-NOTES (there is no `Vendor` atlas).
-- APIs: `StepFrame:Render()`, `DescribeLines(step)`, `DescribeSticky(step)`, `DescribeActiveSticky(step)`,
-  `SetShown/SetLocked/SetGrowUp/SetScale/SetAlpha/Reset`; `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`,
-  `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`, `Collect()`, `IconFor(kind, override)`. Phase 4 hooks,
-  no-ops until the journal exists: right-click → `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`,
-  `ns.Journal:IsShown()` for `hideWithJournal`. A step with no targets (a doing step) draws nothing, and the pins and edge
-  arrows of the step before are cleared.
+- APIs: `StepFrame:Render()`, `DescribeLines(step[, quests])` (`quests = { [questID] = true }` leaves out the lines about
+  other quests: a pin's tooltip lists the lines of the quests the pin names), `DescribeSticky(step)`,
+  `DescribeActiveSticky(step)`, `OptionalLines(step)`, `SetShown/SetLocked/SetGrowUp/SetScale/SetAlpha/Reset`;
+  `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`, `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`,
+  `Collect()`, `IconFor(kind, override)`. Hooks into the Journal and the launcher: right-click → `ns.Launcher:OpenMenu(frame)` (the
+  quick menu; without a Menu system `ns.Journal:Toggle(step)`, the Journal on the current step), world-pin click →
+  `ns.Journal:ShowStep(step)`, `ns.Journal:IsShown()` for `hideWithJournal`. A step with no targets (a doing step) draws nothing, and
+  the pins and edge arrows of the step before are cleared. A joined step has one pin for each of its `.goto` lines that still has
+  something to ask (`Conditions:Targets`).
 
 ### UI/Journal.lua — `ns.Journal`
 
@@ -386,17 +758,65 @@ The big window (PLAN §3.2), built on `UI:CreateDialogFrame` (UI/Widgets.lua: `B
 `UISpecialFrames`; `UIPanelWindows` is not used, to keep the panel manager untainted). A guide dropdown (`WowStyle1DropdownTemplate`, only the
 guides `ns.Guides:Compatible` accepts, choosing one calls `ns.Guides:Select`), a `SearchBoxTemplate`, three `PanelTabButtonTemplate` tabs:
 **Route** (a chapter list with done/total counts and the current chapter marked, the selected chapter's steps with `[x]` done, `[-]` skipped,
-`>` current; a click goes to the step through `Progress:JumpToId`, more than 20 steps away needs Shift; a dungeon chapter has a "Skip this
-dungeon" box (`Progress:SetChapterSkipped`); a search replaces the step list with matching steps of the whole guide; a "Current step" button),
+`>` current; a step made only of group quests (`ns.Conditions:OptionalOnly`) is tagged "(group quest)" and reads `[-]` when the route passed it
+without its quest done; a click goes to the step through `Progress:JumpToId`, more than 20 steps away needs Shift; a dungeon chapter has a "Skip this
+dungeon" box (`Progress:SetChapterSkipped`); a search replaces the step list with matching steps of the whole guide; a "Current step" button;
+a "Find my place" button under the chapter list: `Progress:Place`, then `:ShowCurrent()` opens the chapter of the pointer),
 **the class tab** (the class module's `classQuests` for the character's race, each with its status from `Context:QuestTurnedIn/QuestInLog`; a
 `pending` chain reads "new in Forever: quest IDs not known yet"; hidden when the class has no chains) and **Settings** (the step card and pins
 settings, the data sharing consent, the card's size and opacity, the detected profession plan with a Restore button per declined profession,
 "Choose the guide for me", a button for the data sharing window). Lists are plain scroll frames (`ScrollFrameTemplate`), one chapter at a time.
 - API: `:Show(tab)` (`"route"`, `"class"`, `"settings"`), `:Hide()`, `:Toggle(step)`, `:IsShown()`, `:ShowStep(step)` (opens the step's chapter
   and flashes its row for 5 s), `:ShowCurrent()`, `:SelectTab(name)`, `:Refresh()`. Refreshes (coalesced, 0.2 s) on `GUIDE_LOADED`,
-  `STEP_CHANGED`, `GUIDE_SELECTED`, `CONTRIBUTE_CHANGED`, `PROFESSION_PLAN_CHANGED`. Opened by `/signpost` (no argument), `/signpost journal [tab]`,
-  the AddOn Compartment entry, the minimap button (LibDataBroker + LibDBIcon, registered at `DB_READY`; right-click opens Settings) and a
-  right-click on the step card; a world-map pin click calls `:ShowStep`. It sets `SignpostDB.journal.tab` and `SignpostDB.minimapButton`.
+  `STEP_CHANGED`, `GUIDE_SELECTED`, `GUIDE_PLACED`, `CONTRIBUTE_CHANGED`, `PROFESSION_PLAN_CHANGED`. Opened by `/signpost` (no argument, which toggles it),
+  `/signpost journal [tab]`, the minimap button, the AddOn Compartment entry, the quick menu (also reached by a right-click on the step card)
+  and a key binding (all of those: `UI/Launcher.lua`, below); a world-map pin click calls `:ShowStep`. It sets `SignpostDB.journal.tab`.
+  The Settings tab's first column also holds the minimap button's two boxes ("Show the minimap button", "Lock the minimap button's
+  position": `ns.Launcher:SetButtonHidden/SetButtonLocked`); its check boxes are drawn at `CHECK_SIZE` (26) so that eleven of them fit.
+
+### UI/Launcher.lua — `ns.Launcher`
+
+The common add-on interactions (`docs/INTERACTIONS.md` has the conventions, their sources, the map and the decisions). Loaded after
+`UI/Journal.lua`; everything it calls on other modules is looked up at call time and guarded (`ns.Journal`, `ns.StepFrame`, `ns.Tracking`,
+`ns.Progress`, `ns.Slash`, `MenuUtil`, `LibStub`), so a missing piece degrades instead of failing.
+
+- **The minimap button** (`Launcher:Register()` at `DB_READY`, only with LibDataBroker-1.1 and LibDBIcon-1.0): a `type = "launcher"`
+  object named `Signpost`, registered on `SignpostDB.minimapButton` (`{ hide, lock, minimapPos }`; defaults `hide = false, lock = false`).
+  `OnClick(frame, button)` → `Launcher:Click(owner, button)`: **LeftButton** toggles the Journal, **Shift + LeftButton** (Shift read with
+  `IsShiftKeyDown`) toggles the step card (`StepFrame:SetShown`, the saved `shown` setting), **RightButton** opens the quick menu; Ctrl and Alt
+  are ignored, other buttons do nothing. `OnTooltipShow(tooltip)` → `Launcher:FillTooltip(tooltip)`: the name, `Launcher:Where()` (the
+  step card's `<chapter> · step i/N` and the step's first line from `StepFrame.DescribeLines`, or "No guide is loaded for this character."),
+  a blank line, then `hints()`: the three clicks, the key in `|cffffff00` yellow.
+- **The quick menu**: `Launcher:OpenMenu(owner)` → `MenuUtil.CreateContextMenu(owner or UIParent, generator)`; the generator runs
+  `Launcher:BuildMenu(owner, root)` (title, "Open the Journal", the check boxes "Show the step card", "Lock the step card" and "Track only the
+  current step's quests", "Find my place" only when `ns.Progress.Place` is a function, "Previous step", "Skip this step", "Settings...", and
+  "Hide the minimap button" or, while it is hidden, "Show the minimap button"). Returns `false` when there is no Menu system or it raised;
+  `Launcher:OpenMenuOrSettings(owner)` then opens the Journal's Settings tab (what the right-click did before the menu). Callbacks run
+  under `ns.SafeCall`; a state callback that fails reads as off. Previous step, Skip this step and Find my place run `/signpost back`,
+  `skip` and `place` through `ns.Slash:Run` (the same chat lines); Find my place calls `ns.Progress:Place()` itself only when no `place`
+  command is registered.
+- **The AddOn Compartment**: `Core/Slash.lua` owns the three global functions the TOCs name (`## AddonCompartmentFunc`,
+  `AddonCompartmentFuncOnEnter`, `AddonCompartmentFuncOnLeave`: `Signpost_OnAddonCompartmentClick(addonName, buttonName)`,
+  `..Enter(addonName, buttonFrame)`, `..Leave(addonName, buttonFrame)`), each a guarded call into `ns.Launcher`
+  (`OnCompartmentClick(buttonName)`, `OnCompartmentEnter(frame)`, `OnCompartmentLeave(frame)`); without the launcher a click still toggles the
+  Journal. The click map is the button's (a click that names no button counts as a left-click); a **right-click opens the menu one frame
+  later** (`C_Timer.After(0)`, owner `AddonCompartmentFrame` or `UIParent`) because the compartment closes its own menu after the function
+  returns. The hover functions show and hide `GameTooltip` with the same lines, owned by the entry, anchored `ANCHOR_LEFT`.
+- **Settings**: `:ButtonHidden()`, `:ButtonLocked()`, `:SetButtonHidden(hidden)` (writes `hide`, calls LibDBIcon `Hide`/`Show`: the library
+  does not keep the flag), `:SetButtonLocked(locked)` (calls `Lock`/`Unlock`, then writes a plain boolean: `Unlock` clears the field),
+  `:HideButtonWithNotice()` (the menu's version: also says in chat how to get the button back).
+- **Actions** (the same ones the menu, the clicks and the bindings use): `:ToggleJournal()`, `:SetStepCardShown(shown)`, `:ToggleStepCard()`,
+  `:ToggleStepCardLock()`, `:ToggleTracking()`, `:OpenSettings()`, `:CanPlace()`, `:FindMyPlace()`.
+- **Slash commands**: `/signpost card [on|off]` (no word: toggle the step card) and `/signpost minimap [show|hide|lock|unlock]` (no word:
+  show or hide; it reports hidden/shown and locked/unlocked).
+- **Key bindings**: `Bindings.xml` (not in the TOC) declares `SIGNPOST_JOURNAL`, `_CARD`, `_BACK`, `_NEXT`, `_SKIP`, `_PLACE` under the header
+  `SIGNPOST`, each running one `SlashCmdList.SIGNPOST("<command>")` (`""`, `card`, `back`, `next`, `skip`, `place`); the labels
+  `BINDING_HEADER_SIGNPOST` and `BINDING_NAME_SIGNPOST_*` are set at file load from `ns.L`. They are the only globals this module adds,
+  besides the two compartment functions. `tools/check_repo.py` guards the file and its labels.
+- Specs: `tests/launcher_spec.lua` on the real engine, Journal and step card, with the fakes of `tests/mocks/launcher.lua` (LibDataBroker and
+  LibDBIcon shaped after the bundled copy, `MenuUtil.CreateContextMenu` with a recording root, `GameTooltip`, the compartment frame, the
+  modifier-key functions); it parses `Bindings.xml` and runs every binding's Lua body. `tests/journal_spec.lua` covers the Settings
+  boxes, `tests/ui_spec.lua` the step card's right-click.
 
 ### Automation/ — `ns.Automation` (PLAN §3.4; built on the mock, not yet verified in the client)
 
@@ -457,10 +877,12 @@ directives of `ns.Progress:Current()` (never sticky ones, never the player's unr
 Core\Init.lua, Core\Errors.lua, Libs\..., Core\Util.lua, Core\SavedVars.lua, Core\Player.lua, Data\Schema.lua,
 Core\Slash.lua, Core\Debug.lua, Core\Probe.lua, Core\MapDump.lua, Core\Learn.lua,
 Engine\Registry.lua, Engine\Directives.lua, Engine\Context.lua, Engine\Parser.lua, Engine\Professions.lua,
-Engine\Conditions.lua, Engine\Travel.lua, Engine\Progress.lua, Engine\Tracking.lua,
+Engine\Conditions.lua, Engine\Travel.lua, Engine\Placement.lua, Engine\Progress.lua, Engine\Tracking.lua,
 Classes\*.lua, Automation\*.lua, Professions\*.lua, Guides\Travel\Borders.lua, Guides\Chapters\*.lua, Guides\Professions\*.lua,
-Guides\*.lua, UI\Widgets.lua, UI\StepFrame.lua, UI\Pins.lua
+Guides\*.lua, UI\Widgets.lua, UI\StepFrame.lua, UI\Pins.lua, UI\Journal.lua, UI\Launcher.lua
 ```
+
+`Bindings.xml` (the key bindings) sits at the add-on's root and is not in the TOC: the client loads it by its name.
 
 ## Wave 1 tracks and file ownership (integrated 2026-10-17)
 
@@ -490,6 +912,10 @@ A track created and edited only its own files. Shared files — the TOCs, `docs/
 - Extra mocks in `tests/mocks/<area>.lua`; a spec may stub other modules. `tests/integration_spec.lua` runs the real
   modules together on the scripted client of `tests/mocks/context.lua` (guide, chapter, track and profession module
   registered as their files would; login; quest log, profession, level and position changes).
+- `tests/placement_spec.lua` (the pure function, then bounds on the placement simulation over the shipped guides) and
+  `tests/progress_placement_spec.lua` (first use, late history, lost place, on demand with undo, `reset progress`, on the real
+  stack and the scripted client). The simulation behind the constants is `tests/helpers/placement_sim.lua`; re-run it and print the
+  tables of "Engine/Placement.lua" with `python tools/placement_report.py` after a guide is regenerated.
 - Python tool tests in `tools/tests/test_<tool>.py` (unittest, standard library only).
 - `pwsh -NoProfile -File tools/check.ps1` passes before a task is done (busted, luacheck, StyLua, check_repo, the tool
   tests and `guide_lint.py --strict --no-pack`).

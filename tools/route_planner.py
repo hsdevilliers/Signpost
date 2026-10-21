@@ -59,6 +59,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PRESETS = ("greedy", "lookahead", "beam", "thorough")
 WIDTH = 112
 CLASS_LATE = 5  # levels after it opens at which a class quest done is called late in the report
+SPREAD_WARNING = 5.0  # percent: grains of progress whose best routes are this far apart make the search too rough to trust
 PRESET_SETTINGS = {  # what each technique changes in the planner's settings
     "greedy": {},
     "lookahead": {"branch": 8, "horizon": 12},
@@ -153,6 +154,7 @@ class Job:
     chains: tuple = ()
     start: Coord | None = None
     skip_zones: dict = field(default_factory=dict)
+    required: tuple = ()  # the quests the guide requires (the manifest's `require`, --require): done whatever they cost
 
 
 def manifest_hardcore(root: Path, guide_id: str) -> bool | None:
@@ -201,6 +203,19 @@ def manifest_excludes(root: Path, guide_id: str) -> dict[int, str]:
             for i, a in enumerate(args[:-1]):
                 if a == "--exclude" and args[i + 1].isdigit():
                     found[int(args[i + 1])] = reason
+    return found
+
+
+def manifest_requires(root: Path, guide_id: str) -> list[int]:
+    """The quests the guide's entry in tools/drafts.json requires (`"require": [questID, ...]`): the planned route must do them, whatever they cost."""
+    try:
+        manifest = json.loads((root / "tools" / "drafts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    found: list[int] = []
+    for entry in manifest.get("guides", []):
+        if entry.get("guide") == guide_id and isinstance(entry.get("require"), list):
+            found += [q for q in entry["require"] if isinstance(q, int) and not isinstance(q, bool)]
     return found
 
 
@@ -268,7 +283,7 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
     except (OSError, ValueError):
         rules = []
     for rule in rules:
-        if isinstance(rule, dict) and isinstance(rule.get("id"), int):
+        if isinstance(rule, dict) and isinstance(rule.get("id"), int) and guide_draft.rule_applies(rule, cls):
             reason = str(rule.get("reason") or "HARDCORE: not routed")
             # a skip whose reason is not about HARDCORE (a battleground quest is not leveling content) holds for every route
             if rule.get("action") == "skip" and (hardcore or not reason.startswith("HARDCORE")):
@@ -288,17 +303,23 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
         class_push=options.class_push * 60,
         class_grace=options.class_grace,
         group_yards=options.group_yards,
+        quest_log_limit=options.quest_log,
+        chapter_min_steps=options.chapter_steps,
+        completeness=options.completeness,
+        completeness_trip=options.completeness_trip,
+        walk_by_map=options.walk_by_map,
         instant_quests=options.instant_quests,
         skip_unprofitable=not options.no_skip,
         profit_threshold=options.threshold,
-        ferry_seconds=options.ferry * 60,
+        ferry_seconds=engine.Settings.ferry_seconds if options.ferry is None else options.ferry * 60,
         gateways=(1454, 1458) if guide.faction == "Horde" else (1453, 1455, 1457),
     )
     world = guide_travel.World(pack, project.borders, guide.faction)
     hints = manifest_chains(options.root, guide.id) + [list(c) for c in options.chain]
+    required = tuple(dict.fromkeys(manifest_requires(options.root, guide.id) + [q for ids in options.require for q in ids]))
     job = Job(
         options.root, project, pack, pack_dir, guide, hardcore, character, race, cls, world, settings, params, mandatory, exclude, notes, chains,
-        tuple(tuple(c) for c in hints), start_of(project, guide, world, options.start), skip_zones,
+        tuple(tuple(c) for c in hints), start_of(project, guide, world, options.start), skip_zones, required,
     )
     return job
 
@@ -403,6 +424,7 @@ def planner_for(job: Job, out: Out, overrides: dict | None = None, quiet: bool =
         exclude=job.exclude,
         notes=job.notes,
         mandatory=job.mandatory,
+        required=job.required,
         chains=job.chains,
         home=job.start,
         skip_zones=job.skip_zones,
@@ -506,10 +528,23 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         f"quests slower than grinding are left out (threshold {s.profit_threshold:g}x) unless they are class quests or needed by a kept quest"
         if s.skip_unprofitable
         else "no quest is left out for being slow",
-        (f"HARDCORE: no elite or boss objectives, no quest more than {s.hardcore_over} level above the character, "
-         f"{len(job.exclude)} skips (tools/hardcore_rules.json and the guide's own list)")
+        (f"HARDCORE: no elite or boss objectives, no dungeon quests (what needs one goes with it), no quest more than {s.hardcore_over} level above the "
+         f"character, {len(job.exclude)} skips (tools/hardcore_rules.json and the guide's own list)")
         if s.hardcore
-        else f"a normal route: quests up to {pl.accept_over} levels above you are accepted and worked on up to {pl.work_over}; group quests are tagged optional",
+        else f"a normal route: quests up to {pl.accept_over} levels above you are accepted and worked on up to {pl.work_over}; group quests (elite kills), "
+             f"dungeon quests and the quests that need one of those first are tagged optional",
+        f"the quest log holds at most {s.quest_log_limit} quests; no quest is accepted while it is full (--quest-log N; Forever's is 40, confirmed "
+        f"by the user in the game, 2026-10-21; Classic's is 25)",
+        (f"a quest the route picked up and did not finish is finished when its objectives are at most {s.completeness_trip:g} s of walking away and it pays "
+         f"at least {s.completeness:.0%} of the route's pace (--completeness, --completeness-trip); the rest are taken out and listed with the reason")
+        if s.completeness > 0
+        else "a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason (--completeness F finishes the "
+             "ones that are a short walk away and pay at least F of the route's pace; off)",
+        (f"required quests (--require, \"require\" in tools/drafts.json): {', '.join(str(q) for q in job.required)}. Each is done "
+         f"whatever it costs, with the quests it needs (all of them are pushed like a class chain's); none is left out for being slow, taken out when the "
+         f"route is written, or kept out by a full quest log, and one that only has to be handed in, in another zone, is handed in next (the route leaves for it)")
+        if job.required
+        else "no quest is required (--require ID,... or \"require\" in the guide's entry of tools/drafts.json makes the route do the quests it names)",
         f"{len(job.mandatory)} class quests are mandatory: each is done or accounted for with a #skipquest reason; there is no deadline, "
         f"but each costs the route {s.class_push / 60:.0f} min for every level it is undone past the level it opens at"
         + (f" (+{s.class_grace})" if s.class_grace else "")
@@ -553,10 +588,23 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
         else:
             out(f"finished      {p['finals']:,} complete routes reached the cap during the search; the best {len(plan.alternatives) + 1} with different "
                 f"orders of zones are kept to compare")
+    if len(p.get("grains", ())) > 1:
+        report_grains(out, p["grains"])
     if p.get("removed"):
         names = ", ".join(pl.quests[q].name for q in p["removed"][:6] if q in pl.quests)
         out(f"tidied        {len(p['removed'])} quests the search had accepted but never finished were taken out of the route (a guide may not leave them in the log): {names}"
             + (" ..." if len(p["removed"]) > 6 else ""))
+    if p.get("completed"):
+        names = ", ".join(pl.quests[q].name for q in p["completed"][:6] if q in pl.quests)
+        unplaced = len(p.get("completed_unplaced", ()))
+        for line in labelled(
+            "completed     ",
+            f"{len(p['completed'])} more quests the search left unfinished were finished instead (completeness {pl.s.completeness:.2f}, trips up to "
+            f"{pl.s.completeness_trip:g} s): the route stops at their objectives right after the pick-up: {names}" + (" ..." if len(p["completed"]) > 6 else "")
+            + (f"; {unplaced} with an objective that has no position in the data, which the planner works where the quest is picked up, with no walk"
+               if unplaced else ""),
+        ):
+            out(line)
     if plan.trace:
         out("progress      best estimated total time as the search moved up the levels (level | routes kept | estimate):")
         picks = plan.trace[:: max(1, len(plan.trace) // 8)]
@@ -565,6 +613,121 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
         f" (+ {hms(plan.penalty)} of zone-change cost"
         + (f" and {hms(plan.late)} for class quests done late" if plan.late else "")
         + f" the planner charged), {len(plan.visits)} hub visits")
+
+
+def spread_of(grains: list) -> tuple[float, float] | None:
+    """How far apart the best routes of the grains are, as they would be written: (seconds, percent of the shortest); None when fewer
+    than two grains finished a route."""
+    totals = [g["total"] for g in grains if g.get("total") is not None]
+    if len(totals) < 2:
+        return None
+    low, high = min(totals), max(totals)
+    return high - low, ((high - low) / low * 100 if low else 0.0)
+
+
+def report_grains(out: Out, grains: list) -> None:
+    """The roughness of the search made visible: every grain of progress was searched on its own, and its best route, written out the way a
+    guide would have it, says what that grain found. How far apart they are is the least the best route found can be off by: nobody
+    knows how far it is from the best there is."""
+    out("grains        each grain of progress searched on its own: its best route as it would be written (tidied), and the work it took")
+    out(f"              {'parts':>5} {'routes finished':>16} {'best route':>11} {'seconds':>8}")
+    shortest = min((g["total"] for g in grains if g.get("total") is not None), default=None)
+    for g in grains:
+        total = hms(g["total"]) if g.get("total") is not None else "none"
+        mark = "   <- the shortest" if shortest is not None and g.get("total") == shortest else ""
+        out(f"              {g['parts']:>5} {g['finals']:>16,} {total:>11} {g['seconds']:>8.1f}{mark}")
+    spread = spread_of(grains)
+    if spread is None:
+        out("              fewer than two grains finished a route: nothing to compare them by")
+        return
+    seconds, percent = spread
+    out(f"              the grains disagree by {hms(seconds)}, {percent:.0f}%: trust the best route no more than that")
+    if percent > SPREAD_WARNING:
+        warning = (
+            f"WARNING: the grains are more than {SPREAD_WARNING:.0f}% apart. The search is rough on this guide: a shorter route than the best found "
+            f"may exist, and a route that is not clearly better than the others is not to be trusted (try other --parts or --width and compare)."
+        )
+        for line in labelled("              ", warning):
+            out(line)
+
+
+def grinds_of(pl: engine.Planner, plan: engine.Plan) -> list[dict]:
+    """The grind steps of a route: where the planner stops to kill for a level that opens quests (the `.level N` steps that say how much)."""
+    found: list[dict] = []
+    clock, level = 0.0, 1
+    for v in plan.visits:
+        if v.hub is None:
+            target = v.actions[0].index
+            found.append(
+                dict(at=clock, level_from=level, level_to=target, xp=v.xp, seconds=v.seconds, kills=pl.grind_kills(level, target, v.xp))
+            )
+        clock += v.seconds
+        level = v.level
+    return found
+
+
+def report_grinds(out: Out, pl: engine.Planner, plan: engine.Plan) -> None:
+    grinds = grinds_of(pl, plan)
+    if not grinds:
+        out("grinding      the route never stops to grind for a level")
+        return
+    total = sum(v.seconds for v in plan.visits)
+    xp_total = sum(pl.model.to_next(n) for n in range(1, plan.final.level))
+    xp, seconds = sum(g["xp"] for g in grinds), sum(g["seconds"] for g in grinds)
+    text = (
+        f"{len(grinds)} grind step(s) ask the player to kill for a level: {xp:,.0f} experience ({share(xp, xp_total).strip()} of the route's), "
+        f"{hms(seconds)} ({share(seconds, total).strip()} of its play time). Each is a `.level N` line with a note that says how much (an estimate):"
+    )
+    for line in labelled("grinding      ", text):
+        out(line)
+    for g in grinds:
+        out(
+            f"              at {hms(g['at'])}: level {g['level_from']} to {g['level_to']}, about {engine.approx(g['xp']):,} experience, "
+            f"about {max(1, engine.approx(g['kills'])):,} kills, {mins(g['seconds'])}"
+        )
+
+
+def report_left_out(out: Out, pl: engine.Planner, plan: engine.Plan, limit: int = 12) -> None:
+    """What tidy took out of the route, with the reason and the numbers (`Planner._left_out`): nothing is dropped silently. Each is also a #skipquest
+    line of the guide and a record in plan.json."""
+    records = plan.stats.get("left_out", [])
+    if not records:
+        out("unfinished    none: the search left no quest unfinished")
+        return
+    codes: dict[str, int] = {}
+    for r in records:
+        codes[r["code"]] = codes.get(r["code"], 0) + 1
+    names = {"price": "near but not worth the trip", "far": "objectives too far", "handin": "hand-in too far", "level": "could not be worked",
+             "unfinished": "stop added, still unfinished"}
+    near_first = {"price": 0, "unfinished": 1, "handin": 2, "far": 3, "level": 4}  # the ones a setting would get back come first
+    summary = ", ".join(f"{n} {names.get(code, code)}" for code, n in sorted(codes.items(), key=lambda kv: (-kv[1], near_first.get(kv[0], 5))))
+    unplaced = sum(1 for r in records if r.get("unplaced"))
+    out(f"unfinished    {len(records)} quests the search picked up on the way and did not finish are not in the route ({summary})"
+        + (f"; {unplaced} with an objective that has no position in the data:" if unplaced else ":"))
+    shown = sorted(records, key=lambda r: (near_first.get(r["code"], 5), -r["ratio"]))[:limit]
+    for r in shown:
+        for line in labelled(
+            "              ",
+            f"{r['quest']} {r['name']} (level {r['level']}, picked up at level {r['picked_level']}, {r['hub'].split(': ', 1)[-1]}): {r['why']}",
+        ):
+            out(line)
+    if len(records) > len(shown):
+        out(f"              ... {len(records) - len(shown)} more (all of them in plan.json, and as #skipquest lines in the guide)")
+
+
+def route_log_peak(route) -> int:
+    """The most quests a written route holds in the quest log at once, counted on the guide's own steps (an accept adds one, a hand-in takes one out)."""
+    active: set = set()
+    peak = 0
+    for rs in route.steps:
+        for d in rs.directives:
+            quest = d.args.get("quest")
+            if d.name == "accept" and quest:
+                active.add(quest)
+                peak = max(peak, len(active))
+            elif d.name == "turnin" and quest:
+                active.discard(quest)
+    return peak
 
 
 def report_route(out: Out, pl: engine.Planner, plan: engine.Plan) -> None:
@@ -630,7 +793,14 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
     out.section("THE QUESTS")
     done = plan.final.done
     optional = [q for q in done if pl.quests[q].optional]
-    out(f"done          {len(done)} quests turned in" + (f", {len(optional)} of them group quests tagged optional" if optional else ""))
+    why = [f"{n} {one if n == 1 else many}" for key, one, many in (("elite", "group quest", "group quests"), ("dungeon", "dungeon quest", "dungeon quests"),
+                                                                    ("follows", "following one of those", "following one of those"))
+           if (n := sum(1 for q in optional if pl.quests[q].group == key))]
+    out(f"done          {len(done)} quests turned in" + (f", {len(optional)} of them tagged optional ({', '.join(why)})" if optional else ""))
+    held, held_level, held_clock = plan.log_peak()
+    out(f"quest log     the most quests held at once: {held} (at level {held_level}, {hms(held_clock)} in); the log holds {pl.s.quest_log_limit} "
+        f"(--quest-log N; Forever's is {engine.Settings.quest_log_limit}, confirmed by the user in the game)")
+    report_left_out(out, pl, plan)
     slow = pl.dropped.get("slower than grinding", [])
     out(f"left out      {len(slow)} quests were slower than grinding; the slowest, by experience per minute against grinding at the level it is done at:")
     scored = sorted((pl.quests[q] for q in slow), key=lambda q: q.rate / max(pl.model.grind_xp_per_second(max(q.req, q.level - 1, 1)), 1e-9))
@@ -651,9 +821,24 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
         for qid, reason in pl.skipquests(plan).items():
             if qid in job.mandatory:
                 out(f"              #skipquest {qid} ({pl.quests[qid].name if qid in pl.quests else '?'}): {reason}")
+    if job.required:
+        levels = plan.levels_done()
+        parts = [
+            f"{q} {pl.quests[q].name} at level {levels[q]} (opens {pl.quests[q].req}, a level {pl.quests[q].level} quest)" if q in levels
+            else f"{q} {pl.quests[q].name} NOT DONE"
+            for q in job.required if q in pl.quests
+        ]
+        needed = len(pl.required) - len(pl.asked)
+        for line in labelled(
+            "required      ",
+            f"{len(job.required)} required by the guide"
+            + (f" and {needed} quest{'s' if needed != 1 else ''} {'they need' if needed != 1 else 'it needs'}, all routed and none left out" if needed else "")
+            + "; done at level (the level it opens at): " + "; ".join(parts),
+        ):
+            out(line)
     if pl.s.hardcore:
         highest = max((pl.quests[q].level - 0 for q in done), default=0)
-        out(f"HARDCORE      no elite or boss objective in the pool (those are left out before the search); the highest quest level routed is {highest}")
+        out(f"HARDCORE      no elite or boss objective and no dungeon quest in the pool (those are left out before the search); the highest quest level routed is {highest}")
 
 
 def explain_decisions(out: Out, pl: engine.Planner, plan: engine.Plan, limit: int) -> None:
@@ -689,13 +874,18 @@ def report_validation(out: Out, pl: engine.Planner, plan: engine.Plan, ev: Evalu
         if not errors else f"availability  {errors} ERROR(S): quests the game would not offer where the route accepts them")
     for v in sim.violations[:6]:
         out(f'              step {v.step.id} quest {v.quest} "{v.name}": {v.reason.text}')
+    held = route_log_peak(ev.route)
+    out(f"quest log     the written route holds at most {held} quests at once (the log holds {pl.s.quest_log_limit})"
+        + ("" if held <= pl.s.quest_log_limit else ": ERROR, more than the log holds"))
     out(f"lint          {len(ev.lint_errors)} error(s), {ev.lint_warnings} warning(s)")
     for line in ev.lint_errors[:8]:
         out("              " + line[:WIDTH - 14])
     estimate, full = plan.seconds, sim.seconds
     out(f"fidelity      the planner estimated {hms(estimate)}; the full simulation of the written route says {hms(full)} "
-        f"({(full - estimate) / estimate * 100:+.1f}%). The simulator cannot price a change of zone whose border is not learned yet "
-        f"(it charges a flat few minutes); the planner prices it by distance, so it is the more cautious of the two")
+        f"({(full - estimate) / estimate * 100:+.1f}%). Both price travel with the same numbers (signpost_tools/pricing.py: a change of zone "
+        f"is the walk between the places, a change of continent the boat and the walks to and from it); they still differ in the walking inside "
+        f"a hub: the planner adds a few seconds for each place of a visit, the simulation walks the steps' own positions and does not price "
+        f"the walk inside a doing step")
     out(f"              it reaches level {sim.level}; {len(sim.stalls)} level gates stall it for {hms(sim.stall)}; travel {share(sim.travel, sim.seconds).strip()} of the time")
 
 
@@ -771,7 +961,7 @@ def report_compare(out: Out, pls: dict, outcomes: list[Outcome]) -> None:
 
 
 def report_steps(out: Out, ev: Evaluation, limit: int) -> None:
-    out.section(f"THE FIRST {limit if limit else 'ALL'} STEPS OF THE ROUTE (as the simulator walks them)")
+    out.section(f"THE FIRST {limit} STEPS OF THE ROUTE (as the simulator walks them)" if limit else "ALL THE STEPS OF THE ROUTE (as the simulator walks them)")
     count = 0
     for entry in ev.sim.log:
         if limit and count >= limit:
@@ -900,6 +1090,21 @@ def write_outputs(job: Job, outcome: Outcome, pl: engine.Planner, out_dir: Path,
         legs=[dict(zone=pl.world.geo.name(leg["zone"]) if leg["zone"] is not None else None, seconds=leg["seconds"], levels=[leg["level_in"], leg["level_out"]],
                    hubs=[pl.hubs[h].label for h in leg["hubs"]]) for leg in legs],
         quests_done=sorted(outcome.plan.final.done),
+        optional=[dict(quest=q, name=pl.quests[q].name, group=pl.quests[q].group) for q in sorted(outcome.plan.final.done) if pl.quests[q].optional],
+        required=[
+            dict(quest=q, name=pl.quests[q].name, opens=pl.quests[q].req, level=pl.quests[q].level, done_at=outcome.plan.levels_done().get(q))
+            for q in job.required if q in pl.quests
+        ],
+        required_needed=sorted(pl.required - pl.asked),
+        quest_log_limit=pl.s.quest_log_limit,
+        quest_log_peak=outcome.plan.log_peak()[0],
+        completeness=pl.s.completeness,
+        completeness_trip=pl.s.completeness_trip,
+        left_out=outcome.plan.stats.get("left_out", []),
+        completed=outcome.plan.stats.get("completed", []),
+        completed_unplaced=outcome.plan.stats.get("completed_unplaced", []),
+        grinds=grinds_of(pl, outcome.plan),
+        grains=outcome.plan.stats.get("grains", []),
         simulated_seconds=ev.sim.seconds,
         lint_errors=ev.lint_errors,
     )
@@ -917,13 +1122,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cap", type=int, default=30, help="the level the route ends at (default 30, Version 1)")
     parser.add_argument("--mode", default="auto", choices=["auto", "hardcore", "normal"], help="plan as HARDCORE or normal (default: the guide's)")
     parser.add_argument("--friction", type=float, default=3.0, help="minutes a change of zone costs the planner besides the travel (default 3)")
-    parser.add_argument("--ferry", type=float, default=7.0, help="minutes for the boat or zeppelin between continents (default 7)")
+    parser.add_argument("--ferry", type=float, help="minutes for the boat or zeppelin between continents (default: the price the simulation uses too, 7; tools/signpost_tools/pricing.py)")
     parser.add_argument("--hub-radius", type=float, default=150.0, help="yards a hub spans (default 150)")
     parser.add_argument("--class-push", type=float, default=20.0,
                         help="minutes a class quest costs the route for each level it is undone past the level it opens at (default 20)")
     parser.add_argument("--class-grace", type=int, default=0, help="levels past the one it opens at before that cost starts (default 0)")
     parser.add_argument("--group-yards", type=float, default=250.0,
                         help="yards within which neighbouring steps of one kind are written as one: pick up, doing, hand in (default 250)")
+    parser.add_argument("--completeness", type=float, default=engine.Settings.completeness, metavar="F",
+                        help="finish a quest the route picked up and did not finish, when its objectives are a short walk away (--completeness-trip) and it pays at "
+                             "least F times the route's pace in experience per second (0.6: at least 60%%); 0 is off, the quest is taken out and listed "
+                             "with the reason (default %(default)g; docs/PLANNER.md, Completeness)")
+    parser.add_argument("--completeness-trip", type=float, default=engine.Settings.completeness_trip, metavar="SECONDS",
+                        help="the longest walk from where a quest was picked up to its objectives, and (unless the route goes there anyway) to where it is "
+                             "handed in, that --completeness will make (default %(default)g)")
+    parser.add_argument("--walk-by-map", action="store_true",
+                        help="charge the walk between the places of one hub by the map's distance, not a flat 8 s (Settings.local_walk) for each change of place "
+                             "(an experiment: docs/PLANNER.md, Measurements)")
+    parser.add_argument("--quest-log", type=int, default=engine.Settings.quest_log_limit, metavar="N",
+                        help="quests the log holds at once; no quest is accepted while it is full (default %(default)s: Forever's, confirmed by the user "
+                             "in the game; Classic's is 25)")
+    parser.add_argument("--chapter-steps", type=int, default=engine.Settings.chapter_min_steps, metavar="N",
+                        help="a change of zone starts a new chapter when the new zone lasts at least this many steps once the steps are joined (default %(default)s)")
     parser.add_argument("--threshold", type=float, default=1.0, help="times the grinding rate a quest must give to be kept (default 1)")
     parser.add_argument("--no-skip", action="store_true", help="do not leave out quests for being slower than grinding")
     parser.add_argument("--instant-quests", action="store_true",
@@ -937,6 +1157,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--exclude", type=int, action="append", default=[], metavar="QUEST", help="never route this quest")
     parser.add_argument("--chain", type=lambda t: [int(x) for x in t.split(",")], action="append", default=[], metavar="Q1,Q2,...",
                         help="quests of a chain the data does not link, in order (the guide manifest's hints are used already)")
+    parser.add_argument("--require", type=lambda t: [int(x) for x in t.split(",")], action="append", default=[], metavar="ID[,ID...]",
+                        help="quests the route must do whatever they cost, with the quests they need (as the guide's `require` list in tools/drafts.json does): "
+                             "never left out for being slow, taken out by the tidy that writes the route, or kept out by a full quest log; an error if one "
+                             "cannot be offered to the character (docs/PLANNER.md, Required quests)")
     parser.add_argument("--start", metavar="MAP,X,Y", help="where the character begins (default: the first place the guide sends it to)")
     parser.add_argument("--runs", type=int, default=300, help="Monte Carlo runs for the thorough technique (default 300)")
     parser.add_argument("--seed", type=int, default=1)
@@ -982,7 +1206,12 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     presets = list(PRESETS) if options.preset == "all" else [options.preset]
-    first_pl = planner_for(job, out, quiet=True)
+    try:
+        first_pl = planner_for(job, out, quiet=True)
+    except engine.RequiredQuestError as error:
+        out(str(error), always=True)
+        out("(--require, or \"require\" in the guide's entry of tools/drafts.json, names these quests)", always=True)
+        return 2
     report_setup(job, out, first_pl, options)
     pls: dict[str, engine.Planner] = {}
     outcomes: list[Outcome] = []
@@ -1015,6 +1244,7 @@ def main(argv: list[str] | None = None) -> int:
     pl = planner_of(pls, shown)
     report_route(out, pl, shown.plan)
     report_time(out, pl, shown.plan)
+    report_grinds(out, pl, shown.plan)
     report_quests(out, pl, job, shown.plan)
     if options.decisions and shown.plan.decisions:
         explain_decisions(out, pl, shown.plan, options.decisions)

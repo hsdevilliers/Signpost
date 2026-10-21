@@ -7,7 +7,7 @@ The Release 1 guides are hardcore routes (PLAN §2). This is how, what we know a
 Feasible as a **safety-leaning route**, not as a guarantee. A hardcore character can die to anything; a route can only avoid the
 known killers, delay the risky content and warn at the dangerous steps. It is not a different route for every zone: the same
 quests are mostly kept, minus what the data can flag (elite kills, quests far above the level) and a hand-kept skip list, plus notes, plus
-a default of skipping dungeon chapters. The data cannot yet flag escorts, group quests or named elite-level targets, so the first
+a default of skipping dungeon chapters. The data flags escorts and events (the pack's `scripted` field) but not yet group quests or named elite-level targets, so the first
 adversarial review of the Tauren Druid guide found several still routed (escorts, Northwatch Hold, named Kolkar leaders): they are now
 on the list, and expect more until someone plays the route. RestedXP does the same: a
 separate survival route and a mode switch on guide steps (our `.hc` gate).
@@ -36,10 +36,17 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
 
 0. **Data-driven criteria** (`guide_draft.py --hardcore`, no list needed): a quest that needs an **elite, rare elite or boss kill** (QuestieDB's
    NPC `rank`, now in the pack), or an item only elites drop (and no object gives), is dropped; a quest whose **level is more than 2 above
-   the chapter's top level** is dropped (`--hardcore-over`). The pack has no escort, group or cave flags, so those still need the list below.
+   the chapter's top level** is dropped (`--hardcore-over`). The pack has no group or cave flags, so those still need the list below. An **escort or
+   event** (the pack's `scripted` flag, QuestieDB's "needs event" bit) is not dropped by the data: the Route Planner prices it and writes a HARDCORE
+   `.note` on it (docs/PLANNER.md), and the list still skips the ones known to kill.
 1. **Skip list** (`tools/hardcore_rules.json`): each rule has a quest ID (from the data pack), an action (`skip` becomes
    `#skipquest <id> >> <reason>`, `note` becomes a `.note` after the `.accept`), a source and a confidence. `tools/guide_draft.py
-   --hardcore` applies it. Corrected from play: the contributors' deaths and notes are the best source we will get.
+   --hardcore` applies it. Corrected from play: the contributors' deaths and notes are the best source we will get. Scope (2026-10-21): a skip
+   whose reason starts with HARDCORE (escorts, elite or unknown-rank targets, dungeon quests) holds for HARDCORE guides only; any other skip
+   holds for every guide, so it is for what nobody should do (a battleground quest) or it carries `class_quest_of` (a class token or a list):
+   the quest belongs to that class although the data has no class mask for it (Forever's new quests have none), and the rule skips it for the
+   guides of every other class and leaves it to that class's own. A rule's source says where the belief comes from (memory of Classic, a
+   review, a death) and whether it was seen in game; it does not quote the data pack.
 2. **Class quests stay mandatory** (the lint enforces it): a dangerous one is routed late and carries a note, or is skipped with a
    written reason, never silently dropped.
 3. **Group (elite) quests are optional** (PLAN §2) and in hardcore are skipped unless the player chooses otherwise.
@@ -52,19 +59,24 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
 - **How does the addon know a character is hardcore?** `.hc` is "always false for now" (GUIDE-FORMAT). The Forever API for the
   ruleset is unknown: an open probe (FOREVER-API-NOTES). Until it is answered the Release 1 guides are simply hardcore by
   construction (no `.hc` branching needed).
-- **Escort, group and cave tags** are not in the data pack; those quests are caught only by the skip list (by quest ID) until a source
-  for them exists. The Barrens draft shows the gap: unflagged named targets (Verog, Hezrul, Kuz and Nak) pass the elite rule.
+- **Group and cave tags** are not in the data pack; those quests are caught only by the skip list (by quest ID) until a source
+  for them exists. Escorts and events are flagged (`scripted`), and whether a HARDCORE route should drop every one the data flags, instead of
+  pricing and noting them, is a question for the user (backlog). The Barrens draft shows the gap: unflagged named targets (Verog, Hezrul, Kuz and Nak) pass the elite rule.
 - **Moonglade and Bear Form timing (design call).** Every Tauren druid class chain (Bear Form at 10, Lessons Anew at 14, Aquatic Form at
-  16) runs through Moonglade (Dendrite Starblaze, Tajarri), and the travel graph has no route there. The guide has the Bear Form chain
-  right after Mulgore and the other two after the Barrens, each with a `.todo` to cast **Teleport: Moonglade**. What the sources say:
+  16) runs through Moonglade (Dendrite Starblaze, Tajarri), and the travel graph has no route there. Since 2026-10-21 the Tauren route is
+  the Route Planner's, and it prices a walk to Moonglade and back (22 to 25 minutes each way). The guide does **not** send a HARDCORE druid
+  on that walk: from Classic memory the road overland runs through Felwood or Winterspring, zones for levels 48 and up. Every trip to or from
+  Moonglade is a `.todo` step in the druid's words (`travelHints` in `Classes/DRUID.lua`, written by the travel generator): "cast Teleport:
+  Moonglade if you have it (VERIFY(beta): where a druid learns it), else the way is not in the data", "Do not walk it: ... not safe at your
+  level", and for the way back "use your hearthstone or a flight path if you have one". No step assumes the spell, and a real flight or
+  hearth that the guide has taught stands. What a druid without the spell does is open (backlog). What the sources say:
   Classic druids have that spell from level 10 (10 s cast, no reagents); Forever guides list it as a reward of the Bear Form chain; where
   Forever druids learn it is unverified (VERIFY(beta)), and so is the way back (hearthstone, a flight path, or the spell). Open: confirm
-  both in game, and batch the Lessons Anew and Aquatic Form legs into fewer round trips (the chain links alternate between Thunder Bluff
-  and Moonglade, so a trip per link is what the data gives).
-- **`.todo` never completes a step** (found by the review): a step with `.todo` and another directive (the travel steps, an objective
-  step) stays current after the other directive is satisfied, until the player skips it. That is what GUIDE-FORMAT says (`.todo` is never
-  satisfied), but it makes the planner's `.todo` + `.zone` steps and the drafted `.todo` + `.complete` steps need a manual skip.
-  Open for the user: let a step complete on its other directives and keep `.todo` as a display marker, or keep it.
+  both in game (backlog: the question on Teleport: Moonglade), and batch the Lessons Anew and Aquatic Form legs into fewer round trips
+  (the chain links alternate between Thunder Bluff and Moonglade, so a trip per link is what the data gives).
+- **`.todo` beside another directive is only a note** (found by the review; decided by the user on 2026-10-20 and built since): a step with
+  `.todo` and another completable directive (the travel steps, an objective step) completes when the other directives are satisfied; a
+  step that is nothing but a `.todo` still waits for the player (`>`). GUIDE-FORMAT has the rule (`.todo`), `Engine/Conditions.lua` the code.
 - **Forever changes**: new or reworked quests and zones are not in any source yet; each is judged when recorded in game.
 - **Death data**: a contributor's deaths (where, at what level) would improve the list far more than any article. Not built; a
   possible later addition to `Core/Learn.lua`, opt-in like the rest (docs/SHARING-DATA.md).

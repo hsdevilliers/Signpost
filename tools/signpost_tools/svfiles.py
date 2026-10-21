@@ -50,3 +50,11 @@ def load_db(sv: SVFile) -> dict:
     """The file's table (SignpostDB or SignpostCharDB); {} when the variable is nil or missing."""
     value = load_savedvars(sv.path).get(sv.variable)
     return value if isinstance(value, dict) else {}
+
+
+def event_arg(args: object, index: int) -> object:
+    """Argument `index` (from 1) of a recorded event. The recorder packs them as { n = count, [1] = first, [2] = second }
+    (Core/Util.lua Util.Pack), which the SavedVariables parser reads with integer keys; a JSON copy of the file has them as strings."""
+    if not isinstance(args, dict):
+        return None
+    return args.get(index, args.get(str(index)))

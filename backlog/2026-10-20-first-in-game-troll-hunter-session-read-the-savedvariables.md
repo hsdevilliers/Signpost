@@ -1,12 +1,14 @@
 ---
 title: First in-game Troll Hunter session: read the SavedVariables, check offered quests against the rules
 kind: verify
-status: open
+status: done
 priority: normal
 area: tools, guides
 source: claude
 raised: 2026-10-20
 raised_in: the first look at the Troll Hunter guide, 2026-10-20
+closed: 2026-10-21
+resolution: Read in batch 1: tools/validate_availability.py replays the recorded visits against the rules and agrees with the game on 7 of 7 visits (a bug that ignored accepts, turn-ins and level-ups because real logs key arguments by integer was found and fixed on the way); the one /signpost report was the old Medallion step. tools/audit_quests.py (a run on the same session) finds no data gap.
 ---
 
 ## What

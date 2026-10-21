@@ -84,17 +84,9 @@
           ]
         }
       ],
-      "rewrites": [
-        {
-          "match": "\\.todo \"travel from [A-Za-z ]+ to Moonglade: the travel graph has no route yet\"",
-          "with": ".todo \"Go to Moonglade: cast Teleport: Moonglade (VERIFY(beta): where a druid learns it; docs/CLASS-QUESTS.md), else the way is not in the data\""
-        },
-        {
-          "match": "\\.todo \"travel from Moonglade to ([A-Za-z ]+): the travel graph has no route yet\"",
-          "with": ".todo \"Return from Moonglade to \\1 (VERIFY(beta): hearthstone or flight path; the way back is not in the data)\""
-        }
-      ],
-      "hardcore": true
+      "rewrites": [],
+      "hardcore": true,
+      "planned": "the thorough alt 3 route for Tauren Druid (HARDCORE): tools/route_planner.py tauren --preset all --install --quiet (docs/PLANNER.md)"
     },
     {
       "guide": "horde-troll-hunter",
@@ -131,7 +123,7 @@
       ],
       "rewrites": [],
       "hardcore": false,
-      "planned": "the thorough alt 1 route for Troll Hunter: tools/route_planner.py troll --preset all --install --force --quiet (docs/PLANNER.md)"
+      "planned": "the thorough alt 4 route for Troll Hunter: tools/route_planner.py troll --preset all --install --quiet (docs/PLANNER.md)"
     },
     {
       "guide": "horde-windshaper-druid",
@@ -178,7 +170,9 @@
             "--only",
             98024,
             "--note",
-            "95350=Unverified: the route after Zephras Isle comes from the quest data (QuestieDB's Forever layers), not from play yet."
+            "95350=Unverified: the route after Zephras Isle comes from the quest data (QuestieDB's Forever layers), not from play yet.",
+            "--chain",
+            "94911,94913"
           ]
         },
         {
@@ -200,18 +194,13 @@
           ]
         }
       ],
-      "rewrites": [
-        {
-          "match": "\\.todo \"travel from [A-Za-z' ]+ to Moonglade: the travel graph has no route yet\"",
-          "with": ".todo \"Go to Moonglade: cast Teleport: Moonglade (VERIFY(beta): where a druid learns it; docs/CLASS-QUESTS.md), else the way is not in the data\""
-        },
-        {
-          "match": "\\.todo \"travel from Moonglade to ([A-Za-z' ]+): the travel graph has no route yet\"",
-          "with": ".todo \"Return from Moonglade to \\1 (VERIFY(beta): hearthstone or flight path; the way back is not in the data)\""
-        }
-      ],
+      "rewrites": [],
       "hardcore": true,
-      "planned": "the thorough alt 4 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)"
+      "require": [
+        95349,
+        94638
+      ],
+      "planned": "the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)"
     }
   ]
 }

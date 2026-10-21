@@ -2,7 +2,8 @@ import unittest
 
 import guide_sim
 from guide_sim import Model
-from signpost_tools import guidefile
+from signpost_tools import guidefile, pricing
+from signpost_tools.guidefile import Coord
 from tests.guide_fixtures import MAPS, TRAVEL, TempProject, chapter_lua, guide_lua
 from tests.test_guide_travel import world
 
@@ -123,14 +124,50 @@ class ModelTest(unittest.TestCase):
         self.assertEqual(no_source[2], 0)  # a ground item gives none
 
 
+SCRIPTED = {
+    **QUESTS,
+    10: {"n": "Walk With Me", "l": 8, "r": 6, "scripted": True, "s": {"npc": [1001]}, "e": {"npc": [1002]}},  # an escort
+    11: {"n": "Ambush", "l": 8, "r": 6, "scripted": True, "s": {"npc": [1001]}, "e": {"npc": [1001]}},  # an event
+    12: {"n": "Both", "l": 8, "r": 6, "scripted": True, "o": [{"id": 50, "k": "kill"}], "s": {"npc": [1001]}, "e": {"npc": [1002]}},
+    13: {"n": "Started By A Map", "l": 8, "r": 6, "scripted": True, "s": {"item": [900]}, "e": {"npc": [1001]}},
+    14: {"n": "Plain Delivery", "l": 8, "r": 6, "s": {"npc": [1001]}, "e": {"npc": [1002]}},
+}
+
+
+class ScriptedModelTest(unittest.TestCase):
+    """The pack's `scripted` flag: the game completes the quest by a script (an escort, an ambush), and for most of them the
+    pack lists no objective, so the whole of the work is a parameter (docs/PLANNER.md)."""
+
+    def test_an_escort_and_an_event_are_told_apart_by_their_npcs(self):
+        m = model(quests=SCRIPTED)
+        self.assertEqual([m.scripted_work(q) for q in (10, 11, 12, 13, 14, 1)], ["escort", "event", None, "event", None, None])
+
+    def test_the_work_costs_its_parameter_and_gives_no_kill_experience(self):
+        m = model(quests=SCRIPTED)
+        self.assertEqual(m.objective(10, 1, 8), (420, 0.0, 0.0))
+        self.assertEqual(m.objective(11, None, 8), (180, 0.0, 0.0))
+        self.assertEqual(model(["escort_seconds=600", "event_seconds=60"], SCRIPTED).objective(10, 1, 8)[0], 600)
+        self.assertEqual(model(["escort_seconds=600", "event_seconds=60"], SCRIPTED).objective(11, 1, 8)[0], 60)
+        m.speed_factor = 1.5  # a slower or faster player (the Monte Carlo draws it)
+        self.assertEqual(m.objective(10, 1, 8)[0], 630)
+
+    def test_a_quest_with_objectives_or_without_the_flag_is_priced_as_before(self):
+        flagged = model(quests=SCRIPTED).objective(12, 1, 8)
+        plain = model(quests={**SCRIPTED, 12: {k: v for k, v in SCRIPTED[12].items() if k != "scripted"}}).objective(12, 1, 8)
+        self.assertEqual(flagged, plain)
+        self.assertGreater(flagged[2], 0)  # the kill still gives experience
+        # no objective and no flag: the old assumption (a few kills), unchanged
+        self.assertEqual(model(quests=SCRIPTED).objective(14, 1, 8), model(quests=SCRIPTED).objective(99, 1, 8))
+
+
 class RunTest(TempProject):
-    def run_text(self, text, overrides=None, quest_xp=None):
+    def run_text(self, text, overrides=None, quest_xp=None, quests=None):
         files = {"Guides/Test.lua": guide_lua("#include c\n"), "Guides/Chapters/c.lua": chapter_lua("c", text)}
         self.files(files)
         project = guidefile.load_project(self.root)
         guide = project.guides["test-guide"]
         route = guidefile.build_route(project, guide, guidefile.variants(project, guide)[0])
-        m = Model(guide_sim.load_params(overrides=overrides), QUESTS, NPCS, {}, quest_xp)
+        m = Model(guide_sim.load_params(overrides=overrides), QUESTS if quests is None else quests, NPCS, {}, quest_xp)
         return guide_sim.run(route, world(), m)
 
     def test_a_quest_gives_xp_and_the_levels_come_with_the_clock(self):
@@ -173,6 +210,30 @@ class RunTest(TempProject):
         self.assertEqual(marks[3], "elite")  # its objective is an elite
         self.assertEqual(marks[2], "above")  # level 5 at level 1
         self.assertEqual(guide_sim.risk_score(result), 3 + 4)
+
+    def test_a_change_of_zone_with_no_route_is_travel_time_in_the_full_simulation(self):
+        # it used to cost nothing: the planner priced such a hop by distance and the simulation of the written route did not
+        text = "#chapter 1-5 One\nstep\n  .goto 10,40,40\n  .accept 1\nstep\n  .todo \"travel: the graph has no route yet\"\n  .zone 20\nstep\n  .goto 20,60,60\n  .turnin 1\n"
+        result = self.run_text(text)
+        hop = pricing.PRICES.walk(world().geo.distance(Coord(10, 40, 40), Coord(20, 60, 60)))
+        self.assertGreater(hop, 100)
+        self.assertAlmostEqual(result.travel, hop)
+        self.assertAlmostEqual(result.chapters[0].travel, hop)
+        self.assertEqual([round(entry.walk) for entry in result.log], [0, 0, round(hop)])
+        slower = self.run_text(text, ["kill_seconds=12"])  # no travel parameter in the model's: the walk is the simulation's own
+        self.assertAlmostEqual(slower.travel, hop)
+
+    def test_a_scripted_quest_costs_time_at_its_complete_and_is_a_hardcore_risk(self):
+        steps = "step\n  .goto 10,40,40\n  .accept 10\n  .accept 11\n  .level 6\n"
+        done = steps + "step\n  .goto 10,40,40\n  .complete 10\n  .complete 11\nstep\n  .goto 10,40,40\n  .turnin 10\n  .turnin 11\n"
+        with_work = self.run_text("#chapter 6-9 One\n" + done, quests=SCRIPTED)
+        without = self.run_text("#chapter 6-9 One\n" + steps, quests=SCRIPTED)
+        self.assertEqual(round(with_work.objective), 420 + 180)  # the escort and the event
+        self.assertEqual(without.objective, 0)  # a guide that never says `.complete` is not charged for the work
+        marks = {quest: reason for reason, quest, _ql, _cl in with_work.risk}
+        self.assertEqual(marks, {10: "escort", 11: "event"})
+        self.assertEqual(guide_sim.risk_score(with_work), 2 + 2)
+        self.assertIn("escort or event = 2", "\n".join(guide_sim.report(with_work)))
 
     def test_what_if_leaves_a_quest_out(self):
         text = (

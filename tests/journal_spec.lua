@@ -3,6 +3,7 @@
 -- click jumps, the settings write through to the step card and the pins, and every way of opening it works.
 local addon = dofile("tests/helpers/addon.lua")
 local contextMock = dofile("tests/mocks/context.lua")
+local launcherMock = dofile("tests/mocks/launcher.lua")
 -- Client globals are set through G, the real global table (see tests/helpers/addon.lua).
 local G = addon.G
 
@@ -94,6 +95,7 @@ after_each(function()
 	end
 	sessions = {}
 	contextMock.uninstall()
+	launcherMock.uninstall()
 	G.IsShiftKeyDown = nil
 end)
 
@@ -232,6 +234,45 @@ describe("Journal", function()
 			assert.is_true(ns.Progress:ChapterSkipped(2))
 		end)
 
+		it("has a Find my place button that places the character and shows the step it landed on", function()
+			local ns, world, mock = start()
+			ns.Journal:Show()
+			local button = ns.Journal.frame.route.place
+			assert.is_table(button)
+			assert.are.equal("Find my place", button:GetText())
+			assert.are.equal("valley:1", ns.Progress:Current().id)
+			-- the quest is done by now (the client says so) and the character is level 7: past the valley
+			world.level, world.completed = 7, { 4641 }
+			button.scripts.OnClick(button)
+			assert.are.equal("cave:1", ns.Progress:Current().id)
+			assert.are.equal(2, ns.Journal.chapter) -- the Journal shows the chapter of the pointer
+			assert.is_true(ns.Progress:IsDone("valley:3"))
+			local found = false
+			for _, line in ipairs(mock.printed) do
+				found = found or line:find("Your place: step 4/5 (Cave).", 1, true) ~= nil
+			end
+			assert.is_true(found)
+			assert.are.same({}, mock.errors)
+			-- it is a manual placement, which < takes back: the pointer as it was before the click
+			assert.is_true(ns.Progress:Back())
+			assert.are.equal("valley:1", ns.Progress:Current().id)
+		end)
+
+		it("refreshes the route list when the character is placed", function()
+			local ns, world = start()
+			ns.Journal:Show()
+			local pane = ns.Journal.frame.route
+			assert.is_truthy(texts(pane.steps)[1]:find(">", 1, true)) -- the first step is current
+			world.level, world.completed = 7, { 4641 }
+			ns.Progress:Place({ reason = "manual" })
+			world.advance(0.5) -- the coalesced refresh
+			pane.chapters.rows[1].scripts.OnClick(pane.chapters.rows[1])
+			for _, text in ipairs(texts(pane.steps)) do
+				assert.is_truthy(text:find("[x]", 1, true), text) -- all of the valley is done now
+			end
+			assert.is_truthy(texts(pane.chapters)[1]:find("(3/3)", 1, true))
+		end)
+
 		it("jumps to a step on a click, and asks for Shift when it is far away", function()
 			local ns, world = start()
 			ns.Journal:Show()
@@ -283,6 +324,109 @@ describe("Journal", function()
 			ns.Progress:SetGuide(nil)
 			ns.Journal:Show()
 			assert.is_truthy(ns.Journal.frame.route.title:GetText():find("No guide", 1, true))
+		end)
+
+		-- A group quest of a normal route is an optional-only step for each stage (Engine/Conditions.lua OptionalOnly).
+		describe("group quests (optional-only steps)", function()
+			local GROUP = [[
+#chapter 1-6 Grove
+step
+  .goto 1411,30,30
+  .accept 9001
+step
+  .goto 1411,40,40
+  .accept 9500
+  .optional 9500
+step
+  .goto 1411,50,50
+  .complete 9500
+  .optional 9500
+step
+  .goto 1411,40,40
+  .turnin 9500
+  .optional 9500
+step
+  .goto 1411,30,30
+  .turnin 9001
+]]
+
+			local function startGrove(setup)
+				local ns, world, mock = start(setup)
+				assert.is_true(ns.Chapters:Register("grove", GROUP))
+				assert.is_true(ns.Guides:Register({
+					id = "test-group",
+					name = "Group",
+					faction = "*",
+					races = { "*" },
+					classes = { "*" },
+					levels = { 1, 10 },
+					text = "#include grove\n",
+				}))
+				assert.is_true(ns.Guides:Select("test-group"))
+				ns.Progress:Start() -- (the registry's choice did not change, so it announced nothing)
+				assert.are.equal("test-group", ns.Progress:Guide().id)
+				world.advance(1.1)
+				return ns, world, mock
+			end
+
+			it("tags the steps of a group quest in the route list", function()
+				local ns = startGrove()
+				ns.Journal:Show()
+				local steps = texts(ns.Journal.frame.route.steps)
+				assert.are.equal(5, #steps)
+				for i, text in ipairs(steps) do
+					assert.are.equal(i >= 2 and i <= 4, text:find("(group quest)", 1, true) ~= nil, text)
+				end
+				assert.is_truthy(steps[2]:find('Accept "Quest #9500"', 1, true))
+			end)
+
+			it("shows a step the route passed without the quest done as skipped, not as done", function()
+				local ns, world, mock = startGrove()
+				ns.Journal:Show()
+				world.log = { contextMock.quest(9001, { objectives = { contextMock.objective("Boar slain", 0, 3) } }) }
+				mock.fire("QUEST_ACCEPTED", 9001)
+				world.advance(1.1)
+				assert.are.equal("grove:5", ns.Progress:Current().id)
+				ns.Journal:Refresh()
+				local steps = texts(ns.Journal.frame.route.steps)
+				assert.is_truthy(steps[1]:find("[x]", 1, true)) -- 9001 is in the log
+				for i = 2, 4 do
+					assert.is_truthy(steps[i]:find("[-]", 1, true), steps[i]) -- the group quest was left
+					assert.is_nil(steps[i]:find("[x]", 1, true), steps[i])
+				end
+				assert.is_truthy(steps[5]:find(">", 1, true)) -- current
+			end)
+
+			it("keeps drawing the route list when the check for group quests raises an error, and logs it", function()
+				local ns, _, mock = startGrove()
+				ns.Conditions.OptionalOnly = function()
+					error("broken group check")
+				end
+				ns.Journal:Show()
+				local steps = texts(ns.Journal.frame.route.steps)
+				assert.are.equal(5, #steps) -- every row is drawn, none of them tagged
+				for i, text in ipairs(steps) do
+					assert.is_nil(text:find("(group quest)", 1, true), text)
+					assert.is_truthy(text:find(tostring(i), 1, true), text)
+				end
+				assert.is_truthy(steps[2]:find('Accept "Quest #9500"', 1, true))
+				assert.is_true(#ns.db.errors > 0)
+				assert.truthy(ns.db.errors[1].msg:find("broken group check", 1, true))
+				wipe(ns.db.errors) -- seen; the check after each test is for the unexpected ones
+				wipe(mock.errors)
+			end)
+
+			it("shows them as done when the quest was done", function()
+				local ns = startGrove(function(world)
+					world.completed = { 9001, 9500 } -- the route is walked past them at once: the group quest is done too
+				end)
+				ns.Journal:Show()
+				local steps = texts(ns.Journal.frame.route.steps)
+				for i = 2, 4 do
+					assert.is_truthy(steps[i]:find("[x]", 1, true), steps[i])
+					assert.is_nil(steps[i]:find("[-]", 1, true), steps[i])
+				end
+			end)
 		end)
 	end)
 
@@ -514,9 +658,83 @@ describe("Journal", function()
 
 	describe("the minimap button", function()
 		it("is created when the libraries are there and left alone when they are not", function()
-			-- the test client has no LibStub: nothing is created and nothing fails
+			-- this client has no LibDataBroker or LibDBIcon: nothing is created and nothing fails
 			local ns = start()
-			assert.is_table(ns.db.minimapButton)
+			assert.are.same({ hide = false, lock = false }, ns.db.minimapButton)
+			local client
+			start(function()
+				client = launcherMock.install(G.LibStub)
+			end)
+			assert.is_not_nil(client.buttons.Signpost)
+		end)
+
+		it("has its two settings in the Settings tab's first column, written through to LibDBIcon", function()
+			local client
+			local ns = start(function()
+				client = launcherMock.install(G.LibStub)
+			end)
+			ns.Journal:Show("settings")
+			local byLabel = {}
+			for _, box in ipairs(ns.Journal.frame.settings.boxes) do
+				byLabel[box.def.label] = box
+			end
+			local show = byLabel["Show the minimap button"]
+			local lock = byLabel["Lock the minimap button's position"]
+			assert.is_not_nil(show)
+			assert.is_not_nil(lock)
+			assert.is_nil(show.def.column) -- the first column, with the step card and pin settings
+			assert.is_nil(lock.def.column)
+			assert.is_true(show.def.get())
+			assert.is_false(lock.def.get())
+
+			show.check.GetChecked = function()
+				return false
+			end
+			show.check.scripts.OnClick(show.check)
+			assert.is_true(ns.db.minimapButton.hide)
+			assert.is_true(client.buttons.Signpost.hidden)
+			assert.is_false(show.def.get())
+			show.check.GetChecked = function()
+				return true
+			end
+			show.check.scripts.OnClick(show.check)
+			assert.is_false(ns.db.minimapButton.hide)
+			assert.is_false(client.buttons.Signpost.hidden)
+
+			lock.check.GetChecked = function()
+				return true
+			end
+			lock.check.scripts.OnClick(lock.check)
+			assert.is_true(ns.db.minimapButton.lock)
+			assert.is_true(client.buttons.Signpost.locked)
+			assert.is_true(lock.def.get())
+			lock.check.GetChecked = function()
+				return false
+			end
+			lock.check.scripts.OnClick(lock.check)
+			assert.is_false(ns.db.minimapButton.lock)
+			assert.is_false(client.buttons.Signpost.locked)
+			assert.are.same(
+				{ { "Hide", "Signpost" }, { "Show", "Signpost" }, { "Lock", "Signpost" }, { "Unlock", "Signpost" } },
+				client.calls
+			)
+		end)
+
+		it("keeps the boxes in step with a change made elsewhere (the menu, /signpost minimap)", function()
+			local ns = start(function()
+				launcherMock.install(G.LibStub)
+			end)
+			ns.Journal:Show("settings")
+			local show
+			for _, box in ipairs(ns.Journal.frame.settings.boxes) do
+				if box.def.label == "Show the minimap button" then
+					show = box
+				end
+			end
+			G.SlashCmdList.SIGNPOST("minimap hide")
+			assert.is_false(show.def.get())
+			ns.Journal:Refresh()
+			assert.is_false(show.check._checked)
 		end)
 	end)
 end)

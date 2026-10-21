@@ -1,12 +1,14 @@
 ---
 title: A lint rule for a quest whose pack objectives never appear as a .complete
 kind: feature
-status: open
+status: done
 priority: low
 area: tools
 source: claude
 raised: 2026-10-20
 raised_in: independent review of the installed Troll Hunter guide, 2026-10-20
+closed: 2026-10-21
+resolution: tools/guide_lint.py objective_checks: with the data pack, a quest the pack gives objectives that the route accepts and turns in with no .complete for it (and no .todo naming it) is an error (missing-complete); some objectives but not all is a warning (partial-complete); a quest whose objectives are all talk-to the NPC that starts or ends it is exempt; without the pack the objectives are unknown, so the rule is skipped and the note says so. Tests in tools/tests/test_guide_lint.py; the three shipped guides are clean; deleting one explore .complete from the Troll and Tauren guides in a scratch copy gives the two errors. Branch feat/tools-lint-pricing.
 ---
 
 ## What

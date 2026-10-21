@@ -45,8 +45,17 @@ simulation has the level for but nothing in the guide asks for.
   quest, the step and why. Exit 1 on an error.
 - `python tools/guide_lint.py --strict` runs the same walk (needs the data pack, so CI without it skips it) as codes
   `quest-level`, `quest-prerequisite`, `quest-chain`, `quest-locked`, `quest-impossible`, `quest-race`, `quest-class`, ...
+- `python tools/audit_quests.py` reads the quests the game offered or the player accepted in recorded play (`SignpostDB.eventLog`:
+  GOSSIP_SHOW, QUEST_GREETING, QUEST_DETAIL, QUEST_ACCEPTED, QUEST_TURNED_IN; and `learned.quests`) and looks each one up. A quest the pack
+  does not know is a **data gap** (listed with its title, giver and place). For each guide, a quest its character could take, in a zone the
+  route visits, that the route neither accepts nor a `#skipquest` names is **not routed**, with the reason the rules give (repeatable, a world
+  event, a profession, a level above the last chapter, a closed prerequisite) or "left out by the planner or the drafter". The event log does
+  not say which character played, and the pack's Forever quests often carry no race or class limit (the Skyborne start quests have none),
+  so a quest is judged against a guide by faction, race, class **and the zones the route goes to**; the rest are only counted. `--strict`
+  exits 1 on a data gap.
 - Tests: `tools/tests/test_availability.py` has the Valley of Trials as the game offered it, including the Burning Blade
-  Medallion and the Gornek sequence; `test_guide_draft.py` and `test_guide_lint.py` have the drafter and lint cases.
+  Medallion and the Gornek sequence; `test_guide_draft.py` and `test_guide_lint.py` have the drafter and lint cases;
+  `test_validate_availability.py` and `test_audit_quests.py` build events the way the recorder writes them (integer-keyed arguments).
 
 ## What it cannot see
 

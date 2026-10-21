@@ -1,5 +1,6 @@
 {
   "_note": "Every number here is an ASSUMPTION for WoW: Forever (PLAN section 7, Phase 9): none is measured. Seconds unless named otherwise. `python tools/guide_sim.py --sensitivity` shows which of them a route's ranking depends on.",
+  "travel": {"_note": "overrides for the travel prices of tools/signpost_tools/pricing.py (walk_speed, detour, transport_wait, transport_across, dock_walk, ...), which the Route Planner and the simulation of a written route both use; none is set here, so the defaults there hold. Name one to override it, e.g. \"detour\": 1.2"},
   "interact_seconds": 12,
   "kill_seconds": 12,
   "loot_seconds": 4,
@@ -7,6 +8,9 @@
   "object_seconds": 6,
   "explore_seconds": 20,
   "spell_seconds": 10,
+  "escort_seconds": 420,
+  "event_seconds": 180,
+  "_scripted_note": "the game completes a scripted quest (the pack's `scripted` flag: QuestieDB's 'needs event') by an escort or an event, and the pack lists no objective for most of them, so these two are all the work they cost. escort_seconds: it starts and ends at different NPCs (one walks with you, with its pauses and ambushes: Classic's escorts take about 5 to 12 minutes). event_seconds: it starts and ends at one NPC (an ambush, a ritual, a summoned fight). Unverified for Forever",
   "default_kills": 8,
   "default_items": 6,
   "drop_rate": 0.4,

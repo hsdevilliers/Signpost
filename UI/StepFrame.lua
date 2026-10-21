@@ -1,6 +1,7 @@
 -- The step frame (PLAN §3.1): a small Blizzard-styled panel with the current step — "<chapter> · step i/N", the step's
--- lines from ns.Conditions:Describe, the active sticky directives, an in-transit note — and < > Skip buttons. A quest
--- the step has to complete is one line with a done mark, never its objectives' progress: the quest log shows that.
+-- lines from ns.Conditions:Describe, the active sticky directives, the group quests coming up, an in-transit note — and
+-- < > Skip buttons. A quest the step has to accept, complete or turn in is one line with a done mark, never its
+-- objectives' progress: the quest log shows that.
 -- Shift-drag moves it; lock, scale, alpha, position and which way it grows are kept in SignpostDB.stepFrame. It hides
 -- in combat and while dead (both configurable). A secure button beside it uses the step's .use item; that button is
 -- parented to UIParent, not to this frame, so hiding the frame in combat never touches a protected frame, and its
@@ -21,6 +22,10 @@ local ICON_SIZE = 14
 -- and what does not fit is cut off. VERIFY(beta): ten lines of this font fit the frame without covering too much.
 local MAX_BODY_LINES = 10
 local MAX_STICKY_LINES = 2
+-- The group quests coming up (an optional-only step, Engine/Conditions.lua): the next steps looked at and the lines
+-- they may add, apart from the body's ten.
+local OPTIONAL_AHEAD = 3
+local MAX_OPTIONAL_LINES = 2
 local BUTTON_HEIGHT = 20
 local ITEM_BUTTON_SIZE = 32
 local RENDER_DELAY = 0.2
@@ -101,14 +106,17 @@ local function statesFor(step)
 	end
 end
 
--- The lines of these directives carry a done mark: the quests a step has to complete, so that the frame says which of
--- them are done. (A `.accept` or `.turnin` line reads as it is.)
-local MARKED = { complete = true }
+-- The lines of these directives carry a done mark: the quests a step has to accept, complete or turn in, so that the
+-- frame says which of them are done (a pick-up of five quests and a hand-in of five read like a doing step of five).
+-- The lines of every other directive (travel, .train, .buy, notes, ...) read as they are.
+local MARKED = { accept = true, complete = true, turnin = true }
 
 -- The step's display lines from ns.Conditions:Describe, as plain strings (a line may also be a table with `text`).
 -- Lines Describe marks as sticky (its second result) are left to the "Ongoing:" lines (StepFrame:StickyLines). The
 -- line of a MARKED directive starts with its done mark ("[x]" or "[ ]", the Journal's), from Describe's `done`.
-function StepFrame.DescribeLines(step)
+-- `quests` (optional, { [questID] = true }) leaves out the lines about any other quest: a pin's tooltip lists the lines
+-- of the quests it names, not those of the step's other pins.
+function StepFrame.DescribeLines(step, quests)
 	local lines, conditions = {}, ns.Conditions
 	if type(step) ~= "table" or not (conditions and conditions.Describe) then
 		return lines
@@ -118,7 +126,11 @@ function StepFrame.DescribeLines(step)
 		for i, line in ipairs(described) do
 			local meta = type(info) == "table" and info[i]
 			local text = lineText(line)
-			if text and text ~= "" and not (type(meta) == "table" and meta.sticky) then
+			local other = type(quests) == "table"
+				and type(meta) == "table"
+				and meta.quest ~= nil
+				and not quests[meta.quest]
+			if text and text ~= "" and not (type(meta) == "table" and meta.sticky) and not other then
 				if type(meta) == "table" and MARKED[meta.name] and type(meta.done) == "boolean" then
 					text = (meta.done and ns.UI.MARK.done or ns.UI.MARK.todo) .. " " .. text
 				end
@@ -211,6 +223,40 @@ function StepFrame:StickyLines(current, bodyLines)
 					seenTexts[text] = true
 					lines[#lines + 1] = text
 				end
+			end
+		end
+	end
+	return lines
+end
+
+-- The group quests coming up, as "<quest> (group quest)": the quests of the optional-only steps among the next
+-- OPTIONAL_AHEAD steps of the route (ns.Conditions:OptionalOnly) that the player has neither in the quest log nor done,
+-- each once, at most MAX_OPTIONAL_LINES. A quest the player took is the business of its own step, and a step the route
+-- has passed is not in the window; the current step's own lines are its body, so a quest one of its own directives
+-- names (the group quest's accept, with its "do it" step next) is not offered again beside them.
+function StepFrame:OptionalLines(current)
+	local progress, conditions, directives = ns.Progress, ns.Conditions, ns.Directives
+	local guide = progress and progress.Guide and progress:Guide()
+	local steps = type(guide) == "table" and guide.steps
+	local index = type(current) == "table" and current.index
+	local lines = {}
+	if not (type(steps) == "table" and type(index) == "number" and conditions and conditions.OptionalOnly) then
+		return lines
+	end
+	local seen = {}
+	for _, directive in ipairs(type(current.directives) == "table" and current.directives or {}) do
+		local args = type(directive) == "table" and directive.args
+		if type(args) == "table" and type(args.questID) == "number" then
+			seen[args.questID] = true
+		end
+	end
+	for i = index + 1, math.min(index + OPTIONAL_AHEAD, #steps) do
+		local ok, only = ns.SafeCall(conditions.OptionalOnly, conditions, steps[i], ns.Context)
+		for _, questID in ipairs(ok and type(only) == "table" and only.available or {}) do
+			if #lines < MAX_OPTIONAL_LINES and not seen[questID] then
+				seen[questID] = true
+				local name = directives and directives.Label and directives.Label.Quest(questID)
+				lines[#lines + 1] = string.format(L["%s (group quest)"], name or string.format(L["Quest #%d"], questID))
 			end
 		end
 	end
@@ -436,6 +482,14 @@ function StepFrame:CreateWidgets()
 	sticky:SetWidth(WIDTH - 2 * PADDING)
 	frame.sticky = sticky
 
+	-- One line for each quest, cut at the frame's edge rather than wrapped onto the next quest's line.
+	local optional = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	optional:SetJustifyH("LEFT")
+	optional:SetWordWrap(false)
+	optional:SetMaxLines(MAX_OPTIONAL_LINES)
+	optional:SetWidth(WIDTH - 2 * PADDING)
+	frame.optional = optional
+
 	local status = frame:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	status:SetJustifyH("LEFT")
 	status:SetWordWrap(true)
@@ -480,7 +534,7 @@ function StepFrame:Layout()
 	frame.body:ClearAllPoints()
 	frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", PADDING, -y)
 	y = y + textHeight(frame.body, MAX_BODY_LINES)
-	for _, fontString in ipairs({ frame.sticky, frame.status }) do
+	for _, fontString in ipairs({ frame.sticky, frame.optional, frame.status }) do
 		local height = textHeight(fontString, MAX_STICKY_LINES)
 		if height > 0 then
 			y = y + GAP
@@ -528,6 +582,11 @@ function StepFrame:Fill(frame, guide, step)
 		sticky[i] = string.format("%s%s|r %s", NORMAL_COLOR, L["Ongoing:"], text)
 	end
 	frame.sticky:SetText(table.concat(sticky, "\n"))
+	local optional = {}
+	for i, text in ipairs(self:OptionalLines(step)) do
+		optional[i] = string.format("%s%s|r %s", NORMAL_COLOR, L["Optional:"], text)
+	end
+	frame.optional:SetText(table.concat(optional, "\n"))
 	frame.status:SetText(self:StatusText(step) or "")
 	frame.back:SetEnabled(type(step.index) ~= "number" or step.index > 1)
 	self:Layout()
@@ -673,8 +732,13 @@ function StepFrame:OnDragStop()
 	self:PositionItemButton()
 end
 
--- Right-click is reserved for the journal (PLAN §3.2, Phase 4); until it exists this does nothing.
+-- Right-click opens the quick menu (UI/Launcher.lua, docs/INTERACTIONS.md); the Journal is its first entry. A client
+-- without the Menu system gets what the click did before: the Journal, on the current step.
 function StepFrame:OnRightClick()
+	local launcher = ns.Launcher
+	if launcher and launcher.OpenMenu and launcher:OpenMenu(self.frame) then
+		return
+	end
 	local journal = ns.Journal
 	if journal and journal.Toggle then
 		journal:Toggle(self.step)

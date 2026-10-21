@@ -673,7 +673,9 @@ local function tooltipTitle(target)
 	return KIND_TITLES[target.kind] or KIND_TITLES["goto"]
 end
 
--- The text under a pin: the step's lines, or for a sticky target its sticky directives.
+-- The text under a pin: the step's lines, or for a sticky target its sticky directives. A pin that names quests (the
+-- quest giver of a joined step, Engine/Conditions.lua Targets) lists the lines of those quests and of no other: the
+-- lines of the step's other quests belong to its other pins.
 local function tooltipLines(entry)
 	local stepFrame = ns.StepFrame
 	if not stepFrame then
@@ -682,7 +684,15 @@ local function tooltipLines(entry)
 	if entry.sticky then
 		return (stepFrame.DescribeActiveSticky or stepFrame.DescribeSticky)(entry.step)
 	end
-	return stepFrame.DescribeLines(entry.step)
+	local quests = entry.target.quests
+	local named
+	if type(quests) == "table" and #quests > 0 then
+		named = {}
+		for _, questID in ipairs(quests) do
+			named[questID] = true
+		end
+	end
+	return stepFrame.DescribeLines(entry.step, named)
 end
 
 -- Tooltip: the target, the step's text and the distance in yards.

@@ -1,6 +1,8 @@
 -- Contribute: whether this player agreed to let Signpost record what it sees (NPC, quest giver, flight master, trainer,
--- vendor and zone border positions: Core/Learn.lua) so the guides improve. Release builds record nothing until the
--- player says yes; dev builds (git checkouts) always record, as before. The debug event log (Core/Debug.lua) is a
+-- vendor, innkeeper, zone border and boat or zeppelin dock positions: Core/Learn.lua; what trainers teach and charge
+-- and the recipes of the trade skill windows: Core/LearnProfessions.lua) so the guides improve. Release builds record
+-- nothing until the player says yes; dev builds (git checkouts) always record, as before. The debug event log
+-- (Core/Debug.lua) is a
 -- separate, broader log that is never switched on by this choice. Nothing is sent anywhere: the data stays in
 -- SavedVariables and the player hands the file over (UI/Contribute.lua says how).
 local ADDON_NAME, ns = ...

@@ -147,6 +147,58 @@ describe("Contribute", function()
 			G.InCombatLockdown = nil
 		end)
 
+		-- The consent text must name everything the recorder keeps about the player (docs/SHARING-DATA.md has the same
+		-- list), or the yes is not an informed one (R-engine-2 #6). The generic client mock keeps no text, so this
+		-- records what the window sets on its font strings.
+		describe("says in plain words what it records", function()
+			local function textOfTheWindow()
+				local texts = {}
+				local ns = load(true, function()
+					local createFrame = G.CreateFrame
+					G.CreateFrame = function(...)
+						local frame = createFrame(...)
+						local createFontString = frame.CreateFontString
+						rawset(frame, "CreateFontString", function(self, ...)
+							local region = createFontString(self, ...)
+							rawset(region, "SetText", function(field, text)
+								rawset(field, "text", text)
+								texts[#texts + 1] = text
+							end)
+							return region
+						end)
+						return frame
+					end
+				end)
+				ns.UI.Contribute:Show()
+				return table.concat(texts, "\n"), ns
+			end
+
+			it("each thing it keeps about the player", function()
+				local text = textOfTheWindow()
+				for _, phrase in ipairs({
+					"your skill in a profession next to each recipe",
+					"whether you already know a service a trainer offers",
+					"how long a boat or zeppelin ride took",
+					"and your faction",
+				}) do
+					assert.is_truthy(text:find(phrase, 1, true), phrase)
+				end
+			end)
+
+			it("and what it never keeps: chat, gold, the names of players and pets", function()
+				local text = textOfTheWindow()
+				assert.is_truthy(text:find("No chat, none of your gold and no player or pet names.", 1, true))
+			end)
+
+			it("in the one block of text under the title, which the window keeps as frame.What", function()
+				local _, ns = textOfTheWindow()
+				local what = ns.UI.Contribute.frame.What.text
+				assert.is_truthy(what:find("Where NPCs, quest givers", 1, true))
+				assert.is_truthy(what:find("your faction", 1, true))
+				assert.is_truthy(what:find("none of your gold", 1, true))
+			end)
+		end)
+
 		it("the checkbox saves the answer", function()
 			local ns, mock = load(true)
 			say(mock, "contribute")

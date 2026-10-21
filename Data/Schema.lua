@@ -32,6 +32,10 @@ local L = ns.L
 --                       breadcrumbFor = questID,                     -- an optional lead-in to that quest
 --                       skill = { skillLineID, rank },               -- a profession requirement (rank 0: any)
 --                       repeatable = true,
+--                       scripted = true,                             -- completed by a script or event (an escort, an
+--                                                                    -- ambush, a ritual), not by objectives; the pack
+--                                                                    -- lists none for most of them (QuestieDB's
+--                                                                    -- specialFlags bit 2, "needs event")
 --                       gives = itemID,                              -- what the giver hands over (a letter, a tool)
 --                       needs = { itemIDs } }                        -- needed, though no objective names them
 -- npcs[npcID]       = { n = name, side = side or "none",             -- "both" also for neutral creatures; "none":
@@ -59,8 +63,20 @@ local L = ns.L
 --                       taxi = { { id = nodeID, n = name, x = pct, y = pct, faction = 0 | 1 | 2 }, ... },  -- continent
 --                       dungeons = { { id = journalInstanceID, n = name, x = pct, y = pct }, ... } }
 -- professions[skillLineID] = { n = name, trainers = { npcIDs },
---                       recipes = { [spellID] = { item = itemID, skill = { orange, yellow, green, grey },
---                                   reagents = { [itemID] = count }, src = "trainer" | "vendor" | "drop" | "quest" } },
+--                       services = { [npcID] = { { id = spellID, item = itemID, n = name, r = rank text,
+--                                    cost = copper, lvl = required level, need = required skill }, ... } },
+--                                                                    -- what each trainer teaches and charges, learned
+--                                                                    -- in game (Core/LearnProfessions.lua); a trainer
+--                                                                    -- of two professions: each service under its own
+--                       recipes = { [spellID] = { n = name, item = itemID, skill = { orange, yellow, green, grey },
+--                                   reagents = { [itemID] = count }, src = "trainer" | "vendor" | "drop" | "quest",
+--                                   obs = { { skill = n, cat = "optimal" | "medium" | "easy" | "trivial" }, ... } } },
+--                                                                    -- obs: how hard the game showed the recipe at
+--                                                                    -- that skill (orange, yellow, green, grey),
+--                                                                    -- learned in game: the lowest and highest skill
+--                                                                    -- seen per difficulty, at most eight;
+--                                                                    -- skill_bounds in tools/signpost_tools/learned.py
+--                                                                    -- reads where each colour starts from them
 --                       quests = { questIDs } or { { id, n, l, quests = { questIDs } }, ... } }
 --                                                                    -- profession unlock quests: read by the guide
 --                                                                    -- lint, not exported yet

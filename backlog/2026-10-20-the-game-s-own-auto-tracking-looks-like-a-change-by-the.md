@@ -1,12 +1,14 @@
 ---
 title: The game's own auto-tracking looks like a change by the player to the quest tracking module
 kind: finding
-status: open
+status: done
 priority: low
 area: engine
 source: claude
 raised: 2026-10-20
 raised_in: PR feat/step-ui (quest tracking)
+closed: 2026-10-21
+resolution: Batch 1 WP-D (branch feat/quest-tracking): the game's own tracking is told from the player's by the watch type (Automatic or Manual) where the client has it, else by the timing of QUEST_ACCEPTED or QUEST_WATCH_UPDATE just before QUEST_WATCH_LIST_CHANGED; a quest the game tracks that is not the step's is untracked. Without watch types and without that event the old limit stays: the module backs off, the player is never fought. What Forever does is collected in SignpostDB.probe.trackingSeen (verify item).
 ---
 
 ## What

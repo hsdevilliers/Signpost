@@ -1,12 +1,14 @@
 ---
 title: The druid guides from planner routes, levels 21 to 30, and the empty Cat Form chapter
 kind: task
-status: open
+status: done
 priority: normal
 area: guides, planner
 source: claude
 raised: 2026-10-20
 raised_in: independent review of the installed Troll Hunter guide, 2026-10-20
+closed: 2026-10-21
+resolution: Batch 1: both druid guides are Route Planner routes to level 30, regenerated with the final tools and both HARDCORE rule sets, checked (guide_lint --strict 0 errors 0 warnings, guide_sim --check no findings, test_shipped_guides green) and reviewed independently (docs/reviews/batch-1-reviews.md; the walk reports docs/reviews/horde-tauren-druid-walk.md and docs/reviews/horde-windshaper-druid-walk.md). Tauren Druid: 23 chapters, 27h43 planned, 27h36 simulated in full, 47 .todo. Skyborne Druid: 19 chapters, 304 steps, 201 quests, 24h14 planned, 24h03 simulated, 33 .todo. The empty Cat Form chapters are gone: the class quests are routed in the planned routes. What stays open has its own items: the zone-change placeholders, the Moonglade trips (Teleport: Moonglade), the grind gates, the same-area omissions (the user chooses the completeness setting).
 ---
 
 ## What

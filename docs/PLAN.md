@@ -102,7 +102,8 @@ database fills in during the launch period.
 
 ### 3.2 Journal window (`UI/Journal.lua`) — the "Dungeon Journal" look
 
-Open with `/signpost`, minimap button (LibDBIcon), AddOn Compartment entry, or right-click on the step frame.
+Open with `/signpost`, the minimap button (LibDBIcon), the AddOn Compartment entry, the quick menu (a right-click on the step frame, the
+minimap button or the compartment entry) or a key binding; the click map and the menu are `docs/INTERACTIONS.md`.
 Register in `UIPanelWindows` (`area="left", pushable=1, whileDead=1`) so Esc closes it and it tiles with Blizzard panels.
 
 Layout (one frame built from `ButtonFrameTemplate`, which supplies portrait, title bar, close button, inset):
@@ -207,7 +208,10 @@ A class module is a table registered via `ns.Classes:Register("HUNTER", {...})` 
 - `directives` — class-only DSL directives registered into the **directive registry** (`ns.Directives:Register("tame", { parse=fn, isSatisfied=fn, targets=fn, describe=fn })`); the core only ships the generic directives from §5. `.tame`, `.ammo` live in the hunter module;
 - `classTab` — a builder `fn(parentFrame)` for the journal's third tab; the tab title is the localized class name, the portrait is `GetClassAtlas(classFile)`. If a class module has no `classTab`, the tab is hidden;
 - `automation` — optional hooks (e.g. hunter: vendor restock of ammo/pet food during `.buy` steps; warrior/paladin: none);
-- `onLevelUp(level)` — optional reminders (e.g. "new pet skills available").
+- `onLevelUp(level)` — optional reminders (e.g. "new pet skills available");
+- `travelHints` — `{ [uiMapID] = { to=…, back=…, unsafe=… } }`, plain words for the travel generator (`tools/guide_travel.py`; the addon never reads them): in a guide of
+  this class, a trip to or from that zone that would be a walk over a border becomes a step that says the class's own way (`to`, `back`: the druid's Teleport:
+  Moonglade) and, in a `.note`, why the road is not to be walked (`unsafe`); a flight path or the hearthstone that the data holds stands as it is (§3.6).
 
 **Data pack**: `classes/<CLASSFILE>.lua` instead of a hunter-only file; `tools/wowhead_class.py --class HUNTER` is generic.
 `Professions.lua` covers every profession; which ones a character follows is its profession plan (§3.8).
@@ -263,11 +267,20 @@ the pins show the arrival dock (probe how Forever reports position on transports
   with a wait cost, *hearth* to the current inn.
 - Border crossings are hand-authored in `Borders.lua` (small set) and **learned automatically**: `Core/Learn.lua` records, on every
   `ZONE_CHANGED_NEW_AREA`, the last position in the old zone and the first in the new one; exported crossings replace hand guesses.
+  Boat and zeppelin docks and innkeepers are learned the same way, from the position samples (docs/ENGINE.md, Core/Learn.lua);
+  docs/PLAY-CHECKLIST.md lists the short runs that fill the gaps, most useful first.
+- `Borders.lua` also holds **rides**: a boat, zeppelin or airship between two zones whose docks nobody has recorded (an entry with a `ride`
+  table and the zones only, never a made-up position; today the Skyborne's airship from Zephras Isle to Mulgore, from fan guides and
+  unverified). The tools turn one into a real step with the wait and what is unverified; a recorded ride in the pack replaces it.
 
 **Authoring tool** (`tools/guide_travel.py`): simulates the guide step by step (current zone, FPs learned via `.fp`, hearth via `.hs`,
 expected level), finds every uncovered zone change, runs a shortest-path search on the travel graph (walk cost = yards, flight cost
 = fixed + distance, boat/zeppelin = wait + crossing, hearth = 0 but 60-min cooldown tracked), and prints ready-to-paste DSL steps with
 `.path` waypoints along roads where `Borders.lua`/data provide them. `guide_lint.py --strict` fails on any remaining uncovered transition.
+Flight masters and innkeepers come from the pack's travel table and, until a learned or exported record exists, from its own NPC
+records (the service flags of the QuestieDB layer, a Classic baseline) matched to the client's flight nodes. Where the route passes
+a flight master and a later zone change would fly from it, the tool proposes the `.fp` step too (`--no-learn-flight-paths` turns it
+off). A zone change the data cannot place stays a `.todo` + `.zone` step, but in plain words and with no coordinate (docs/GUIDE-FORMAT.md).
 
 **Runtime nudge** (Phase 8, optional): if the player is 2+ zones away from the current step (logged in elsewhere, died, hearthed),
 the step frame shows a "Back to route" line with the planner's suggested first hop, computed in-game from the same graph.
@@ -590,7 +603,9 @@ Step 7 — **cross-check & gap report** (`tools/report_gaps.py`): quests with no
 without a trainer, zone pairs with no crossing coordinates. The in-game **Learn** module fills gaps as the user plays: NPC positions
 on `QUEST_ACCEPTED`, `QUEST_TURNED_IN`, `GOSSIP_SHOW`, `TRAINER_SHOW`, `MERCHANT_SHOW` (via `UnitGUID("npc")` → npcID and the
 player's position); flight-master and dock positions on `TAXIMAP_OPENED` and on boarding; **zone crossings** on `ZONE_CHANGED_NEW_AREA`
-(last position in the old zone + first in the new one). `tools/import_savedvars.py --merge-learned` folds all of it into the data pack with `src="learned"`.
+(last position in the old zone + first in the new one); **profession data** on `TRAINER_SHOW`/`TRAINER_UPDATE` and the `TRADE_SKILL_*`
+events (what each trainer teaches and charges; each trade skill window's recipes with item, reagents and the difficulty at the
+character's skill: `Core/LearnProfessions.lua`, filed under `professions[skillLine]`). `tools/import_savedvars.py --merge-learned` folds all of it into the data pack with `src="learned"`.
 
 Other sources (note licenses): QuestieDB Forever branch — since 2026-10-17 a layer of the private pack (decided above:
 `tools/questie_import.py`, facts only; GPL, so never copied into this public repo), wago.tools Forever client tables

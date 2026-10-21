@@ -1,7 +1,9 @@
 import contextlib
 import io
 import json
+import re
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -11,7 +13,7 @@ import route_install
 import route_planner as rp
 from signpost_tools import guidefile
 from tests.guide_fixtures import BORDERS_LUA, MAPS, TRAVEL, TempProject, guide_lua, write_pack
-from tests.test_guide_draft import NPCS, QUESTS
+from tests.test_guide_draft import HOME, NPCS, QUESTS
 
 ITEMS = {9999: {"n": "Thing"}, 9998: {"n": "Elite Drop", "drops": [3002]}, 9997: {"n": "Stone", "drops": [3002], "objDrops": [1]}}
 
@@ -113,6 +115,105 @@ class EndToEndTest(RouteCase):
         self.assertIn("reaches level 6", text)
         self.assertIn("greedy:", text.strip().splitlines()[-1])
 
+    def test_the_completeness_rule_is_stated_in_the_setup_and_switched_by_the_options(self):
+        args = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        code, text = self.run_main(*args)
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn("a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason "
+                      "(--completeness F finishes the ones that are a short walk away and pay at least F of the route's pace; off)", flat)
+        code, text = self.run_main(*args, "--completeness", "0.6", "--completeness-trip", "45")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn("is finished when its objectives are at most 45 s of walking away and it pays at least 60% of the route's pace "
+                      "(--completeness, --completeness-trip); the rest are taken out and listed with the reason", flat)
+        self.assertNotIn("is taken out when the route is written", flat)
+
+    def test_what_the_route_leaves_unfinished_is_named_with_the_reason_in_the_report_the_plan_file_and_the_guide(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "4", "--out", out_dir, "--steps", "0", "--decisions", "0")
+            self.assertEqual(code, 0, text)
+            flat = " ".join(text.split())
+            self.assertIn("unfinished 3 quests the search picked up on the way and did not finish are not in the route "
+                          "(2 hand-in too far, 1 could not be worked):", flat)
+            self.assertIn("202 Follows First (level 1, picked up at level 1, Giver): it is handed in 96 s of walking away", flat)
+            self.assertIn("229 Hub Rats (level 6, picked up at level 1, Giver): it could not be worked at level 1", flat)
+            self.assertIn("tidied 3 quests the search had accepted but never finished", flat)
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            self.assertEqual((data["completeness"], data["completeness_trip"]), (0.0, 30.0))
+            self.assertEqual([(r["quest"], r["code"]) for r in data["left_out"]], [(202, "handin"), (211, "handin"), (229, "level")])
+            self.assertEqual(data["completed"], [])
+            record = data["left_out"][0]
+            for field in ("name", "level", "picked_level", "hub", "why", "trip", "handin", "work", "rate", "pace", "ratio", "unplaced"):
+                self.assertIn(field, record)
+            guide = (Path(out_dir) / "greedy" / "Guides" / "Plan.lua").read_text(encoding="utf-8")
+            self.assertIn("#skipquest 202 >> not finished by this route: it is handed in 96 s of walking away", guide)
+            self.assertIn("#skipquest 229 >> not finished by this route: it could not be worked at level 1", guide)
+
+    def test_completeness_finishes_the_quests_a_short_walk_away_and_the_reports_say_so(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            code, text = self.run_main(
+                "troll", "--preset", "greedy", "--cap", "4", "--completeness", "0.01", "--completeness-trip", "200", "--out", out_dir,
+                "--steps", "0", "--decisions", "0",
+            )
+            self.assertEqual(code, 0, text)
+            flat = " ".join(text.split())
+            self.assertIn("completed 2 more quests the search left unfinished were finished instead (completeness 0.01, trips up to 200 s)", flat)
+            self.assertIn("unfinished 1 quests the search picked up on the way and did not finish are not in the route (1 could not be worked):", flat)
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            self.assertEqual((data["completeness"], data["completeness_trip"]), (0.01, 200.0))
+            self.assertEqual(data["completed"], [202, 211])
+            self.assertEqual(data["completed_unplaced"], [])  # (the fixture's two have positions)
+            self.assertEqual([r["quest"] for r in data["left_out"]], [229])
+            guide = (Path(out_dir) / "greedy" / "Guides" / "Plan.lua").read_text(encoding="utf-8")
+            self.assertNotIn("#skipquest 202", guide)  # a quest that was finished is in the route, not skipped
+            self.assertIn("#skipquest 229 >> not finished by this route", guide)
+            self.assertIn("availability  0 error(s)", text)  # and the route as written is still one the game would offer
+            self.assertIn("lint          0 error(s)", text)
+
+    def test_the_report_says_how_many_quests_the_log_holds_at_most_and_the_limit_is_obeyed(self):
+        args = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        code, text = self.run_main(*args)
+        self.assertIn("the quest log holds at most 40 quests", text)
+        free = int(re.search(r"the most quests held at once: (\d+) \(at level \d+, \d+h\d\d in\); the log holds 40", text).group(1))
+        self.assertGreater(free, 3)  # the fixture holds a dozen when it may
+        self.assertRegex(text, rf"the written route holds at most {free} quests at once \(the log holds 40\)")
+        code, text = self.run_main(*args, "--quest-log", "3")
+        self.assertEqual(code, 0, text)
+        self.assertIn("the quest log holds at most 3 quests", text)
+        held = int(re.search(r"the most quests held at once: (\d+)", text).group(1))
+        self.assertLessEqual(held, 3)
+        self.assertRegex(text, rf"the written route holds at most {held} quests at once \(the log holds 3\)")
+        self.assertNotIn("ERROR, more than the log holds", text)
+
+    def test_the_grind_steps_are_listed_with_their_amounts_and_each_says_how_much_in_the_chapters(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "8", "--out", out_dir, "--steps", "0", "--decisions", "0")
+            self.assertEqual(code, 0, text)
+            self.assertRegex(text, r"grinding      1 grind step\(s\) ask the player to kill for a level: [\d,]+ experience \(\d+\.\d% of the route's\)")
+            self.assertRegex(text, r"at \d+h\d\d: level \d to 8, about [\d,]+ experience, about [\d,]+ kills, \d+m")
+            chapters = sorted((Path(out_dir) / "greedy" / "Guides" / "Chapters").glob("plan-*.lua"))
+            written = "\n".join(path.read_text(encoding="utf-8") for path in chapters)
+            self.assertRegex(
+                written,
+                r"\.level 8 -- reach it first: kill or grind on the way\n  \.note Grind about [\d,]+ experience before you go on: "
+                r"about [\d,]+ kills of creatures near your level \(an estimate\)",
+            )
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(data["grinds"]), 1)
+            self.assertEqual(data["grinds"][0]["level_to"], 8)
+
+    def test_the_chapters_are_cut_where_the_zone_changes_for_as_long_as_the_setting_asks(self):
+        counts = {}
+        for asked in (1, 100):
+            with tempfile.TemporaryDirectory() as out_dir:
+                args = ("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--chapter-steps", str(asked), "--steps", "0", "--decisions", "0")
+                code, text = self.run_main(*args)
+                self.assertEqual(code, 0, text)
+                counts[asked] = len(list((Path(out_dir) / "greedy" / "Guides" / "Chapters").glob("plan-*.lua")))
+        self.assertEqual(counts[100], 1)  # one long stay is all there is
+        self.assertGreater(counts[1], 1)  # every change of zone is a chapter when one step is enough
+
     def test_every_technique_compares_in_one_table_and_files_are_written(self):
         with tempfile.TemporaryDirectory() as out_dir:
             code, text = self.run_main(
@@ -131,6 +232,11 @@ class EndToEndTest(RouteCase):
             self.assertTrue(data["complete"])
             self.assertEqual(data["lint_errors"], [])
             self.assertEqual(data["guide"], "test-guide")
+            self.assertEqual(data["quest_log_limit"], 40)
+            self.assertGreater(data["quest_log_peak"], 0)
+            thorough = json.loads((Path(out_dir) / "thorough" / "plan.json").read_text(encoding="utf-8"))
+            self.assertEqual([g["parts"] for g in thorough["grains"]], [2, 4, 8])  # every grain of thorough is in the plan file with what it found
+            self.assertIn("grains        each grain of progress searched on its own", text)
 
     def test_the_route_starts_where_the_guide_does_or_at_the_races_first_quest(self):
         code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0")
@@ -153,6 +259,27 @@ class EndToEndTest(RouteCase):
         rules.unlink()
         self.assertNotIn(reason, self.run_main(*args)[1])
 
+    def test_the_ferry_is_the_shared_price_unless_the_command_line_says_otherwise(self):
+        for extra, minutes in (((), 7), (("--ferry", "9"), 9)):
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0", *extra)
+            self.assertEqual(code, 0, text)
+            self.assertIn(f"boat or zeppelin + {minutes} min + the walk from the other capital", " ".join(text.split()))
+        self.assertEqual(engine.Settings().ferry_seconds, 420.0)  # pricing.PRICES.ferry
+        self.assertIn("Both price travel with the same numbers (signpost_tools/pricing.py", " ".join(text.split()))  # the fidelity line
+
+    def test_a_rule_about_another_classes_quest_skips_it_for_the_other_classes_guides_only(self):
+        rules = self.root / "tools" / "hardcore_rules.json"
+        rules.parent.mkdir(exist_ok=True)
+        line = "#skipquest 203 >> probably another class's quest"
+        for owner, skipped in (("WARLOCK", True), ("HUNTER", False)):  # the Troll Hunter's guide is a normal one
+            rule = {"id": 203, "action": "skip", "reason": "probably another class's quest", "class_quest_of": owner}
+            rules.write_text(json.dumps({"rules": [rule]}), encoding="utf-8")
+            with tempfile.TemporaryDirectory() as out_dir:
+                code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0")
+                self.assertEqual(code, 0, text)
+                plan = (Path(out_dir) / "greedy" / "Guides" / "Plan.lua").read_text(encoding="utf-8")
+            self.assertEqual(line in plan, skipped, owner)
+
     def test_hardcore_is_taken_from_the_guide_and_can_be_overridden(self):
         code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0")
         self.assertIn("[HARDCORE route]", text)
@@ -160,13 +287,136 @@ class EndToEndTest(RouteCase):
         self.assertIn("[normal route]", text)
 
 
+class RequiredOptionTest(RouteCase):
+    """The quests a guide requires: the manifest's `require` and --require (docs/PLANNER.md, Required quests)."""
+
+    ARGS = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+
+    def manifest(self, entries):
+        (self.root / "tools").mkdir(exist_ok=True)
+        (self.root / "tools" / "drafts.json").write_text(json.dumps({"guides": entries}), encoding="utf-8")
+
+    def test_the_manifest_names_the_required_quests_of_a_guide_and_what_is_not_an_id_is_ignored(self):
+        self.assertEqual(rp.manifest_requires(self.root, "test-guide"), [])  # no manifest
+        self.manifest([
+            {"guide": "test-guide", "require": [203, "x", True, 1.5, 202]},
+            {"guide": "test-hardcore"},
+            {"guide": "other", "require": [999]},
+        ])
+        self.assertEqual(rp.manifest_requires(self.root, "test-guide"), [203, 202])
+        self.assertEqual(rp.manifest_requires(self.root, "test-hardcore"), [])
+        self.manifest([{"guide": "test-guide", "require": "203"}])
+        self.assertEqual(rp.manifest_requires(self.root, "test-guide"), [])
+
+    def test_the_option_makes_the_route_do_the_quest_and_the_report_lists_it_with_the_level_it_was_done_at(self):
+        code, text = self.run_main(*self.ARGS)
+        self.assertEqual(code, 0, text)
+        self.assertIn("no quest is required", " ".join(text.split()))
+        self.assertNotIn("required by the guide", text)
+        code, text = self.run_main(*self.ARGS, "--require", "203")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn('required quests (--require, "require" in tools/drafts.json): 203. Each is done whatever it costs', flat)
+        self.assertRegex(flat, r"required 1 required by the guide; done at level \(the level it opens at\): 203 Boars at level \d+ \(opens 1, a level 2 quest\)")
+
+    def test_the_manifest_does_the_same_and_a_quest_named_twice_is_one(self):
+        self.manifest([{"guide": "test-guide", "require": [203]}])
+        code, text = self.run_main(*self.ARGS)
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertRegex(flat, r"1 required by the guide; done at level \(the level it opens at\): 203 Boars at level \d+")
+        code, text = self.run_main(*self.ARGS, "--require", "203", "--require", "203,202")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn("required quests (--require", flat)
+        self.assertRegex(flat, r"2 required by the guide and 1 quest it needs, all routed and none left out; done at level \(the level it opens at\): 203 Boars at level \d+ \(opens 1, a level 2 quest\); 202 Follows First")
+
+    def test_a_required_quest_the_character_cannot_have_stops_the_run_with_a_clear_message(self):
+        code, text = self.run_main(*self.ARGS, "--require", "204,99999")
+        self.assertEqual(code, 2, text)
+        self.assertIn("a required quest cannot be offered to this character", text)
+        self.assertIn("quest 204 (Warrior Only): other class", text)
+        self.assertIn("quest 99999: it is not in the data pack", text)
+        self.assertIn("--require", text.splitlines()[-1])
+        self.assertNotIn("THE SEARCH", text)  # nothing was planned
+
+    def test_the_plan_file_records_the_required_quests_and_the_ones_they_needed(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0", "--require", "202")
+            self.assertEqual(code, 0, text)
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            (record,) = data["required"]
+            self.assertEqual((record["quest"], record["name"], record["opens"], record["level"]), (202, "Follows First", 1, 1))
+            self.assertIsNotNone(record["done_at"])  # the level it was handed in at
+            self.assertEqual(data["required_needed"], [201])
+            self.assertIn(202, data["quests_done"])
+            self.assertIn("--require", " ".join(text.split()))
+        with tempfile.TemporaryDirectory() as out_dir:
+            self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0")
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            self.assertEqual((data["required"], data["required_needed"]), ([], []))
+
+
+class GroupReportTest(RouteCase):
+    """The report says why a quest is optional: an elite kill, a dungeon quest, or a quest that follows one of those (docs/PLANNER.md, "Group quests")."""
+
+    def setUp(self):
+        super().setUp()
+        quests = {
+            **QUESTS,
+            360: {"n": "After Elite", "r": 1, "l": 2, "preSingle": [220], "o": [{"id": 3001, "k": "kill"}], **HOME},  # needs the group quest Elite Hunt
+            370: {"n": "Into The Deep", "r": 1, "l": 3, "zone": 999, "o": [{"id": 9999, "k": "item"}], **HOME},  # 999 is no map of the pack
+        }
+        self.pack = write_pack(self.pack_dir, {"maps": MAPS, "quests": quests, "npcs": NPCS, "travel": TRAVEL, "items": ITEMS})
+
+    def test_the_done_line_counts_the_optional_quests_by_why(self):
+        code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertRegex(flat, r"done \d+ quests turned in, \d+ of them tagged optional \(\d+ group quests, 1 dungeon quest, 1 following one of those\)")
+        self.assertIn("a normal route: quests up to 5 levels above you are accepted and worked on up to 3; group quests (elite kills), dungeon quests and the quests "
+                      "that need one of those first are tagged optional", flat)
+
+    def test_the_plan_file_lists_the_optional_quests_with_why(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0")
+            self.assertEqual(code, 0, text)
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            found = {entry["quest"]: (entry["name"], entry["group"]) for entry in data["optional"]}
+            self.assertEqual(found[220], ("Elite Hunt", "elite"))
+            self.assertEqual(found[360], ("After Elite", "follows"))
+            self.assertEqual(found[370], ("Into The Deep", "dungeon"))
+            chapters = "\n".join(path.read_text(encoding="utf-8") for path in sorted((Path(out_dir) / "greedy" / "Guides" / "Chapters").glob("plan-*.lua")))
+            self.assertIn(".optional 360 -- follows a group quest: After Elite", chapters)
+            self.assertIn(".note Into The Deep: dungeon quest: needs a group", chapters)
+
+    def test_a_hardcore_route_says_it_has_no_dungeon_quest(self):
+        code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn("HARDCORE: no elite or boss objectives, no dungeon quests (what needs one goes with it)", flat)
+        self.assertIn("no elite or boss objective and no dungeon quest in the pool", flat)
+        self.assertNotIn("tagged optional", flat)
+
+
 class SearchReportTest(unittest.TestCase):
-    def report(self, **stats):
+    def report(self, settings=None, quests=None, **stats):
         plan = engine.Plan(complete=True, seconds=900.0, stats=stats, alternatives=[object()])
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            rp.report_search(rp.Out(), mock.Mock(s=engine.Settings(), quests={}), rp.Outcome("beam", plan, 1.0))
+            rp.report_search(rp.Out(), mock.Mock(s=settings or engine.Settings(), quests=quests or {}), rp.Outcome("beam", plan, 1.0))
         return out.getvalue()
+
+    def test_quests_finished_by_completeness_are_named_and_the_ones_the_data_cannot_place_are_counted(self):
+        quests = {n: types.SimpleNamespace(name=f"Quest {n}") for n in (1, 2, 3)}
+        settings = engine.Settings(completeness=0.6, completeness_trip=40.0)
+        text = " ".join(self.report(settings, quests, finals=12, baseline_seconds=1000.0, chosen="beam", completed=[1, 2, 3], completed_unplaced=[2]).split())
+        self.assertIn("completed 3 more quests the search left unfinished were finished instead (completeness 0.60, trips up to 40 s): "
+                      "the route stops at their objectives right after the pick-up: Quest 1, Quest 2, Quest 3", text)
+        self.assertIn("; 1 with an objective that has no position in the data", text)
+        plain = " ".join(self.report(settings, quests, finals=12, baseline_seconds=1000.0, chosen="beam", completed=[1], completed_unplaced=[]).split())
+        self.assertNotIn("no position in the data", plain)
+        self.assertNotIn("more quests the search left unfinished", self.report(finals=12, baseline_seconds=1000.0, chosen="beam"))  # nothing finished: no line
 
     def test_a_beam_that_finished_nothing_says_so(self):
         text = self.report(finals=0, baseline_seconds=1000.0, chosen="greedy")
@@ -178,12 +428,119 @@ class SearchReportTest(unittest.TestCase):
         self.assertIn("none faster than the greedy one once tidied", text)
         self.assertNotIn("NO route of its own", text)
 
+    def test_a_search_of_several_grains_says_how_far_apart_they_are_and_one_grain_says_nothing_of_it(self):
+        grains = [dict(parts=2, finals=5, seconds=1.0, total=900.0), dict(parts=4, finals=7, seconds=2.0, total=1000.0)]
+        self.assertIn("the grains disagree by", self.report(finals=12, baseline_seconds=1000.0, chosen="beam", grains=grains))
+        self.assertNotIn("the grains disagree", self.report(finals=12, baseline_seconds=1000.0, chosen="beam", grains=grains[:1]))
+        self.assertNotIn("the grains disagree", self.report(finals=12, baseline_seconds=1000.0, chosen="beam"))
+
     def test_a_beam_that_won_says_how_many_routes_it_finished_and_how_much_faster(self):
         text = self.report(finals=12, baseline_seconds=1000.0, chosen="beam")
         self.assertIn("12 complete routes reached the cap", text)
         self.assertIn("the best 2 with different orders of zones", text)
         self.assertIn("10.0% faster", text)  # the route takes 900 s against the greedy route's 1000 s
         self.assertNotIn("this is the greedy route", text)
+
+
+class QuestLogPeakTest(unittest.TestCase):
+    def test_a_written_route_is_counted_on_its_own_steps_an_accept_adds_one_and_a_hand_in_takes_one_out(self):
+        def step(*directives):
+            return types.SimpleNamespace(directives=[types.SimpleNamespace(name=name, args={"quest": quest} if quest else {}) for name, quest in directives])
+
+        route = types.SimpleNamespace(
+            steps=[
+                step(("goto", None), ("accept", 1), ("accept", 2)),
+                step(("accept", 3), ("complete", 1), ("turnin", 1)),
+                step(("turnin", 2), ("turnin", 3), ("accept", 4)),
+                step(("accept", 5), ("accept", 6), ("accept", 7)),
+                step(("turnin", 4), ("turnin", 99)),  # a hand-in of a quest that was never accepted here takes nothing out
+            ]
+        )
+        self.assertEqual(rp.route_log_peak(route), 4)  # 2 held, 3 at the second step, only 4 at the third, and 4 + three accepts = four at the fourth
+        self.assertEqual(rp.route_log_peak(types.SimpleNamespace(steps=[])), 0)
+
+
+class LeftOutReportTest(unittest.TestCase):
+    """The list of THE QUESTS (report_left_out): what tidy took out of the route, with the reason and the numbers. Nothing is dropped silently."""
+
+    @staticmethod
+    def record(quest, code="price", unplaced=False, ratio=0.8, name=None, level=2):
+        return dict(
+            quest=quest, name=name or f"Quest {quest}", level=level, picked_level=1, hub="Zephras Isle: Aetheen of the Gales", code=code,
+            why=f"the reason of {quest}", trip=21.9, handin=0.0, work=40.0, rate=1.1, pace=1.4, ratio=ratio, unplaced=unplaced,
+        )
+
+    def lines(self, records, limit=12):
+        out = rp.Out(quiet=True)
+        rp.report_left_out(out, mock.Mock(), engine.Plan(stats={"left_out": records}), limit)
+        return "\n".join(out.lines)
+
+    def test_a_route_that_left_nothing_unfinished_says_so(self):
+        self.assertIn("unfinished    none: the search left no quest unfinished", self.lines([]))
+
+    def test_each_quest_is_named_with_its_level_where_it_was_picked_up_and_the_reason_and_the_causes_are_counted(self):
+        records = [self.record(92463, "far", name="The Next One", ratio=0.2), self.record(92462, "price", name="Infestation Investigation", ratio=0.79)]
+        text = " ".join(self.lines(records).split())
+        self.assertIn("2 quests the search picked up on the way and did not finish are not in the route (1 near but not worth the trip, 1 objectives too far):", text)
+        self.assertIn("92462 Infestation Investigation (level 2, picked up at level 1, Aetheen of the Gales): the reason of 92462", text)
+        self.assertIn("92463 The Next One (level 2, picked up at level 1, Aetheen of the Gales): the reason of 92463", text)
+        self.assertLess(text.index("92462"), text.index("92463"))  # the near ones first: they are the ones a setting would get back
+
+    def test_the_causes_are_listed_most_frequent_first(self):
+        text = " ".join(self.lines([self.record(1, "far"), self.record(2, "price"), self.record(3, "price"), self.record(4, "price")]).split())
+        self.assertIn("(3 near but not worth the trip, 1 objectives too far)", text)
+        text = " ".join(self.lines([self.record(1, "far"), self.record(2, "far"), self.record(3, "far"), self.record(4, "price")]).split())
+        self.assertIn("(3 objectives too far, 1 near but not worth the trip)", text)
+
+    def test_the_quests_with_an_objective_the_data_cannot_place_are_counted(self):
+        text = " ".join(self.lines([self.record(1, unplaced=True), self.record(2), self.record(3, unplaced=True)]).split())
+        self.assertIn("; 2 with an objective that has no position in the data:", text)
+        self.assertNotIn("no position in the data", " ".join(self.lines([self.record(1)]).split()))
+
+    def test_a_long_list_is_cut_and_says_where_the_rest_is(self):
+        text = " ".join(self.lines([self.record(n) for n in range(1, 21)], limit=5).split())
+        self.assertEqual(len(re.findall(r"\d+ Quest \d+ \(level 2", text)), 5)
+        self.assertIn("... 15 more (all of them in plan.json, and as #skipquest lines in the guide)", text)
+
+
+class GrainReportTest(unittest.TestCase):
+    def lines(self, grains):
+        out = rp.Out(quiet=True)
+        rp.report_grains(out, grains)
+        return "\n".join(out.lines)
+
+    GRAINS = [
+        dict(parts=2, finals=1204, seconds=40.2, total=80000.0),
+        dict(parts=4, finals=9, seconds=95.5, total=84800.0),
+        dict(parts=8, finals=0, seconds=200.0, total=None),
+    ]
+
+    def test_each_grain_is_listed_with_its_route_as_written_and_the_spread_is_said_in_hours_and_percent(self):
+        text = self.lines(self.GRAINS)
+        self.assertIn("22h13", text)  # 80,000 s
+        self.assertIn("23h33", text)  # 84,800 s
+        self.assertIn("1,204", text)
+        self.assertIn("none", text)  # the grain that finished nothing
+        self.assertIn("the grains disagree by 1h20, 6%: trust the best route no more than that", text)
+        shortest = [line for line in text.splitlines() if "<- the shortest" in line]
+        self.assertEqual(len(shortest), 1)
+        self.assertIn("22h13", shortest[0])
+
+    def test_a_spread_above_five_percent_is_a_warning_and_five_or_less_is_not(self):
+        self.assertIn("WARNING", self.lines(self.GRAINS))  # 6%
+        close = [dict(parts=2, finals=3, seconds=1.0, total=80000.0), dict(parts=4, finals=3, seconds=1.0, total=83200.0)]
+        text = self.lines(close)
+        self.assertIn("the grains disagree by 0h53, 4%", text)
+        self.assertNotIn("WARNING", text)
+        edge = [dict(parts=2, finals=3, seconds=1.0, total=80000.0), dict(parts=4, finals=3, seconds=1.0, total=84000.0)]
+        self.assertNotIn("WARNING", self.lines(edge))  # exactly 5% is not above it
+
+    def test_with_fewer_than_two_routes_there_is_nothing_to_compare(self):
+        text = self.lines([dict(parts=2, finals=3, seconds=1.0, total=80000.0), dict(parts=4, finals=0, seconds=1.0, total=None)])
+        self.assertIn("fewer than two grains finished a route", text)
+        self.assertNotIn("disagree", text)
+        self.assertIsNone(rp.spread_of([]))
+        self.assertEqual(rp.spread_of([dict(total=100.0), dict(total=110.0)]), (10.0, 10.0))
 
 
 class Fake:

@@ -28,11 +28,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import guide_draft  # noqa: E402
 import guide_sim  # noqa: E402
 import guide_travel  # noqa: E402
-from signpost_tools import availability, steps  # noqa: E402
+from signpost_tools import availability, pricing, steps  # noqa: E402
 from signpost_tools.guidefile import Coord  # noqa: E402
 
 GRIND = "grind"
 TERRITORY_MIN = 4  # quests for the character's own faction a zone needs before it counts as theirs
+# The `.note` a guide step carries for a quest the game completes by a script (the pack's `scripted` flag, no objective listed): by
+# what it is (Model.scripted_work) and whether the route is HARDCORE. The time it costs is sim_params.json's escort_seconds / event_seconds.
+SCRIPTED_NOTES = {
+    ("escort", False): "escort: stay with the NPC and let it finish; the data does not say where it goes or what attacks it",
+    ("escort", True): "HARDCORE escort: mobs attack the NPC and you on the way; be healed and buffed, stay close, and leave it if unsure",
+    ("event", False): "event: the quest finishes when something happens here (an ambush, a ritual); read the quest log",
+    ("event", True): "HARDCORE event: enemies may come at you here; be healed and buffed first, and come back later if unsure",
+}
+# Why a normal route tags a quest `.optional` (`PQuest.group`): the comment of its `.optional` line, and the `.note` the accept carries (an elite kill is a
+# group quest and needs no note: the player knows).
+GROUP_COMMENTS = {"elite": "group quest", "dungeon": "dungeon quest", "follows": "follows a group quest"}
+GROUP_NOTES = {"dungeon": "dungeon quest: needs a group", "follows": "follows a group quest: needs a group too"}
+GRAIN_TRIES = 5  # finished routes of one grain (a different order of zones each) written out to find that grain's best
+
+
+class RequiredQuestError(ValueError):
+    """A quest the guide requires (`Planner.build(required=...)`) cannot be offered to this character: the message names each and says why."""
 
 
 @dataclass(frozen=True)
@@ -46,9 +63,10 @@ class Settings:
     zone_friction: float = 180.0  # seconds charged against a route for each change of zone (not added to its clock)
     skip_unprofitable: bool = True  # leave out quests slower than grinding (never class quests or what a kept quest needs)
     profit_threshold: float = 1.0  # a quest must give this many times the experience per second of grinding
-    detour: float = 1.0  # walking distance over straight-line distance
+    detour: float = pricing.PRICES.detour  # walking distance over straight-line distance (the simulation of the written route uses the same)
     local_walk: float = 8.0  # seconds between two NPCs of one hub
-    ferry_seconds: float = 420.0  # the boat or zeppelin between continents, waiting included (the walks to and from it extra)
+    walk_by_map: bool = False  # charge the walk between the places of one hub by the map's distance (and from the hub's centre to the first), not local_walk
+    ferry_seconds: float = pricing.PRICES.ferry  # the boat or zeppelin between continents, waiting included (the walks to and from it extra)
     gateways: tuple = (1454, 1458)  # the capitals whose hubs a trip between continents leaves and arrives by (Horde)
     branch: int = 8  # hubs tried from each node
     width: int = 30  # partial routes kept per bucket of progress by the beam
@@ -63,6 +81,18 @@ class Settings:
     group_yards: float = steps.GROUP_YARDS  # neighbouring steps of one kind this near each other are written as one
     unknown_work: float = 300.0  # seconds given to a class quest whose objectives the pack does not have (taming, an escort...)
     instant_quests: bool = False  # keep quests with no objective that are handed in at the NPC that gave them: the pack probably lacks them
+    # The most quests the log holds at once; an accept is refused while it is full (a quest handed in at the NPC that gave it needs a free place
+    # too). Classic's is 25, Forever's is 40: confirmed by the user in the game, 2026-10-21 (they had said so before: "I believe the quest log
+    # limit has been bumped up from 25 to 40 for WoW Forever").
+    quest_log_limit: int = 40
+    chapter_min_steps: int = 3  # a change of zone starts a new chapter only when the new zone lasts at least this many steps (counted once joined)
+    # Finishing what the route picks up (docs/PLANNER.md, "Completeness"). The search accepts a quest wherever it passes (an accept costs it nothing)
+    # and works it only when that is the better use of the time; one still in the log at the end is taken out when the route is written
+    # (`Planner.tidy`). With `completeness` F > 0, tidy first tries to finish it: a stop at its objectives, right after the pick-up, when they are at
+    # most `completeness_trip` seconds of walking away and the quest pays at least F times the route's pace (experience per second, the trip
+    # included). 0 is off: the quest is taken out, and the report says why (a record for each in `plan.stats["left_out"]`).
+    completeness: float = 0.0
+    completeness_trip: float = 30.0
 
 
 @dataclass
@@ -90,7 +120,8 @@ class PQuest:
     parents: tuple = ()  # quests whose `next` it is: the game hands it over when one of them is turned in
     parent: int | None = None
     class_mask: int | None = None
-    optional: bool = False  # a group (elite) quest in a normal guide
+    optional: bool = False  # a group quest in a normal guide: an elite kill, a dungeon quest, or what needs one of those first
+    group: str = ""  # why: "elite", "dungeon" or "follows" (it needs a group quest first); GROUP_COMMENTS
     mandatory: bool = False  # a class quest: routed, or #skipquest-ed with a reason
     kept: bool = True
     start_hubs: tuple = ()
@@ -101,6 +132,7 @@ class PQuest:
     unknown_xp: bool = False  # the data has no experience for it (a quest new to Forever): never left out for being slow
     end_unknown: bool = False  # a class quest whose ender has no position in the pack: handed in at its start, and the step says so
     unknown_work: bool = False  # a class quest with no objective in the pack, accepted and handed in at one NPC: what it asks is not known
+    scripted: str = ""  # "escort" or "event": the game completes it by a script and the pack lists no objective, so one stands for the work
 
 
 @dataclass
@@ -143,7 +175,7 @@ class Visit:
 class PState:
     """A situation. States are shared along a path through `parent` and never changed once made."""
 
-    __slots__ = ("hub", "zone", "level", "xp", "clock", "penalty", "late", "gated", "done", "active", "gone", "parent", "visit", "depth", "ground")
+    __slots__ = ("hub", "zone", "level", "xp", "clock", "penalty", "late", "gated", "done", "active", "gone", "parent", "visit", "depth", "ground", "work_here")
 
     def __init__(self) -> None:
         self.hub: int | None = None
@@ -161,6 +193,7 @@ class PState:
         self.visit: Visit | None = None
         self.depth = 0
         self.ground = 0.0
+        self.work_here: bool | None = None  # whether a required quest has work in this zone (`Planner._work_here`), found when first asked
 
     @property
     def total(self) -> float:
@@ -201,6 +234,23 @@ class Plan:
                     found[a.quest] = v.level
         return found
 
+    def log_peak(self) -> tuple[int, int, float]:
+        """The most quests the route holds in the quest log at once, counted action by action (an accept adds one, a hand-in takes one out),
+        with the level the character had when the visit that first reached it began and the clock then. (0, 1, 0.0) for an empty route."""
+        held = peak = 0
+        level, clock = 1, 0.0
+        at = (1, 0.0)
+        for v in self.visits:
+            for a in v.actions:
+                if a.kind == "accept":
+                    held += 1
+                    if held > peak:
+                        peak, at = held, (level, clock)
+                elif a.kind == "turnin":
+                    held -= 1
+            level, clock = v.level, clock + v.seconds
+        return peak, at[0], at[1]
+
 
 @dataclass
 class BeamRun:
@@ -212,6 +262,8 @@ class BeamRun:
     pruned: int = 0
     trace: list = field(default_factory=list)  # (level, routes kept, best estimated total seconds) for each bucket worked
     log: dict = field(default_factory=dict)  # bucket -> the best routes held in it: (estimate, zone, level, clock)
+    seconds: float = 0.0  # how long the run took
+    best: "Plan | None" = None  # the best of its finished routes as it would be written (tidied); None when it finished none
 
 
 class Planner:
@@ -228,7 +280,10 @@ class Planner:
         self.objs_by_place: dict[tuple, list] = {}
         self.places_at: dict[int, list] = {}
         self.window: list[PQuest] = []  # kept quests by required level
-        self.mandatory: set[int] = set()
+        self.mandatory: set[int] = set()  # the class quests and the required ones: each is done, or (a class quest) accounted for
+        self.asked: set[int] = set()  # the quests the guide names as required (`Planner.build(required=...)`)
+        self.required: set[int] = set()  # ... and the quests they need: all mandatory like a class quest, and never given up (docs/PLANNER.md)
+        self._closes_required: set[int] = set()  # the quests that would close a required one (its exclusive alternatives): never taken
         self.notes: dict[int, str] = {}
         self.skip_reasons: dict[int, str] = {}
         self.gateways: dict[int, int] = {}  # continent (world instance) -> the hub its boats and zeppelins leave from
@@ -245,6 +300,8 @@ class Planner:
         self.home: Coord | None = None  # where the character begins
         self.core: set[int] = set()  # the class quests and the quests they need: all that is done once the cap is reached
         self.forbidden: set[int] = set()  # quests a tidied route no longer accepts (it never turned them in)
+        self.lifted: frozenset = frozenset()  # ... except the ones tidy is finishing at the visit being replayed (`_finishable`)
+        self._ratio: dict[tuple, float] = {}  # (quest, level) -> what the quest pays against the route's pace (`finish_ratio`)
         self.accept_over = settings.hardcore_over if settings.hardcore else settings.accept_over
         self.work_over = settings.hardcore_over if settings.hardcore else settings.work_over
 
@@ -262,6 +319,7 @@ class Planner:
         exclude: dict | None = None,
         notes: dict | None = None,
         mandatory: tuple = (),
+        required: tuple = (),
         chains: tuple = (),
         home: Coord | None = None,
         skip_zones: dict | None = None,
@@ -273,7 +331,9 @@ class Planner:
         planner = cls(pack, world, model, availability.Rules(quests, character), settings)
         planner.notes = dict(notes or {})
         planner.skip_reasons = dict(exclude or {})
-        planner.mandatory = set(mandatory)
+        planner.asked = set(required)
+        planner.required = set(required)
+        planner.mandatory = set(mandatory) | planner.required
         planner.home = home
         planner.skip_zones = dict(skip_zones or {})
         planner._giver_index = planner._index_givers(quests)
@@ -290,8 +350,11 @@ class Planner:
                 if earlier in planner.quests and later in planner.quests and earlier not in planner.quests[later].pre_all:
                     planner.quests[later].pre_all += (earlier,)
         say(f"{len(planner.quests)} of {len(quests)} quests can be routed for this character")
+        planner._expand_required()
         planner._prune_territory(character.faction)
         planner._prune_unreachable()
+        planner._mark_group_chains()
+        planner._check_required()
         planner._make_hubs()
         say(f"{len(planner.hubs)} hubs of about {settings.hub_radius:.0f} yards")
         planner._profit()
@@ -374,11 +437,19 @@ class Planner:
         one_npc = bool(
             set(guide_draft._ids((record.get("s") or {}).get("npc"))) & set(guide_draft._ids((record.get("e") or {}).get("npc")))
         )
-        unknown_work = not objectives and one_npc
+        # an escort or an event (the pack's `scripted` flag) is not free experience whatever its NPCs: it costs the time sim_params.json
+        # gives it, written as a `.complete` with a note; a class quest keeps unknown_work's 5 minutes and `.todo` instead
+        scripted = "" if qid in self.mandatory and qid not in self.required else (self.model.scripted_work(qid) or "")
+        unknown_work = not objectives and one_npc and not scripted
         if unknown_work and not s.instant_quests and qid not in self.mandatory and qid not in self._required and not record.get("next"):
             return self._drop("no objective in the data (accepted and handed in at one NPC)", qid)
+        if scripted:  # the one objective that stands for the work: done where the quest starts, which is where the escort sets off
+            objectives.append(PObjective(1, "scripted", 0, list(starts)))
+        dungeon = self._in_instance(record)
         if s.hardcore and elite:
             return self._drop("HARDCORE: needs an elite or boss kill", qid)
+        if s.hardcore and dungeon:
+            return self._drop("HARDCORE: dungeon quest (needs a group)", qid)
         if (record.get("l") or 0) > s.cap + 5:
             return self._drop("far above the level cap", qid)
         classes = record.get("classes")
@@ -397,11 +468,36 @@ class Planner:
             excl=tuple(guide_draft._ids(record.get("exclusive"))),
             parent=record.get("parent") if isinstance(record.get("parent"), int) else None,
             class_mask=classes if isinstance(classes, int) else None,
-            optional=elite and not s.hardcore,
+            optional=(elite or dungeon) and not s.hardcore,
+            group="elite" if elite else ("dungeon" if dungeon else ""),
             mandatory=qid in self.mandatory,
             end_unknown=end_unknown,
             unknown_work=unknown_work and qid in self.mandatory,
+            scripted=scripted,
         )
+
+    def _in_instance(self, record: dict) -> bool:
+        """Whether a quest belongs to a dungeon or a raid: the pack gives the quest the zone it is sorted under, and a dungeon's id is not one of the pack's maps (its
+        world zones, continents and battlegrounds are); a quest with no zone is not. Its objectives lie inside, and a solo player cannot do them."""
+        zone = record.get("zone")
+        maps = self.pack.table("maps")
+        return bool(maps) and isinstance(zone, int) and not isinstance(zone, bool) and zone not in maps
+
+    def _mark_group_chains(self) -> None:
+        """A quest that needs a group quest first (the pack's prerequisites, or the chain that hands it over) cannot be done solo either: a normal route tags it
+        `.optional` too, and so on down the chain. A quest with alternatives (any one of its `preSingle`) is tagged only when every alternative is. A class
+        quest keeps its place. (A HARDCORE route has dropped the group quests and, with them, everything that needs them.)"""
+        changed = True
+        while changed:
+            changed = False
+            for q in self.quests.values():
+                if q.optional or q.mandatory:
+                    continue
+                needed = [self.quests[p] for p in list(q.pre_all) + list(q.parents) if p in self.quests]
+                alternatives = [self.quests[p] for p in q.pre_any if p in self.quests]
+                if any(p.optional for p in needed) or (alternatives and all(p.optional for p in alternatives)):
+                    q.optional, q.group = True, "follows"
+                    changed = True
 
     def _prune_territory(self, faction: str) -> None:
         """Zones where the character's faction has hardly any quest givers are the other side's: a Horde character does not
@@ -464,6 +560,65 @@ class Planner:
             nxt = (records.get(q.id) or {}).get("next")
             if isinstance(nxt, int) and nxt in self.quests:
                 self.quests[nxt].parents += (q.id,)
+
+    def _expand_required(self) -> None:
+        """The quests a required quest needs are required too: all mandatory, so that the search does them (and is pushed to, like a class chain's
+        quests) and not only keeps them. Of the alternatives a quest takes (any one of its `preSingle`) the one that pays best stands for them."""
+        todo = [qid for qid in self.required if qid in self.quests]
+        while todo:
+            q = self.quests[todo.pop()]
+            needed = list(q.pre_all) + ([q.parent] if q.parent is not None else [])
+            options = [p for p in q.pre_any if p in self.quests]
+            if options and not any(p in self.required for p in options):
+                nominal = lambda p: min(self.s.cap, max(self.quests[p].req, self.quests[p].level - 1, 1))  # noqa: E731
+                needed.append(max(options, key=lambda p: self._quest_rate(self.quests[p], nominal(p))))
+            for p in needed:
+                if p in self.quests and p not in self.required:
+                    self.required.add(p)
+                    self.mandatory.add(p)
+                    self.quests[p].mandatory = True
+                    todo.append(p)
+
+    def _why_not(self, qid: int, depth: int = 0) -> str:
+        """Why a quest is not among the ones this character's route can use: the reason `_consider` or a prune gave it, and for a quest whose
+        prerequisite cannot be routed, which prerequisite and why."""
+        record = self.pack.table("quests").get(qid)
+        if not isinstance(record, dict):
+            return "it is not in the data pack"
+        reason = next((r for r, ids in self.dropped.items() if qid in ids), None)
+        if reason is None:
+            return "the planner left it out"
+        if reason == "excluded":
+            return f"it is excluded ({self.skip_reasons.get(qid, 'by the guide')})"
+        if reason == "a prerequisite cannot be routed" and depth < 4:
+            needed = guide_draft._ids(record.get("preGroup"))
+            alternatives = guide_draft._ids(record.get("preSingle"))
+            gaps = [p for p in needed if p not in self.quests] or ([] if any(p in self.quests for p in alternatives) else alternatives)
+            if gaps:
+                return "a prerequisite cannot be routed: " + "; ".join(f"{p} ({self._why_not(p, depth + 1)})" for p in gaps[:3])
+        return reason
+
+    def _check_required(self) -> None:
+        """Every required quest must be one the character's route can use; if not, a clear error names each and says why (not the availability
+        rules' fault alone: a HARDCORE route's elite rule, an exclusion or a prerequisite that cannot be routed stops a quest the same way)."""
+        problems: list[str] = []
+        for qid in sorted(self.asked):
+            record = self.pack.table("quests").get(qid)
+            name = f" ({record['n']})" if isinstance(record, dict) and record.get("n") else ""
+            if qid not in self.quests:
+                problems.append(f"quest {qid}{name}: {self._why_not(qid)}")
+                continue
+            q = self.quests[qid]
+            if max(q.req, q.level - self.accept_over) > self.s.cap:
+                problems.append(f"quest {qid}{name}: it can be accepted from level {max(q.req, q.level - self.accept_over)}, above the route's cap of {self.s.cap}")
+            for other in q.excl:
+                if other in self.asked and other > qid:
+                    problems.append(f"quests {qid}{name} and {other} are exclusive alternatives: both cannot be required")
+        if problems:
+            raise RequiredQuestError("a required quest cannot be offered to this character:\n  " + "\n  ".join(problems))
+        self._closes_required = {x for r in self.required for x in self.quests[r].excl} | {
+            q.id for q in self.quests.values() if q.id not in self.required and self.required & set(q.excl)
+        }
 
     def _make_hubs(self) -> None:
         """Quest givers, enders and objective areas, grouped per map into hubs of the configured radius."""
@@ -572,7 +727,7 @@ class Planner:
         for o in q.objectives:
             if o.spots:
                 walk += 2 * min(self._yards(q.start_places[0], c) for c in o.spots)
-        seconds += walk / guide_travel.WALK_SPEED * self.s.detour
+        seconds += walk / pricing.PRICES.walk_speed * self.s.detour
         return xp / max(seconds, 1.0)
 
     def _index(self) -> None:
@@ -602,13 +757,22 @@ class Planner:
             return d
         return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5 * 10 if a.map == b.map else 6000.0
 
+    def _legs(self, actions: list) -> float:
+        """The walking between the places of a visit's actions, in turn, by the map's distance and the detour factor (`Settings.walk_by_map`)."""
+        total = 0.0
+        for a, b in zip(actions, actions[1:]):
+            if a.place != b.place:
+                total += self._yards(a.place, b.place) / guide_travel.WALK_SPEED * self.s.detour
+        return total
+
     def _walk(self, a: int, b: int) -> float | None:
         d = self.world.geo.distance(self.hubs[a].center, self.hubs[b].center)
-        return None if d is None else d * self.s.detour / guide_travel.WALK_SPEED
+        return None if d is None else d * self.s.detour / pricing.PRICES.walk_speed
 
     def travel(self, a: int | None, b: int) -> float:
         """Seconds from hub a to hub b: walking on one continent; between continents the walk to the capital's boat or
-        zeppelin, the ride (waiting included) and the walk from the other capital (a flat 15 minutes if a gateway is unknown)."""
+        zeppelin, the ride (waiting included) and the walk from the other capital (pricing.PRICES.continent, 15 minutes, if a gateway is
+        unknown). The prices are signpost_tools/pricing.py's, which the simulation of the written route uses too."""
         if a is None or a == b:
             return 0.0
         key = (a, b)
@@ -618,7 +782,7 @@ class Planner:
                 geo = self.world.geo
                 ga, gb = self.gateways.get(geo.instance(self.hubs[a].map)), self.gateways.get(geo.instance(self.hubs[b].map))
                 legs = (self._walk(a, ga), self._walk(gb, b)) if ga is not None and gb is not None else (None, None)
-                seconds = legs[0] + self.s.ferry_seconds + legs[1] if None not in legs else 900.0
+                seconds = legs[0] + self.s.ferry_seconds + legs[1] if None not in legs else pricing.PRICES.continent
             self._travel[key] = self._travel[(b, a)] = seconds
         return self._travel[key]
 
@@ -685,8 +849,14 @@ class Planner:
         return True
 
     def offered(self, q: PQuest, level: int, done, active, gone) -> bool:
-        if level < q.req or q.level > level + self.accept_over or q.id in self.forbidden:
+        """Whether the quest may be accepted now: the game offers it (level, prerequisites, chains, ...), the route still wants it, and the
+        quest log has a free place. Every accept the searches make or predict goes through here (`visit`, `options`, `overdue_hubs`)."""
+        if len(active) >= self.s.quest_log_limit and q.id not in self.required:
+            return False  # (a required quest is never kept out by a full log)
+        if level < q.req or q.level > level + self.accept_over or (q.id in self.forbidden and q.id not in self.lifted):
             return False
+        if q.id in self._closes_required:
+            return False  # taking it would close a required quest
         if level >= self.s.cap and q.id not in self.core:
             return False  # at the cap only the class quests (and what they need) are still worth the walk
         return self.ready(q, done, active, gone, level) and self.worth_now(q, level)
@@ -702,8 +872,54 @@ class Planner:
         st.hub, st.zone, st.level = start_hub, self.hubs[start_hub].zone, level
         return st
 
+    def _work_here(self, st: PState) -> bool:
+        """Whether a required quest has work in the zone the route stands in: one the game would offer that starts here, one with an open objective
+        here, one whose hand-in is here. The route does not leave a zone with that undone (it may do anything else there first), so a required
+        chain is finished before the route goes on, and one level-gated waits for the level in the zone."""
+        if st.work_here is None:
+            found = False
+            for qid in self.required:
+                if qid in st.done or qid in st.gone:
+                    continue
+                q = self.quests[qid]
+                open_ = st.active.get(qid)
+                if open_ is None:
+                    if not self.ready(q, st.done, st.active, st.gone):
+                        continue
+                    hubs = q.start_hubs
+                elif open_:
+                    hubs = tuple(h for o in q.objectives if o.index in open_ for h in o.hubs)
+                else:
+                    hubs = q.end_hubs
+                if any(self.hubs[h].zone == st.zone for h in hubs):
+                    found = True
+                    break
+            st.work_here = found
+        return st.work_here
+
+    def leaving(self, st: PState) -> list[int]:
+        """The hubs the route must go to now: it holds a required quest that has only to be handed in, and only in another zone (the ride out
+        of a story zone, such as the exit quest of a start island), and has no required work left in this one, so it leaves for it with nothing
+        else done first."""
+        if not self.required or st.hub is None or self._work_here(st):
+            return []
+        found: list[int] = []
+        for qid, open_ in st.active.items():
+            if qid in self.required and not open_:
+                found += self.quests[qid].end_hubs  # (none of them is in this zone: that would be work here)
+        return sorted(set(found))
+
     def options(self, st: PState) -> dict[int, float]:
         """The hubs with something to do now, with a rough worth for ranking: the experience at stake there."""
+        leaving = self.leaving(st)
+        if leaving:
+            return {h: 1.0 for h in leaving}
+        worth = self._options(st)
+        if self.required and st.hub is not None and self._work_here(st):
+            worth = {h: w for h, w in worth.items() if self.hubs[h].zone == st.zone}  # the zone lock
+        return worth
+
+    def _options(self, st: PState) -> dict[int, float]:
         level, done, active, gone = st.level, st.done, st.active, st.gone
         worth: dict[int, float] = {}
         capped = level >= self.s.cap
@@ -787,8 +1003,11 @@ class Planner:
                     progressed = progressed or changed
         if not actions:
             return None
-        switches = sum(1 for a, b in zip(actions, actions[1:]) if a.place != b.place)
-        walk = self.travel(st.hub, hub) + switches * s.local_walk
+        if s.walk_by_map:  # (an experiment) the walk between the places of the hub is priced by the map, from the hub's centre to the first one too
+            walk = self.travel(st.hub, hub) + self._legs(actions) + self._yards(self.hubs[hub].center, actions[0].place) / guide_travel.WALK_SPEED * s.detour
+        else:
+            switches = sum(1 for a, b in zip(actions, actions[1:]) if a.place != b.place)
+            walk = self.travel(st.hub, hub) + switches * s.local_walk
         seconds = walk + interact + objective + longest_wait
         new = PState()
         new.hub, new.zone = hub, self.hubs[hub].zone
@@ -812,6 +1031,8 @@ class Planner:
             return self._grind_to(st, min(level + 1, self.s.cap))
         wanted: list[int] = []
         for q in self.window:
+            if len(active) >= self.s.quest_log_limit and q.id not in self.required:
+                continue  # a full log accepts nothing, whatever the level: no quest is waited for (a required one is)
             if q.id in done or q.id in active or q.id in gone or not self.ready(q, done, active, gone, level):
                 continue
             if not self.worth_now(q, level) and q.level + 8 < level:
@@ -847,8 +1068,8 @@ class Planner:
     def lateness(self, q: PQuest, level: int) -> float:
         """What a class quest costs the route for being undone at this level: a push to do it early, not a deadline. The route
         picks it up when it passes the giver, and makes the trip for a far one soon after it opens."""
-        if not q.mandatory:
-            return 0.0
+        if not q.mandatory or q.id in self.required:
+            return 0.0  # (a required quest is not pushed: a chain of thirty quests would drown the real time; the zone lock schedules it)
         return min(max(0, level - q.req - self.s.class_grace), self.s.class_levels) * self.s.class_push
 
     def pending_mandatory(self, st: PState) -> list[int]:
@@ -901,6 +1122,8 @@ class Planner:
         charged for, and one that is far away costs for the levels the trip takes."""
         s, pace, total = self.s, self._pace(st.level), 0.0
         for qid in self.pending_mandatory(st):
+            if qid in self.required:
+                continue
             q = self.quests[qid]
             hubs = self._next_hubs(q, st)
             trip = 0.0 if st.hub in hubs else min((self.travel(st.hub, h) for h in hubs), default=0.0)
@@ -936,6 +1159,9 @@ class Planner:
     def overdue_hubs(self, st: PState, most: int = 4) -> list[int]:
         """The nearest hubs where a class quest past the level it opens at can be got on with (its giver, an open objective, its
         ender), so the search always considers the trip: a far hub never makes the best-ranked few on experience for the walk."""
+        if self.leaving(st):
+            return []
+        locked = bool(self.required) and st.hub is not None and self._work_here(st)
         found: dict[int, float] = {}
         for qid in self.pending_mandatory(st):
             q = self.quests[qid]
@@ -954,7 +1180,7 @@ class Planner:
             else:
                 continue
             for h in hubs:
-                if h != st.hub:
+                if h != st.hub and not (locked and self.hubs[h].zone != st.zone):
                     found[h] = min(found.get(h, float("inf")), self.travel(st.hub, h))
         return sorted(found, key=found.get)[:most]
 
@@ -966,6 +1192,8 @@ class Planner:
             child = self.visit(st, h)
             if child is not None:
                 out.append(child)
+        if out and self.leaving(st):
+            return out  # the route is leaving for a hand-in: nothing else is an option, not even a grind
         g = self.grind(st) if not out else (self.grind(st, voluntary=True) if st.level < self.s.cap else None)
         if g is not None:
             out.append(g)
@@ -1012,33 +1240,189 @@ class Planner:
         return plan
 
     def tidy(self, plan: Plan, start_hub: int) -> Plan:
-        """A guide must not accept a quest it never turns in: the quests a search left in the log at the end (it reached the
-        cap first) are taken out of the route, and the same hubs are walked again without them (more than once if that
-        leaves others unfinished); a level that falls short is ground at the end."""
+        """A guide must not accept a quest it never turns in: the quests a search left in the log at the end (it reached the cap first) are taken
+        out of the route, and the same hubs are walked again without them (more than once if that leaves others unfinished); a level that falls
+        short is ground at the end. Nothing is taken out silently: `plan.stats["left_out"]` has a record for each quest, with the reason and the
+        numbers (`Planner._left_out`).
+
+        With `Settings.completeness` F > 0 a quest is finished before it is taken out, if that is cheap (`_finishable`): the walk is repeated with
+        a stop at its objectives right after the pick-up (and one at the place to hand it in, if the route does not pass it later). A quest finished
+        this way is in `plan.stats["completed"]`; one that still is not finished after that is taken out for good."""
         stats, trace, preset = dict(plan.stats), plan.trace, plan.preset
         alternatives, decisions = plan.alternatives, plan.decisions
         removed: set[int] = set()
-        for _ in range(4):
-            unfinished = set(plan.final.active) - removed if plan.final else set()
-            if not unfinished:
+        gave_up: set[int] = set()  # a stop was added for them and they still were not finished
+        lifted_before: set[int] = set()
+        found: dict[int, tuple] = {}  # quest -> `_pickups` of the plan it was first found unfinished in: (level, place, hub, whether the route passes a hand-in later)
+        for _ in range(6 if self.s.completeness > 0 else 4):
+            active = set(plan.final.active) if plan.final else set()
+            stuck = active & lifted_before
+            unseen = active - removed - self.required
+            if not (stuck or unseen):
                 break
-            removed |= unfinished
+            levels = self._pickups(plan)
+            for qid in unseen:
+                found.setdefault(qid, levels.get(qid))
+            gave_up |= stuck
+            removed |= unseen | stuck
+            lifts, stops = self._finishable(plan, removed - gave_up) if self.s.completeness > 0 else ({}, {})
+            lifted_before = {qid for ids in lifts.values() for qid in ids}
             self.forbidden = set(removed)
             st = self.start(start_hub)
-            for v in plan.visits:
+            for index, v in enumerate(plan.visits):
                 if v.hub is None:  # a level ground to open quests that waited for it: ground again, to the same level
                     target = v.actions[0].index
                     child = self._grind_to(st, target) if target > st.level else None
                 else:
+                    self.lifted = frozenset(lifts.get(index, ()))
                     child = self.visit(st, v.hub)
+                    self.lifted = frozenset()
                 if child is not None:
                     st = child
+                for hub in stops.get(index, ()):  # a stop at the objectives (or the place to hand in) of a quest picked up at this visit
+                    stop = self.visit(st, hub)
+                    if stop is not None:
+                        st = stop
             plan = self._finish(self.rollout(st))
-        self.forbidden = set()
+        self.forbidden, self.lifted = set(), frozenset()
+        completed = {qid for qid in lifted_before if plan.final and qid in plan.final.done}
         plan.stats, plan.trace, plan.preset = stats, trace, preset
         plan.alternatives, plan.decisions = alternatives, decisions
-        plan.stats["removed"] = sorted(removed | set(stats.get("removed", ())))  # a plan tidied twice still says what was taken out
+        gone = sorted(removed - completed)
+        plan.stats["removed"] = sorted(set(gone) | set(stats.get("removed", ())))  # a plan tidied twice still says what was taken out
+        plan.stats["completed"] = sorted(completed | set(stats.get("completed", ())))  # and what was saved by finishing it
+        plan.stats["completed_unplaced"] = [qid for qid in plan.stats["completed"] if self.unplaced(qid)]  # (how many of those the data cannot place)
+        records = {r["quest"]: r for r in stats.get("left_out", ())}
+        for qid in gone:
+            records[qid] = self._left_out(qid, found.get(qid), qid in gave_up)
+        plan.stats["left_out"] = [records[qid] for qid in sorted(records, key=lambda i: (records[i]["picked_level"] or 0, i))]
         return plan
+
+    def xp_pace(self, level: int) -> float:
+        """The experience per second the route makes at a level: the pace of the greedy walk the searches are calibrated with (grinding's, before
+        a calibration)."""
+        return self.rate_curve.get(level) or self.model.grind_xp_per_second(level)
+
+    def finish_ratio(self, q: PQuest, level: int) -> float:
+        """What a quest pays when it is picked up on the route and finished (experience per second, the walk to its objectives and the hand-in
+        included, at this level) against the route's pace at that level: 1 is the same, 0.8 a fifth less."""
+        key = (q.id, level)
+        if key not in self._ratio:
+            self._ratio[key] = self._quest_rate(q, level) / max(self.xp_pace(level), 1e-9)
+        return self._ratio[key]
+
+    def trip(self, q: PQuest, place: Coord) -> tuple:
+        """What finishing a quest picked up at `place` asks, beyond the pick-up: (seconds of walking, from there, to the farthest of its objectives
+        (0 for a quest with none); the hubs of the nearest places to work them, nearest first; seconds of walking to the nearest place to hand it
+        in; the hub of that place)."""
+        speed, detour = guide_travel.WALK_SPEED, self.s.detour
+        ways: dict[int, float] = {}
+        for o in q.objectives:
+            nearest = min(o.spots or q.start_places, key=lambda c: self._yards(place, c))
+            hub = self.hub_of[(nearest.map, nearest.x, nearest.y)]
+            ways[hub] = min(ways.get(hub, float("inf")), self._yards(place, nearest) * detour / speed)
+        end = min(q.end_places, key=lambda c: self._yards(place, c))
+        far = max((seconds for seconds in ways.values()), default=0.0)
+        return far, sorted(ways, key=ways.get), self._yards(place, end) * detour / speed, self.hub_of[(end.map, end.x, end.y)]
+
+    def unplaced(self, qid: int) -> bool:
+        """True when an objective of the quest has no position in the data: the planner works it where the quest is picked up, with no walk to it
+        (`_index`, `_quest_rate`), and the guide says so in a .todo. Such a quest looks cheaper to finish than it is; the reports count them."""
+        q = self.quests.get(qid)
+        return q is not None and any(not o.spots for o in q.objectives)
+
+    def _pickups(self, plan: Plan) -> dict[int, tuple]:
+        """Where each quest of this route was picked up, the first time: {quest: (the character's level, the place, the hub's name, whether the route goes
+        on to a hub where the quest is handed in)}."""
+        found: dict[int, tuple] = {}
+        path, st = [], plan.final
+        while st is not None and st.visit is not None:
+            path.append(st)
+            st = st.parent
+        path.reverse()
+        for index, state in enumerate(path):
+            for a in state.visit.actions:
+                if a.kind == "accept" and a.quest not in found:
+                    later = {s.visit.hub for s in path[index + 1 :] if s.visit.hub is not None}
+                    found[a.quest] = (state.level, a.place, self.hubs[state.visit.hub].label if state.visit.hub is not None else "",
+                                      bool(later & set(self.quests[a.quest].end_hubs)))
+        return found
+
+    def _finishable(self, plan: Plan, candidates: set) -> tuple[dict, dict]:
+        """Tidy's completeness: of the quests this route left unfinished, the ones worth finishing and how. Returns ({visit index: {quests that
+        must be picked up there even though they are forbidden}}, {visit index: [hubs to stop at after that visit]}). A quest qualifies when it
+        could be worked at the level it was picked up at, pays at least `Settings.completeness` of the route's pace, and its objectives are at most
+        `Settings.completeness_trip` seconds of walking from where it was picked up, and so is the place to hand it in unless the route goes on to a
+        hub where it is handed in anyway. The stops are the hubs of its objectives (nearest first) and, unless the route passes the hand-in later,
+        the hand-in's hub. A quest this route did finish (an earlier round of tidy) keeps its pick-up where it is."""
+        s = self.s
+        hubs = [v.hub for v in plan.visits]
+        path, st = [], plan.final
+        while st is not None and st.visit is not None:
+            path.append(st)
+            st = st.parent
+        path.reverse()
+        lifts: dict[int, set] = {}
+        stops: dict[int, list] = {}
+        for qid in sorted(candidates):
+            q = self.quests[qid]
+            picked = next((i for i, v in enumerate(plan.visits) if any(a.kind == "accept" and a.quest == qid for a in v.actions)), None)
+            if picked is None:
+                continue
+            if qid in plan.final.done:
+                lifts.setdefault(picked, set()).add(qid)
+                continue
+            level = path[picked].level
+            if not self.soon(q, level) or (level >= s.cap and qid not in self.core) or self.finish_ratio(q, level) < s.completeness:
+                continue
+            place = next(a.place for a in plan.visits[picked].actions if a.kind == "accept" and a.quest == qid)
+            far, objective_hubs, end_seconds, end_hub = self.trip(q, place)
+            passes = bool({h for h in hubs[picked + 1 :] if h is not None} & set(q.end_hubs))  # the route goes on to a hub where it is handed in
+            if far > s.completeness_trip or (end_seconds > s.completeness_trip and not passes):
+                continue
+            visiting = list(objective_hubs)
+            if not passes and (not visiting or visiting[-1] != end_hub):
+                visiting.append(end_hub)
+            lifts.setdefault(picked, set()).add(qid)
+            stops.setdefault(picked, []).extend(visiting)
+        return lifts, stops
+
+    def _left_out(self, qid: int, found: tuple | None, tried: bool) -> dict:
+        """Why a quest the search picked up is not in the written route, with the numbers: the record `plan.stats["left_out"]` and the `#skipquest`
+        line carry. `code` is one of price (its work is near but pays less than the route's pace asks), far (its objectives are beyond the trip the
+        route walks), handin (the place to hand it in is), level (it could not be worked then), unfinished (a stop was added and it still was not
+        finished)."""
+        q, s = self.quests[qid], self.s
+        picked_level, place, hub, passes = found if found else (None, q.start_places[0], "", False)
+        level = max(1, picked_level or 1)
+        far, _hubs, end_seconds, _end = self.trip(q, place)
+        rate, pace = self._quest_rate(q, level), self.xp_pace(level)
+        ratio = rate / max(pace, 1e-9)
+        reach = s.completeness_trip
+        work = sum(self.objective(qid, o.index, level)[0] for o in q.objectives)
+        if tried:
+            code, why = "unfinished", "a stop at its objectives was added and the route still did not finish it"
+        elif not self.soon(q, level) or (level >= s.cap and qid not in self.core):
+            code = "level"
+            why = (f"it could not be worked at level {level} (a level {q.level} quest) and the route did not come back when it could"
+                   if level < s.cap else "the route had reached the cap")
+        elif far > reach:
+            code, why = "far", f"its objectives are {far:.0f} s of walking away (the route walks up to {reach:.0f} s for one)"
+        elif end_seconds > reach and not passes:
+            code, why = "handin", f"it is handed in {end_seconds:.0f} s of walking away and the route does not pass there"
+        else:
+            code = "price"
+            where = f"its work is {far:.0f} s away" if q.objectives else f"it is handed in {end_seconds:.0f} s away"
+            asked = f"completeness is {s.completeness:.2f}" if s.completeness > 0 else f"completeness {ratio:.2f} or less would finish it"
+            why = f"{where} and pays {rate:.2f} XP/s against the route's {pace:.2f} ({ratio:.0%}); {asked}"
+        if self.unplaced(qid) and code != "unfinished":
+            why += "; an objective of it has no position in the data, so the planner works it where the quest is picked up, with no walk"
+        record = dict(
+            quest=qid, name=q.name, level=q.level, picked_level=picked_level, hub=hub, code=code, why=why,
+            trip=round(far, 1), handin=round(end_seconds, 1), work=round(work, 1), rate=round(rate, 3), pace=round(pace, 3), ratio=round(ratio, 3),
+            unplaced=self.unplaced(qid),
+        )
+        return record
 
     def _finish(self, final: PState) -> Plan:
         plan = Plan(final=final, seconds=final.clock, penalty=final.penalty, late=final.late)
@@ -1067,6 +1451,7 @@ class Planner:
         # no level is paced slower than grinding: the walk can always do that
         for n in range(1, self.s.cap):
             self.rate_curve[n] = max(self.rate_curve.get(n, 0.0), self.model.grind_xp_per_second(n))
+        self._ratio.clear()
 
     def _lookahead(self, start_hub: int, progress) -> Plan:
         st = self.start(start_hub)
@@ -1116,13 +1501,27 @@ class Planner:
         and the one that has levelled is not penalised for it. One run per entry of `Settings.parts` (a different grain of progress
         each, every one independent: what an earlier grain found never prunes a later one). The runs' best finished routes are then
         compared as they would be written, tidied (a guide may not leave quests in the log, and taking them out can cost a route much),
-        with the greedy route tidied too: the result is never slower than that."""
+        with the greedy route tidied too: the result is never slower than that. Each grain's own best route as written (of its first
+        `GRAIN_TRIES` different orders of zones) is a finalist too and is kept in `stats["grains"]` with what the grain did, so that the report
+        can say how far apart the grains are: the least the best route found can be off by."""
         s = self.s
         base = self._finish(self.rollout(self.start(start_hub)))
         self.calibrate(base)
         known = base.final.total if base.complete else float("inf")
-        runs = [self._layers(start_hub, max(1, parts), known, progress) for parts in s.parts or (2,)]
+        runs = []
+        for parts in s.parts or (2,):
+            started = time.perf_counter()
+            run = self._layers(start_hub, max(1, parts), known, progress)
+            run.seconds = time.perf_counter() - started
+            runs.append(run)
         reference = self.tidy(base, start_hub)
+        written: dict[int, Plan] = {}  # a finished route as it is written, found once
+
+        def as_written(final: PState) -> Plan:
+            if id(final) not in written:
+                written[id(final)] = self.tidy(self._finish(final), start_hub)
+            return written[id(final)]
+
         origin: dict[int, BeamRun] = {}
         tidied: list[Plan] = []
         seen: set = set()
@@ -1131,11 +1530,26 @@ class Planner:
             if sig in seen:
                 continue
             seen.add(sig)
-            candidate = self.tidy(self._finish(final), start_hub)
+            candidate = as_written(final)
             origin[id(candidate)] = run
             tidied.append(candidate)
             if len(tidied) >= s.alternatives + 8:
                 break
+        for run in runs:  # each grain's own best route as it is written, so that the report can say how far apart the grains are
+            signatures: set = set()
+            for final in sorted(run.finished, key=lambda f: f.total):
+                sig = self.signature(final)
+                if sig in signatures:
+                    continue
+                signatures.add(sig)
+                candidate = as_written(final)
+                if candidate.complete and (run.best is None or candidate.total < run.best.total):
+                    run.best = candidate
+                if len(signatures) >= GRAIN_TRIES:
+                    break
+            if run.best is not None and not any(run.best is c for c in tidied):
+                origin[id(run.best)] = run
+                tidied.append(run.best)
         pool = sorted((c for c in tidied if c.complete), key=lambda c: c.total)
         plan = pool[0] if pool and (not reference.complete or pool[0].total < reference.total) else reference
         winner = origin.get(id(plan), runs[0])
@@ -1148,6 +1562,9 @@ class Planner:
             baseline_seconds=reference.total,
             runs=len(runs),
             chosen="greedy" if plan is reference else "beam",
+            grains=[
+                dict(parts=r.parts, finals=r.finals, seconds=r.seconds, total=r.best.total if r.best is not None else None) for r in runs
+            ],
         )
         return plan
 
@@ -1245,7 +1662,7 @@ class Planner:
         """The `#skipquest` lines a route needs: class quests it does not do (with why), and the alternatives to a quest it did."""
         skips: dict[int, str] = {}
         done = plan.final.done if plan.final else frozenset()
-        for qid in sorted(self.mandatory):
+        for qid in sorted(self.mandatory - self.required):  # (a required quest is never skipped)
             if qid in done:
                 continue
             if qid in self.skip_reasons:
@@ -1263,6 +1680,8 @@ class Planner:
             for other in self.quests[qid].excl:
                 if other not in done and other in self.quests and other not in skips:
                     skips[other] = f"alternative to quest {qid}, which is routed"
+        for record in plan.stats.get("left_out", ()):  # nothing is dropped silently: what tidy took out is named, with its reason
+            skips.setdefault(record["quest"], f"not finished by this route: {record['why']}")
         return skips
 
     def hub_near(self, coord: Coord) -> int | None:
@@ -1276,37 +1695,73 @@ class Planner:
     def hub_name(self, hub: int | None) -> str:
         return self.hubs[hub].label if hub is not None else "(grinding)"
 
-    def emit(self, plan: Plan, class_token: str, split_after: int = 10) -> list:
-        """The route as chapters of guide steps: written one place at a time, then neighbouring steps of one kind joined
-        (signpost_tools/steps.py: a pick-up and hand-in step per area, a doing step per group of quests whose objectives are
-        near each other), a `.level` line before a quest above the last level asked for, a `.level` step for a grind,
-        `.optional` on group quests and `.note` where the rules have one. A chapter ends where the zone changes (once it has
-        `split_after` steps)."""
-        chapters: list[ChapterText] = []
-        current: ChapterText | None = None
+    def grind_kills(self, level: int, target: int, xp: float) -> float:
+        """The kills a grind from `level` to `target` that is worth `xp` experience comes to: at each level it climbs through, the kills of
+        creatures of that level the model's kill experience says its experience bar takes (the character's first level is part-way up)."""
+        model = self.model
+        have = max(0.0, sum(model.to_next(n) for n in range(level, target)) - xp)  # already earned towards `level`
+        kills = 0.0
+        for n in range(level, target):
+            each = model.kill_xp(n, n)
+            if each > 0:
+                kills += max(0.0, model.to_next(n) - have) / each
+            have = 0.0
+        return kills
+
+    def grind_note(self, xp: float, kills: float) -> str:
+        """What a grind step says about the size of the job: the experience still to grind and the kills it is, both rounded and both an
+        estimate (the experience a player needs depends on rested experience, the quests in the log and the creatures at hand). It does not
+        say "here": the grind follows the step before it, which may be in a town where nothing of the player's level lives."""
+        count = max(1, approx(kills))
+        return (
+            f"Grind about {approx(xp):,} experience before you go on: about {count:,} {'kill' if count == 1 else 'kills'} "
+            f"of creatures near your level (an estimate)"
+        )
+
+    def step_marks(self, hub: int, place: Coord | None) -> list:
+        """Lines that mark the step written for a place of a hub, after its quest lines. The seam where a step in a town gets the `.hub <town>`
+        line that profession tracks anchor on (a step with one is never joined with its neighbours): none yet."""
+        return []
+
+    def _grind_lines(self, target: int, xp: float, kills: float) -> list:
+        return [f"  .level {target} -- reach it first: kill or grind on the way", f"  .note {self.grind_note(xp, kills)}"]
+
+    def emit(self, plan: Plan, class_token: str) -> list:
+        """The route as chapters of guide steps. It is written one place at a time (the places of a visit are steps of their own), then
+        neighbouring steps of one kind are joined (signpost_tools/steps.py: a pick-up and hand-in step per area, a doing step per group of
+        quests whose objectives are near each other), with a `.level` line before a quest above the last level asked for, `.optional` on
+        group quests and `.note` where the rules have one. A grind (the route stops to kill for the level that opens quests) is a `.level N`
+        line and a note saying how much experience that is, written on the step before it, where the character stands when it begins (one
+        that comes first has no step before it and goes on the one after). Chapters are cut where the route goes to another zone for at
+        least `Settings.chapter_min_steps` steps and are named after the zone most of their steps are in (`split_chapters`)."""
+        pieces: list[Piece] = []
         gated = 0
         level = 1
         for v in plan.visits:
-            zone = self.hubs[v.hub].zone if v.hub is not None else (current.zone if current else None)
-            if current is None or (v.hub is not None and zone != current.zone and len(current.steps) >= split_after):
-                current = ChapterText(zone, level)
-                chapters.append(current)
-            if v.hub is None:
+            if v.hub is None:  # a grind
                 target = v.actions[0].index
-                current.steps.append([f"  .level {target} -- reach it first: kill or grind on the way"])
+                xp, kills = v.xp, self.grind_kills(level, target, v.xp)
+                if pieces and pieces[-1].grind is not None:  # two in a row are one
+                    before = pieces[-1]
+                    target, xp, kills = max(target, before.grind[0]), xp + before.grind[1], kills + before.grind[2]
+                    pieces.pop()
+                    first_in = before.level_in
+                else:
+                    first_in = level
+                pieces.append(Piece(self._grind_lines(target, xp, kills), None, first_in, v.level, (target, xp, kills)))
                 gated = max(gated, target)
                 level = v.level
-                current.level_out = level
                 continue
+            zone = self.hubs[v.hub].zone
             group: list[Action] = []
             for a in v.actions + [None]:
                 if group and (a is None or a.place != group[0].place):
-                    gated = self._step(current, group, class_token, gated)
+                    lines, gated = self._step(group, class_token, gated)
+                    pieces.append(Piece(lines + self.step_marks(v.hub, group[0].place), zone, level, v.level))
                     group = []
                 if a is not None:
                     group.append(a)
             level = v.level
-            current.level_out = level
 
         def near(a: Coord, b: Coord) -> bool:
             return a.map == b.map and self._yards(a, b) <= self.s.group_yards
@@ -1314,11 +1769,36 @@ class Planner:
         def objectives(qid: int) -> list[int] | None:
             return [o.index for o in self.quests[qid].objectives] if qid in self.quests else None
 
-        for chapter in chapters:
-            chapter.steps = steps.group(chapter.steps, near, objectives)
+        joined: list[Piece] = []
+        for lines, first, last in steps.group_spans([p.lines for p in pieces], near, objectives):
+            head, tail = pieces[first], pieces[last]
+            joined.append(Piece(lines, head.zone, head.level_in, tail.level_out, head.grind))
+        placed: list[Piece] = []  # a grind is folded into the step before it (a lone `.level` step has no place of its own)
+        carried: Piece | None = None
+        for piece in joined:
+            if piece.grind is None:
+                if carried is not None:  # the route began with a grind: it goes on its first step, after the step's `.goto` lines
+                    at = next((i for i, line in enumerate(piece.lines) if not steps.is_goto(line)), len(piece.lines))
+                    piece.lines = piece.lines[:at] + carried.lines + piece.lines[at:]
+                    piece.level_in = carried.level_in
+                    carried = None
+                placed.append(piece)
+            elif placed:
+                placed[-1].lines = placed[-1].lines + piece.lines
+                placed[-1].level_out = piece.level_out
+            else:
+                carried = piece
+        if carried is not None:  # nothing but grinds: the chapter that says so
+            placed.append(carried)
+        chapters: list[ChapterText] = []
+        for first, last, zone in split_chapters([p.zone for p in placed], self.s.chapter_min_steps):
+            chapter = ChapterText(zone, placed[first].level_in, placed[last].level_out)
+            chapter.steps = [p.lines for p in placed[first : last + 1]]
+            chapters.append(chapter)
         return chapters
 
-    def _step(self, chapter: "ChapterText", group: list, class_token: str, gated: int) -> int:
+    def _step(self, group: list, class_token: str, gated: int) -> tuple[list, int]:
+        """The lines of the step for the actions of one place, and the highest level the route has asked for so far."""
         place = group[0].place
         lines = [f"  .goto {place.dsl()}"] if place is not None else []
         optional: dict[int, str] = {}
@@ -1331,6 +1811,8 @@ class Planner:
                     lines.append(f"  .level {q.req}")
                     gated = q.req
                 lines.append(f"  .accept {q.id}{gate} -- {name}")
+                if q.group in GROUP_NOTES:
+                    lines.append(f"  .note {name}: {GROUP_NOTES[q.group]}")
                 if q.unknown_work:
                     lines.append(f'  .todo "{name}: the pack has no objective for it; read what it asks in the quest log"')
                 if q.id in self.notes:
@@ -1341,21 +1823,35 @@ class Planner:
                 lines.append(f"  .turnin {q.id}{gate} -- {name}")
             else:
                 objective = next((o for o in q.objectives if o.index == a.index), None)
-                if objective is None or not objective.spots:
+                if (objective is None or not objective.spots) and q.group != "dungeon":  # (a dungeon's objectives lie inside it: the note says so)
                     why = "is only in places this guide does not go" if objective is not None and objective.elsewhere else "has no position in the pack"
                     lines.append(f'  .todo "{name}: objective {a.index} {why}"')
                 lines.append(f"  .complete {q.id},{a.index}{gate} -- {name}")
+                if q.scripted:
+                    lines.append(f"  .note {name}: {SCRIPTED_NOTES[(q.scripted, self.s.hardcore)]}")
             if q.optional:
-                optional[q.id] = name
-        for qid, name in optional.items():
-            lines.append(f"  .optional {qid} -- group quest: {name}")
-        chapter.steps.append(lines)
-        return gated
+                optional[q.id] = f"{GROUP_COMMENTS.get(q.group, 'group quest')}: {name}"
+        for qid, comment in optional.items():
+            lines.append(f"  .optional {qid} -- {comment}")
+        return lines, gated
+
+
+@dataclass
+class Piece:
+    """One step of the route as the planner writes it, before neighbours are joined: its lines, the zone of its first `.goto` (None for a grind,
+    which has no place of its own), the level the character had when the visit it comes from began and when it ended, and for a grind what it
+    asks: (the level to reach, the experience to grind, the kills that is)."""
+
+    lines: list
+    zone: int | None
+    level_in: int
+    level_out: int
+    grind: tuple | None = None
 
 
 @dataclass
 class ChapterText:
-    zone: int | None
+    zone: int | None  # the zone most of its steps are in: its name
     level_in: int
     level_out: int = 0
     steps: list = field(default_factory=list)
@@ -1373,6 +1869,53 @@ class ChapterText:
 
 def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def approx(value: float) -> int:
+    """A number rounded to two significant figures, as a person would say it (2,437 -> 2,400; 555 -> 560; 54.6 -> 55; 8.4 -> 8)."""
+    whole = int(value + 0.5)
+    if whole < 100:
+        return whole
+    step = 10 ** (len(str(whole)) - 2)
+    return int(whole / step + 0.5) * step
+
+
+def split_chapters(zones: list, min_steps: int) -> list[tuple[int, int, object]]:
+    """Cut a route, given the zone of each of its steps in order, into chapters: [(first step, last step, zone it is named after)].
+
+    A change of zone starts a new chapter only when the zone it goes to lasts at least `min_steps` steps in a row (counted once the steps are
+    joined); a shorter stay is a detour and belongs to the chapter it happens in, so a chapter never ends a step or two after it started.
+    The first chapter begins at the first step whatever it is (a short stay before the first long one goes into it); a return to the zone a
+    chapter began in after a detour goes on with that chapter. Each chapter is named after the zone most of its steps are in (on a tie the one
+    it began in, then the earliest)."""
+    if not zones:
+        return []
+    runs: list[list] = []  # [zone, first step, last step] of every stay in one zone
+    for index, zone in enumerate(zones):
+        if runs and runs[-1][0] == zone:
+            runs[-1][2] = index
+        else:
+            runs.append([zone, index, index])
+    starts: list[tuple[int, object]] = []  # (first step, the zone it began in)
+    for zone, first, last in runs:
+        if last - first + 1 < max(1, min_steps):
+            continue
+        if not starts:
+            starts.append((0, zone))
+        elif zone != starts[-1][1]:
+            starts.append((first, zone))
+    if not starts:
+        starts.append((0, zones[0]))  # every stay is short: one chapter
+    chapters = []
+    for number, (first, began) in enumerate(starts):
+        last = starts[number + 1][0] - 1 if number + 1 < len(starts) else len(zones) - 1
+        counts: dict = {}
+        for zone in zones[first : last + 1]:
+            counts[zone] = counts.get(zone, 0) + 1
+        order = list(counts)  # the order of first appearance
+        named = max(order, key=lambda z: (counts[z], z == began, -order.index(z)))
+        chapters.append((first, last, named))
+    return chapters
 
 
 def _unique(coords: list) -> list:

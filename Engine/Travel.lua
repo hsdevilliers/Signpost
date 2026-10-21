@@ -1312,21 +1312,60 @@ local function copyBorder(border)
 	}
 end
 
+local RIDE_KINDS = { boat = true, zeppelin = true }
+local RIDE_WORDS = { "label", "waitText", "fromText", "toText", "verify" }
+
+-- The usable fields of a hand-authored ride: its kind (boat or zeppelin; an airship is a zeppelin), the wait in seconds
+-- and words for the player. Nil when it is not a ride at all.
+local function copyRide(ride)
+	if type(ride) ~= "table" or not RIDE_KINDS[ride.kind] then
+		return nil
+	end
+	local copy = { kind = ride.kind }
+	if type(ride.wait) == "number" and ride.wait >= 0 then
+		copy.wait = ride.wait
+	end
+	for _, key in ipairs(RIDE_WORDS) do
+		if type(ride[key]) == "string" and ride[key] ~= "" then
+			copy[key] = ride[key]
+		end
+	end
+	if type(ride.verify) == "table" then -- phrases that read "a, b and c"
+		local phrases = {}
+		for _, phrase in ipairs(ride.verify) do
+			if type(phrase) == "string" and phrase ~= "" then
+				phrases[#phrases + 1] = phrase
+			end
+		end
+		copy.verify = #phrases > 0 and phrases or nil
+	end
+	return copy
+end
+
 -- Hand-authored crossings: { { name = "Durotar/The Barrens", from = { map, x, y }, to = { map, x, y }, side, todo },
 -- ... } with from/to the last point in one zone and the first in the other. Until a crossing is learned its points are
--- just { map } and `todo` says why (CLAUDE.md: never invent coordinates). Returns the number of entries kept.
+-- just { map } and `todo` says why (CLAUDE.md: never invent coordinates). An entry with `ride = { kind, label?, wait?,
+-- waitText?, fromText?, toText?, verify? }` is not a crossing but a boat, zeppelin or airship between the two zones
+-- (`oneWay = true`: only from `from` to `to`), whose docks are unknown until someone rides it (Core/Learn.lua records
+-- them); Borders() leaves it out and Rides() lists it. Returns the number of entries kept.
 function Travel:RegisterBorders(list)
 	local kept = 0
 	for index, entry in ipairs(type(list) == "table" and list or {}) do
 		local valid = type(entry) == "table" and type(entry.name) == "string" and entry.name ~= ""
 		local from, to = valid and copyPoint(entry.from), valid and copyPoint(entry.to)
-		if from and to then
+		local ride = valid and entry.ride ~= nil and copyRide(entry.ride)
+		if from and to and valid and entry.ride ~= nil and not ride then
+			self.borderErrors[#self.borderErrors + 1] =
+				string.format(L['border %d: a ride needs kind = "boat" or kind = "zeppelin"'], index)
+		elseif from and to then
 			local border = { name = entry.name, from = from, to = to, side = entry.side or "both", src = "guide" }
 			if type(entry.todo) == "string" and entry.todo ~= "" then
 				border.todo = entry.todo
 			elseif not from[2] or not to[2] then
-				border.todo = L["crossing coordinates not learned yet"]
+				border.todo = ride and L["dock positions not recorded yet"] or L["crossing coordinates not learned yet"]
 			end
+			border.ride = ride or nil
+			border.oneWay = ride and entry.oneWay == true or nil
 			self.borders[#self.borders + 1] = border
 			kept = kept + 1
 		else
@@ -1388,15 +1427,17 @@ function Travel:Borders(mapA, mapB)
 	end
 	for _, border in ipairs(self.borders) do
 		local key = pairKey(border.from[1], border.to[1])
-		if better[key] then
-			if not used[key] then
-				used[key] = true
-				for _, crossing in ipairs(better[key]) do
-					add(copyBorder(crossing), border.name)
+		if not border.ride then -- a ride is no crossing: Rides() lists it
+			if better[key] then
+				if not used[key] then
+					used[key] = true
+					for _, crossing in ipairs(better[key]) do
+						add(copyBorder(crossing), border.name)
+					end
 				end
+			else
+				add(copyBorder(border))
 			end
-		else
-			add(copyBorder(border))
 		end
 	end
 	for _, key in ipairs(order) do
@@ -1404,6 +1445,21 @@ function Travel:Borders(mapA, mapB)
 			for _, crossing in ipairs(better[key]) do
 				add(copyBorder(crossing))
 			end
+		end
+	end
+	return result
+end
+
+-- The hand-authored rides (see RegisterBorders): copies, each with its `ride` fields and `oneWay`. With mapA: only the
+-- rides touching it; with mapA and mapB: only those between the two. The data pack's recorded rides (travel.transports)
+-- are not merged in: the client has no use for a ride yet, the offline tools read the pack themselves.
+function Travel:Rides(mapA, mapB)
+	local result = {}
+	for _, border in ipairs(self.borders) do
+		if border.ride and connects(border, mapA, mapB) then
+			local copy = copyBorder(border)
+			copy.ride, copy.oneWay = copyRide(border.ride), border.oneWay
+			result[#result + 1] = copy
 		end
 	end
 	return result

@@ -960,3 +960,79 @@ describe("borders", function()
 		assert.are.equal(6, #ns.Travel:Borders())
 	end)
 end)
+
+describe("rides in Borders.lua", function()
+	it("keeps the hand-authored ride apart from the crossings, with no dock position", function()
+		local ns = load()
+		local rides = ns.Travel:Rides()
+		assert.are.equal(1, #rides)
+		local ride = rides[1]
+		assert.are.equal("Zephras Isle/Mulgore airship", ride.name)
+		assert.are.same({ { 2521 }, { 1412 }, "Horde", true }, { ride.from, ride.to, ride.side, ride.oneWay })
+		-- VERIFY(beta): from fan guides, nothing seen in the game; map IDs only, a dock position is never made up
+		assert.is_nil(ride.from[2])
+		assert.is_nil(ride.to[2])
+		assert.are.same(
+			{ "zeppelin", "airship", 450, "7 to 8 minutes" },
+			{ ride.ride.kind, ride.ride.label, ride.ride.wait, ride.ride.waitText }
+		)
+		assert.are.equal(4, #ride.ride.verify)
+		assert.is_string(ride.todo)
+		-- it is no crossing: the walkable borders are the five there were
+		assert.are.equal(5, #ns.Travel:Borders())
+		for _, border in ipairs(ns.Travel:Borders()) do
+			assert.is_nil(border.ride, border.name)
+		end
+		assert.are.same({}, ns.Travel.borderErrors)
+	end)
+
+	it("lists a ride by either of its zones, and the island has no crossing", function()
+		local ns = load()
+		assert.are.equal(1, #ns.Travel:Rides(2521))
+		assert.are.equal(1, #ns.Travel:Rides(1412))
+		assert.are.equal(1, #ns.Travel:Rides(1412, 2521))
+		assert.are.equal(0, #ns.Travel:Rides(1413))
+		assert.are.equal(0, #ns.Travel:Rides(1411, 1413))
+		assert.are.equal(0, #ns.Travel:Borders(2521))
+	end)
+
+	it("hands out copies", function()
+		local ns = load()
+		local ride = ns.Travel:Rides()[1]
+		ride.from[1], ride.ride.kind, ride.ride.verify[1] = 1, "boat", "changed"
+		local again = ns.Travel:Rides()[1]
+		assert.are.same({ 2521, "zeppelin", "the dock" }, { again.from[1], again.ride.kind, again.ride.verify[1] })
+	end)
+
+	it("rejects a ride that is not a boat or a zeppelin and keeps only the usable fields of the rest", function()
+		local ns = load()
+		local kept = ns.Travel:RegisterBorders({
+			{ name = "Carpet", from = { 1 }, to = { 2 }, ride = { kind = "carpet" } },
+			{ name = "Not a table", from = { 1 }, to = { 2 }, ride = "zeppelin" },
+			{
+				name = "Ferry",
+				from = { 1 },
+				to = { 2 },
+				oneWay = "yes",
+				ride = { kind = "boat", wait = -5, label = 7, waitText = "", verify = { "a", 3, "" } },
+			},
+		})
+		assert.are.equal(1, kept)
+		assert.are.equal(2, #ns.Travel.borderErrors)
+		local ferry = ns.Travel:Rides(1, 2)[1]
+		assert.are.same({ kind = "boat", verify = { "a" } }, ferry.ride)
+		assert.is_nil(ferry.oneWay) -- only true counts
+		assert.are.equal("dock positions not recorded yet", ferry.todo)
+		assert.are.equal(0, #ns.Travel:Borders(1, 2))
+	end)
+
+	it("is not replaced by the data pack's crossings between the same two zones", function()
+		local ns = load({
+			travel = { crossings = { { from = { 2521, 10, 10 }, to = { 1412, 90, 90 }, name = "A walk" } } },
+		})
+		assert.are.equal(1, #ns.Travel:Rides(2521, 1412))
+		local walks = ns.Travel:Borders(2521, 1412)
+		assert.are.equal(1, #walks)
+		assert.are.equal("A walk", walks[1].name)
+	end)
+end)

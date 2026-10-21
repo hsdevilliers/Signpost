@@ -13,6 +13,13 @@
 -- cheap: work happens at NPC windows and zone changes, plus one position sample a second for the crossings. Every
 -- table is capped (Learn.LIMITS); a new entry in a full table replaces the one seen longest ago.
 -- tools/import_savedvars.py --merge-learned turns all of it into the data pack's learned layer.
+-- What trainers teach and charge, and the recipes of the trade skill windows: Core/LearnProfessions.lua.
+-- Travel (the "Boat and zeppelin rides" and "Innkeepers" sections below): also recorded, on the same terms,
+--   rides = { { from = { map, x, y }, to = { map, x, y }, side, kind?, fromArea?, toArea?, secs, t, c }, ... }
+--                                         the dock a boat or zeppelin left and the one it arrived at; side: the rider's
+--                                         faction; kind: what /signpost ride named; the areas: the game's zone texts
+--   inns[npcID] = { map, x, y, n?, t, c }   innkeepers (their gossip offers to make the inn the player's home); n: the
+--                                         bind location's name once the player did make it their home there
 local ADDON_NAME, ns = ...
 local L = ns.L
 local Util = ns.Util
@@ -255,6 +262,10 @@ local function sight(unit)
 	end
 	return who
 end
+
+-- Shared with Core/LearnProfessions.lua, which records the trainer and trade skill windows under the same guards.
+Learn.Plain = { number = plainNumber, id = plainID, string = plainString }
+Learn.Entity = entity
 
 -- Quests ------------------------------------------------------------------------------------------------------------
 -- The dialog says who offers (QUEST_DETAIL) or takes back (QUEST_PROGRESS, QUEST_COMPLETE) a quest; the dialog may be
@@ -544,6 +555,7 @@ function Learn:Sample()
 		return
 	end
 	local pos = here()
+	self:TrackTravel(pos)
 	if not pos then
 		self:Forget()
 		return
@@ -577,9 +589,13 @@ end
 -- Events ------------------------------------------------------------------------------------------------------------
 
 -- Nothing is recorded without the player's yes on a release build (Core/Contribute.lua; dev builds always record).
+function Learn:Recording()
+	return ns.db ~= nil and ns.Contribute ~= nil and ns.Contribute:Enabled()
+end
+
 local function on(event, fn)
 	ns.Events:Register(event, function(...)
-		if ns.db and ns.Contribute and ns.Contribute:Enabled() then
+		if Learn:Recording() then
 			fn(...)
 		end
 	end)
@@ -628,6 +644,325 @@ on("PLAYER_ENTERING_WORLD", function()
 	Learn:Forget()
 end)
 
+-- Boat and zeppelin rides -------------------------------------------------------------------------------------------
+-- How the client reports a player on a boat or zeppelin is an open probe (FOREVER-API-NOTES), so a ride is told by what
+-- it does to the one-second position samples and not by a signal: the player is carried (moves faster than their own
+-- speed) or has no map position, with no flight, instance or death to explain it. The dock is the last sample on the
+-- ground before that and the arrival the first samples on the ground after it. A hearthstone, a teleport, a summon or
+-- a flight leaves neither stretch, so none of them is a ride. Stored: two positions, the game's own text for the areas
+-- they are in, the player's faction, how long it took and the kind they named with /signpost ride. Nothing else.
+
+Learn.LIMITS.rides = 100
+Learn.LIMITS.inns = 200
+
+local RIDE_RUN = 3 -- samples in a row of being carried, or without a position, before it counts as a ride
+local RIDE_SETTLED = 2 -- samples in a row on the ground that end a ride
+local RIDE_MIN_SECONDS = 15 -- a shorter stretch is a stumble, not a ride
+local RIDE_MAX_SECONDS = 900 -- a ride that goes on longer than this was never one
+local RIDE_MAX_IDLE = 60 -- samples a ride may go on without telling whether the player is carried
+local RIDE_MIN_YARDS = 300 -- the docks are at least this far apart, or in another world
+local RIDE_SLACK = 4 -- yards a sample may differ from the player's own speed before something is carrying them
+local MAX_CARRIED_SPEED = 60 -- yards a second; more is a teleport
+local DOCK_MAX_AGE = 15 -- seconds a ground sample stays the dock when the map position goes missing
+local DOCK_SPOT = 2 -- map percent: rides between docks this close are one route
+local KIND_SECONDS = 600 -- how long /signpost ride <kind> waits for its ride
+local INN_SECONDS = 120 -- how long after an innkeeper's window a changed bind location is that inn's name
+
+-- A plain true from a client call; a secret or a missing answer is false.
+local function flag(fn, ...)
+	local value = call(fn, ...)
+	return not Util.IsSecret(value) and value and true or false
+end
+
+-- A flight, an instance, a battleground or death explains a moving or a missing position better than a ride does.
+local function rideExplained(pos)
+	if pos and (pos.taxi or not openWorld(pos)) then
+		return true
+	end
+	-- VERIFY(beta): IsInInstance() and UnitIsDeadOrGhost("player") answer plain booleans on Forever (never secret).
+	return flag(UnitOnTaxi, "player") or flag(IsInInstance) or flag(UnitIsDeadOrGhost, "player")
+end
+
+-- Whether the player was carried between two samples: true, false, or nil when it cannot be told (another world, no
+-- world coordinates, a jump too big for a ride, no reading of the player's own speed).
+local function carriedBetween(a, b)
+	local ax, ay, aWorld = worldPoint(a)
+	local bx, by, bWorld = worldPoint(b)
+	if not (ax and bx) or aWorld ~= bWorld then
+		return nil
+	end
+	local elapsed = math.max((tonumber(b.t) or 0) - (tonumber(a.t) or 0), SAMPLE_SECONDS)
+	local dx, dy = bx - ax, by - ay
+	local moved = math.sqrt(dx * dx + dy * dy)
+	if moved > MAX_CARRIED_SPEED * elapsed then
+		return nil
+	end
+	-- VERIFY(beta): GetUnitSpeed is the player's own speed, 0 while standing on a moving boat or zeppelin, and
+	-- UnitPosition keeps following the deck (else the missing map position is what shows a ride).
+	local speed = plainNumber(call(GetUnitSpeed, "player"))
+	if not speed then
+		return nil
+	end
+	return moved > speed * elapsed + RIDE_SLACK
+end
+
+local function farApart(a, b)
+	local ax, ay, aWorld = worldPoint(a)
+	local bx, by, bWorld = worldPoint(b)
+	if ax and bx then
+		if aWorld ~= bWorld then
+			return true
+		end
+		local dx, dy = bx - ax, by - ay
+		return math.sqrt(dx * dx + dy * dy) >= RIDE_MIN_YARDS
+	end
+	return a.map ~= b.map
+end
+
+-- The game's own text for where a position is: the subzone, else the minimap's, else the zone's.
+local function areaOf(pos)
+	return plainString(pos.subzone) or plainString(pos.minimapZone) or plainString(pos.zone)
+end
+
+-- One more sample of being carried, or of no position: starts a ride at the dock, or goes on with it.
+function Learn:RideEvidence(now)
+	local ride = self.ride
+	if not ride then
+		local dock = self.dock
+		if not (dock and now - dock.at <= DOCK_MAX_AGE) then
+			return
+		end
+		ride = { dock = dock, run = 0, settled = 0, idle = 0, since = now }
+		self.ride = ride
+	end
+	ride.run, ride.settled, ride.idle, ride.arrival = ride.run + 1, 0, 0, nil
+	if ride.run >= RIDE_RUN then
+		ride.confirmed = true
+	end
+end
+
+-- The player is on the ground again; the first such sample is the arrival once enough of them agree.
+function Learn:RideSettled(pos, now)
+	local ride = self.ride
+	ride.run, ride.idle = 0, 0
+	ride.settled = ride.settled + 1
+	ride.arrival = ride.arrival or { pos = pos, at = now }
+	if ride.settled >= RIDE_SETTLED then
+		self:FinishRide()
+	end
+end
+
+function Learn:FinishRide()
+	local ride = self.ride
+	self.ride, self.dock = nil, ride.arrival
+	if not ride.confirmed then
+		return
+	end
+	local from, to = ride.dock.pos, ride.arrival.pos
+	local seconds = ride.arrival.at - ride.since
+	if seconds >= RIDE_MIN_SECONDS and farApart(from, to) and zoneLike(from.map) and zoneLike(to.map) then
+		self:AddRide(from, to, seconds)
+	end
+end
+
+-- The kind the player named with /signpost ride, once, if they named it recently.
+function Learn:TakeRideKind()
+	local named = self.rideKind
+	self.rideKind = nil
+	if named and GetTime() - named.at <= KIND_SECONDS then
+		return named.kind
+	end
+end
+
+-- Adds a ride, or counts and refines the one already learned between the same two docks.
+function Learn:AddRide(from, to, seconds)
+	local list, now, kind = self:Table("rides"), time(), self:TakeRideKind()
+	local secs = Util.Round(seconds)
+	for _, ride in ipairs(list) do
+		if type(ride) == "table" and type(ride.from) == "table" and type(ride.to) == "table" then
+			local a, b = apart(ride.from, from), apart(ride.to, to)
+			if a and b and a <= DOCK_SPOT and b <= DOCK_SPOT then
+				local seen = tonumber(ride.c) or 1
+				blend(ride.from, from, math.min(seen, MAX_WEIGHT))
+				blend(ride.to, to, math.min(seen, MAX_WEIGHT))
+				ride.secs = Util.Round(((tonumber(ride.secs) or secs) * seen + secs) / (seen + 1))
+				ride.kind = kind or ride.kind
+				ride.c, ride.t = seen + 1, now
+				return ride
+			end
+		end
+	end
+	local ride = {
+		from = { map = from.map, x = from.x, y = from.y },
+		to = { map = to.map, x = to.x, y = to.y },
+		side = ns.Player and plainString(ns.Player.faction),
+		kind = kind,
+		fromArea = areaOf(from),
+		toArea = areaOf(to),
+		secs = secs,
+		t = now,
+		c = 1,
+	}
+	list[#list + 1] = ride
+	if #list > self.LIMITS.rides then
+		local oldest = 1
+		for i = 2, #list do
+			if seenAt(list[i]) < seenAt(list[oldest]) then
+				oldest = i
+			end
+		end
+		table.remove(list, oldest)
+	end
+	return ride
+end
+
+-- A loading screen outside a ride is a hearthstone, a teleport or an instance: the dock is gone. Inside one it is the
+-- zeppelin crossing to another continent: the ride goes on.
+function Learn:OnRideLoading()
+	self.rideLast = nil
+	if not self.ride then
+		self.dock = nil
+	end
+end
+
+-- Called with every position sample; pos is nil when the client gives no map position.
+function Learn:TrackTravel(pos)
+	if not (ns.db and ns.Contribute and ns.Contribute:Enabled()) then
+		self.dock, self.ride, self.rideLast, self.bind, self.innkeeper = nil, nil, nil, nil, nil
+		return
+	end
+	self:TrackBind()
+	local now, ride = GetTime(), self.ride
+	if rideExplained(pos) or (ride and now - ride.since > RIDE_MAX_SECONDS) then
+		self.dock, self.ride, self.rideLast = nil, nil, nil
+		return
+	end
+	if not pos then
+		-- No map position and nothing to explain it: a deck, perhaps. It counts beside a dock and inside a ride.
+		self.rideLast = nil
+		self:RideEvidence(now)
+		return
+	end
+	local carried = self.rideLast and carriedBetween(self.rideLast, pos)
+	self.rideLast = pos
+	if carried then
+		self:RideEvidence(now)
+	elseif carried == false then
+		if ride then
+			self:RideSettled(pos, now)
+		else
+			self.dock = { pos = pos, at = now }
+		end
+	elseif ride then
+		ride.idle = ride.idle + 1
+		if ride.idle > RIDE_MAX_IDLE then
+			self.dock, self.ride = nil, nil
+		end
+	end
+end
+
+-- Innkeepers --------------------------------------------------------------------------------------------------------
+-- The gossip of an innkeeper offers to make the inn the player's home. That NPC and the player's position at the
+-- window are an innkeeper's place (inns[npcID], recorded like npcs); `n` is the bind location's name from the time
+-- the player really made it their home there, seen as a change of GetBindLocation() soon after the window.
+
+local BINDER_ICON = "Interface\\GossipFrame\\BinderGossipIcon"
+
+-- The option that makes the inn the player's home: the binder icon (file ID or path), else the words "inn" and "home".
+-- VERIFY(beta): the option carries that icon, or text with those words (open probe: the innkeeper's bind option).
+local function binderOption(option)
+	if type(option) ~= "table" then
+		return false
+	end
+	local icon = option.icon
+	if icon ~= nil and not Util.IsSecret(icon) then
+		if
+			icon == BINDER_ICON
+			or (type(icon) == "number" and icon == plainNumber(call(GetFileIDFromPath, BINDER_ICON)))
+		then
+			return true
+		end
+	end
+	local name = plainString(option.name)
+	name = name and name:lower()
+	return name ~= nil and name:find(L["inn"], 1, true) ~= nil and name:find(L["home"], 1, true) ~= nil
+end
+
+-- GOSSIP_SHOW
+function Learn:OnInnkeeper()
+	local who = entity("npc")
+	if not (who and who.table == "npcs") then
+		return
+	end
+	local gossip = C_GossipInfo
+	local options = gossip and call(gossip.GetOptions)
+	local binder = false
+	for _, option in ipairs(type(options) == "table" and options or {}) do
+		if binderOption(option) then
+			binder = true
+			break
+		end
+	end
+	local pos = binder and here()
+	if pos then
+		place(self:Record("inns", who.id), pos, time())
+		self.innkeeper = { id = who.id, at = GetTime() }
+	end
+end
+
+-- The bind location's name, when the player made the inn they just talked to their home.
+-- VERIFY(beta): GetBindLocation() names the inn's town (or the city) within seconds of making it the home.
+function Learn:TrackBind()
+	local name = plainString((call(GetBindLocation)))
+	if not name then
+		return
+	end
+	local before, inn = self.bind, self.innkeeper
+	self.bind = name
+	if before and before ~= name and inn and GetTime() - inn.at <= INN_SECONDS then
+		local record = self:Get("inns", inn.id)
+		if record then
+			record.n = name
+		end
+		self.innkeeper = nil
+	end
+end
+
+function Learn:TravelCounts()
+	return { rides = #self:Table("rides"), inns = self:Count("inns") }
+end
+
+on("GOSSIP_SHOW", function()
+	Learn:OnInnkeeper()
+end)
+on("LOADING_SCREEN_ENABLED", function()
+	Learn:OnRideLoading()
+end)
+on("LOADING_SCREEN_DISABLED", function()
+	Learn.rideLast = nil
+end)
+on("PLAYER_ENTERING_WORLD", function()
+	Learn.rideLast = nil
+end)
+
+ns.Slash:Register("ride", function(args)
+	local kind = (args or ""):lower():match("^%s*(%S*)")
+	if not (ns.Contribute and ns.Contribute:Enabled()) then
+		Util.Print(L["ride: nothing is recorded until you agree in /signpost contribute"])
+	elseif kind == "boat" then
+		Learn.rideKind = { kind = "boat", at = GetTime() }
+		Util.Print(L["ride: the next ride you finish is recorded as a boat"])
+	elseif kind == "zeppelin" then
+		Learn.rideKind = { kind = "zeppelin", at = GetTime() }
+		Util.Print(L["ride: the next ride you finish is recorded as a zeppelin"])
+	elseif kind == "clear" then
+		Learn.rideKind = nil
+		Util.Print(L["ride: forgotten"])
+	else
+		Util.Print(L["ride: say what you are about to ride: /signpost ride boat or /signpost ride zeppelin"])
+	end
+end, L["name the boat or zeppelin you are about to ride so that it is recorded as one: boat | zeppelin | clear"])
+
 ns.Events:Register("PLAYER_LOGIN", function()
 	if not Learn.ticker then
 		Learn.ticker = C_Timer.NewTicker(SAMPLE_SECONDS, function()
@@ -637,15 +972,21 @@ ns.Events:Register("PLAYER_LOGIN", function()
 end)
 
 ns.Slash:Register("learned", function()
+	local travel = Learn:TravelCounts()
+	Util.Print(L["learned: %d boat or zeppelin rides, %d innkeepers"], travel.rides, travel.inns)
 	local n = Learn:Counts()
+	local professions = Learn.Professions and Learn.Professions:Counts() or { services = 0, recipes = 0 }
 	Util.Print(
-		L["learned: %d NPCs, %d objects, %d quests, %d flight nodes, %d zone crossings, %d trainers, %d vendors"],
+		L["learned: %d NPCs, %d objects, %d quests, %d flight nodes, %d zone crossings, %d trainers, %d vendors, "]
+			.. L["%d trainer services, %d recipes"],
 		n.npcs,
 		n.objects,
 		n.quests,
 		n.taxi,
 		n.crossings,
 		n.trainers,
-		n.vendors
+		n.vendors,
+		professions.services,
+		professions.recipes
 	)
 end, L["count what Learn has recorded (tools/import_savedvars.py --merge-learned folds it into the data pack)"])

@@ -146,7 +146,7 @@ describe("Wave 1 integration", function()
 		assert.are.equal(1, #entries)
 		assert.are.equal("accept", entries[1].target.kind)
 		assert.are.same({ QUEST }, entries[1].target.quests)
-		assert.are.same({ "Accept the first quest" }, ns.StepFrame.DescribeLines(ns.Progress:Current()))
+		assert.are.same({ "[ ] Accept the first quest" }, ns.StepFrame.DescribeLines(ns.Progress:Current()))
 	end)
 
 	it("walks the route on quest log, profession, position and level changes only", function()
@@ -299,6 +299,30 @@ describe("Wave 1 integration", function()
 		assert.are.equal("test-other:1", current(reloaded))
 	end)
 
+	-- The saved place belongs to the guide's text (the fingerprint); the profession plan is not part of it, so a character
+	-- that has since declined a profession, whose track steps leave the route, is not placed again.
+	it("keeps the place across a reload whatever the profession plan has become", function()
+		local ns, world, mock = start()
+		world.log = { quest(QUEST, { objectives = { objective("Boar slain", 0, 2) } }) }
+		event(world, mock, "QUEST_ACCEPTED", QUEST)
+		assert.are.equal("valley:2", current(ns))
+		assert.are.same({ "skinning" }, ns.Progress:Guide().plan.primary)
+		local saved = ns.Util.CopyTable(ns.char)
+		saved.declinedProfessions = { skinning = true } -- the next session has no skinning track
+		contextMock.uninstall()
+		local reloaded, _, mock2 = start(function(w)
+			G.SignpostCharDB = saved
+			w.log = { quest(QUEST, { objectives = { objective("Boar slain", 1, 2) } }) }
+		end)
+		assert.are.same({}, reloaded.Progress:Guide().plan.primary)
+		assert.is_nil(reloaded.Progress:Guide().byId["track:skinning:1"])
+		assert.are.equal("valley:2", current(reloaded))
+		assert.are.equal("first", reloaded.char.progress["test-integration"].placed.reason) -- never placed again
+		for _, line in ipairs(mock2.printed) do
+			assert.is_nil(line:find("may not match", 1, true), line)
+		end
+	end)
+
 	-- A data pack in Data/Schema.lua's shape, as the questie layer writes it (test IDs and names, not real data).
 	local CAMP = [[
 #chapter 1-6 Camp
@@ -346,7 +370,10 @@ step
 			entries[1].target.npc,
 		})
 		-- the step's own sticky directives are "Ongoing:" lines, not body lines
-		assert.are.same({ 'Accept "Test Quest" from Test Giver' }, ns.StepFrame.DescribeLines(ns.Progress:Current()))
+		assert.are.same(
+			{ '[ ] Accept "Test Quest" from Test Giver' },
+			ns.StepFrame.DescribeLines(ns.Progress:Current())
+		)
 		assert.are.same({ "Reach level 2", "Reach level 3" }, ns.StepFrame:StickyLines(ns.Progress:Current(), {}))
 
 		world.log = { quest(9001, { objectives = { objective("Test Boar slain", 0, 3) } }) }
@@ -407,7 +434,7 @@ step
 			entries[1].target.quests[2],
 		})
 		assert.are.same(
-			{ 'Accept "Test Quest" from Test Giver', 'Accept "Other Quest" from Test Giver' },
+			{ '[ ] Accept "Test Quest" from Test Giver', '[ ] Accept "Other Quest" from Test Giver' },
 			ns.StepFrame.DescribeLines(ns.Progress:Current())
 		)
 
@@ -447,9 +474,202 @@ step
 		assert.are.equal(1, #entries)
 		assert.are.same({ "turnin", 9101 }, { entries[1].target.kind, entries[1].target.npc })
 		assert.are.same(
-			{ 'Turn in "Test Quest" to Test Giver', 'Turn in "Other Quest" to Test Giver' },
+			{ '[ ] Turn in "Test Quest" to Test Giver', '[ ] Turn in "Other Quest" to Test Giver' },
 			ns.StepFrame.DescribeLines(ns.Progress:Current())
 		)
+	end)
+
+	-- A pick-up of two NPCs of one area (the tools write each NPC's .goto followed by its quests): one pin for each NPC
+	-- with its own quests, which goes once they are in the log, and a done mark on each line of the card.
+	local JOINED = [[
+#chapter 1-6 Joined
+step
+  .goto 1411,30,30
+  .accept 9001
+  .goto 1411,40,40
+  .accept 9002
+step
+  .goto 1411,50,50
+  .complete 9001
+  .complete 9002
+]]
+	local JOINED_GUIDE = { id = "test-joined", name = "Joined", levels = { 1, 10 }, text = "#include joined\n" }
+
+	it("pins each NPC of a joined pick-up with its own quests and marks each line as it is done", function()
+		local ns, world, mock = start(nil, { chapters = { joined = JOINED }, guide = JOINED_GUIDE })
+		local DONE = "|cff40d040[x]|r "
+		assert.are.equal("joined:1", current(ns))
+		local entries = ns.Pins:Collect()
+		assert.are.equal(2, #entries)
+		assert.are.same({ { "accept", 30, 9001 }, { "accept", 40, 9002 } }, {
+			{ entries[1].target.kind, entries[1].target.x, entries[1].target.quests[1] },
+			{ entries[2].target.kind, entries[2].target.x, entries[2].target.quests[1] },
+		})
+		assert.are.same(
+			{ '[ ] Accept "Quest #9001"', '[ ] Accept "Quest #9002"' },
+			ns.StepFrame.DescribeLines(ns.Progress:Current())
+		)
+		-- a pin's tooltip lists the lines of its own quests only
+		assert.are.same(
+			{ '[ ] Accept "Quest #9002"' },
+			ns.StepFrame.DescribeLines((ns.Progress:Current()), { [9002] = true })
+		)
+
+		-- one accepted: its pin and its line's open mark are gone; the other NPC's pin stays
+		world.log = { quest(9001, { objectives = { objective("Boar slain", 0, 3) } }) }
+		event(world, mock, "QUEST_ACCEPTED", 9001)
+		assert.are.equal("joined:1", current(ns))
+		entries = ns.Pins:Collect()
+		assert.are.equal(1, #entries)
+		assert.are.same(
+			{ "accept", 40, 9002 },
+			{ entries[1].target.kind, entries[1].target.x, entries[1].target.quests[1] }
+		)
+		assert.are.same(
+			{ DONE .. 'Accept "Quest 9001"', '[ ] Accept "Quest #9002"' },
+			ns.StepFrame.DescribeLines(ns.Progress:Current())
+		)
+
+		world.log[2] = quest(9002, { objectives = { objective("Boar slain", 0, 3) } })
+		event(world, mock, "QUEST_ACCEPTED", 9002)
+		assert.are.equal("joined:2", current(ns)) -- a doing step now: no pins at all
+		assert.are.same({}, ns.Pins:Collect())
+	end)
+
+	-- A group quest of a normal route is an optional-only step for each stage (Engine/Conditions.lua OptionalOnly):
+	-- the route does not stop at it unless the player takes the quest.
+	local GROUP = [[
+#chapter 1-6 Group
+step
+  .goto 1411,30,30
+  .accept 9001
+step
+  .goto 1411,40,40
+  .accept 9500
+  .optional 9500
+step
+  .goto 1411,50,50
+  .complete 9500
+  .optional 9500
+step
+  .goto 1411,40,40
+  .turnin 9500
+  .optional 9500
+step
+  .goto 1411,30,30
+  .turnin 9001
+]]
+	local GROUP_GUIDE = { id = "test-group", name = "Group", levels = { 1, 10 }, text = "#include group\n" }
+
+	it("passes the steps of a group quest the player does not take, and offers it beside the step before", function()
+		local ns, world, mock = start(nil, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+		assert.are.equal("group:1", current(ns))
+		-- the group quest's three steps are the next three: one line, for the one quest (the card's own text is
+		-- tests/ui_spec.lua's)
+		assert.are.same({ "Quest #9500 (group quest)" }, ns.StepFrame:OptionalLines(ns.Progress:Current()))
+
+		world.log = { quest(9001, { objectives = { objective("Boar slain", 0, 3) } }) }
+		event(world, mock, "QUEST_ACCEPTED", 9001)
+		-- 9001 is in the log: the step ends, and the three steps of the group quest are passed one after the other
+		assert.are.equal("group:5", current(ns))
+		local record = ns.char.progress["test-group"]
+		assert.is_true(record.done["group:2"] and record.done["group:3"] and record.done["group:4"])
+		assert.are.same({}, ns.StepFrame:OptionalLines(ns.Progress:Current()))
+	end)
+
+	-- The engine looks at the quest log when it first evaluates at login; the client may not have sent it yet, and an
+	-- empty log that has not arrived must not pass the steps of a group quest the character holds (R-engine-1 #3).
+	describe("when the client has not sent the quest log yet", function()
+		-- a session that has the log from the start, then its SavedVariables as the client gives them back
+		local function savedAt(stepNumber, log)
+			local ns, world = start(function(w)
+				w.log = log
+			end, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+			assert.is_true(ns.Progress:JumpTo(stepNumber))
+			world.advance(1.1)
+			assert.are.equal("group:" .. stepNumber, current(ns))
+			local saved = ns.Util.CopyTable(ns.char)
+			contextMock.uninstall()
+			return saved
+		end
+
+		local function wolf(have)
+			return quest(9500, { objectives = { objective("Wolf slain", have, 2) } })
+		end
+		local function boar()
+			return quest(9001, { objectives = { objective("Boar slain", 0, 3) } })
+		end
+
+		it("keeps the character who holds the group quest at its step, before and after the log arrives", function()
+			local saved = savedAt(3, { boar(), wolf(1) })
+			local ns, world, mock = start(function(w)
+				G.SignpostCharDB = saved
+				w.log = {} -- not sent yet
+			end, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+			assert.is_false(ns.Context:QuestLogLoaded())
+			assert.are.equal("group:3", current(ns)) -- its quest is not in the log it can see, and it does not pass
+			world.log = { boar(), wolf(1) } -- the client sends the log
+			event(world, mock, "QUEST_LOG_UPDATE")
+			assert.is_true(ns.Context:QuestLogLoaded())
+			assert.are.equal("group:3", current(ns))
+			local record = ns.char.progress["test-group"]
+			assert.is_nil(record.done["group:3"])
+			assert.is_nil(record.done["group:4"])
+			assert.are.same({}, ns.StepFrame:OptionalLines(ns.Progress:Current()))
+		end)
+
+		it(
+			"passes the steps of a group quest the character does not hold once the log has arrived without it",
+			function()
+				local saved = savedAt(2, { boar() })
+				local ns, world, mock = start(function(w)
+					G.SignpostCharDB = saved
+					w.log = {} -- not sent yet
+				end, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+				assert.are.equal("group:2", current(ns)) -- it cannot tell yet that the quest is not taken
+				world.log = { boar() }
+				event(world, mock, "QUEST_LOG_UPDATE")
+				assert.are.equal("group:5", current(ns))
+				local record = ns.char.progress["test-group"]
+				assert.is_true(record.done["group:2"] and record.done["group:3"] and record.done["group:4"])
+			end
+		)
+	end)
+
+	-- The card lists the current step's own quest in its body; the Optional: line is for the group quests coming up, and
+	-- must not repeat that one (R-engine-2 #3).
+	it("does not offer, beside the step of a group quest, the quest that step lists itself", function()
+		local ns = start(nil, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+		assert.are.same({ "Quest #9500 (group quest)" }, ns.StepFrame:OptionalLines(ns.Progress:Current())) -- from group:1
+		for _, stepNumber in ipairs({ 2, 3, 4 }) do
+			assert.is_true(ns.Progress:JumpTo(stepNumber)) -- held there, the quest not taken
+			local step = ns.Progress:Current()
+			assert.are.equal("group:" .. stepNumber, step.id)
+			local body = ns.StepFrame.DescribeLines(step)
+			assert.are.equal(1, #body)
+			assert.is_truthy(body[1]:find("Quest #9500", 1, true)) -- the body names it
+			assert.are.same({}, ns.StepFrame:OptionalLines(step), step.id) -- and the line beside it does not
+		end
+	end)
+
+	it("does not pass a group quest the player took, and offers nothing once it is in the log", function()
+		local ns, world, mock = start(nil, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+		assert.are.equal("group:1", current(ns))
+		-- the player took the group quest on the way, before the first step ended
+		world.log = { quest(9500, { objectives = { objective("Wolf slain", 0, 2) } }) }
+		event(world, mock, "QUEST_ACCEPTED", 9500)
+		assert.are.same({}, ns.StepFrame:OptionalLines(ns.Progress:Current())) -- it is in the log: no longer offered
+		world.log[2] = quest(9001, { objectives = { objective("Boar slain", 0, 3) } })
+		event(world, mock, "QUEST_ACCEPTED", 9001)
+		assert.are.equal("group:3", current(ns)) -- its accept is satisfied; its doing step waits for the player
+		assert.are.same({ '[ ] Complete "Quest 9500"' }, ns.StepFrame.DescribeLines(ns.Progress:Current()))
+		world.log[1].objectives = { objective("Wolf slain", 2, 2) }
+		event(world, mock, "QUEST_LOG_UPDATE")
+		assert.are.equal("group:4", current(ns)) -- the turn-in is not passed either
+		world.log = { world.log[2] } -- 9500 is handed in: out of the log, flagged completed
+		world.completed = { 9500 }
+		event(world, mock, "QUEST_TURNED_IN", 9500, 0, 0)
+		assert.are.equal("group:5", current(ns))
 	end)
 
 	it("keeps counting a .craft step's casts after a reload (its state comes back from SavedVariables)", function()

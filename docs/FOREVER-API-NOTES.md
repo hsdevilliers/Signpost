@@ -157,7 +157,10 @@ Maps and travel
 | Player identity (ns.Player only) | `UnitClass("player")` → localized, `"HUNTER"`, classID; `UnitClassBase("player")`; `UnitRace("player")` → localized, `"Troll"`, raceID; `UnitFactionGroup("player")` → `"Horde"`/`"Alliance"`; portraits via `GetClassAtlas(classFile)` (`classicon-<CLASS>`); `C_CreatureInfo.GetClassInfo`/`GetRaceInfo` for tables — verified |
 | Pet | `UnitExists("pet")`, `UnitCreatureFamily("pet")`, `UnitGUID("pet")`; `PET_STABLE_UPDATE`, `UNIT_PET("player")` |
 | Options panel | `Settings.RegisterCanvasLayoutCategory(frame, name)` + `Settings.RegisterAddOnCategory(cat)`; open with `Settings.OpenToCategory(cat:GetID())` — present |
-| Minimap button | LibDataBroker-1.1 + LibDBIcon-1.0 (both load; `## AddonCompartmentFunc` for the compartment) |
+| Minimap button | LibDataBroker-1.1 + LibDBIcon-1.0 (both load; `## AddonCompartmentFunc` for the compartment). The object is `type = "launcher"` with `icon`, `OnClick(frame, mouseButton)` and `OnTooltipShow(tooltip)`; modifier keys are read with `IsShiftKeyDown()` (the LDB spec says nothing of them); `LibDBIcon:Hide/Show` act on the button only, the `hide` flag is the add-on's, `Lock`/`Unlock` keep `db.lock` |
+| AddOn Compartment | TOC `## AddonCompartmentFunc` (`func(addonName, buttonName)`: **left and right clicks both arrive**, `"LeftButton"`/`"RightButton"`), `## AddonCompartmentFuncOnEnter`/`...OnLeave` (`func(addonName, buttonFrame)`); source `Blizzard_Minimap/Mainline/AddonCompartment.lua`. Since 11.0 no third frame argument. Tooltip: `GameTooltip:SetOwner(frame, "ANCHOR_LEFT")` (there is no `MenuUtil.ShowTooltip`; `ShowTooltipEx`/`HideTooltipEx` exist) |
+| Context menu | `MenuUtil.CreateContextMenu(owner, function(owner, root) ... end)` opens at the cursor and closes when the owner is hidden; `root:CreateTitle(text)`, `:CreateButton(text, callback, data)` (closes the menu), `:CreateCheckbox(text, isSelected, onSelect, data)` (stays open, re-reads its state), `:CreateDivider()`. A callback gets `(data, menuInputData, menu)`; `menuInputData.buttonName` names the mouse button |
+| Key bindings | `Bindings.xml` in the add-on's folder, loaded by the client by its name (not in the TOC): `<Binding name="TOKEN" header="HEADER">Lua</Binding>`; labels `BINDING_NAME_<name>`, `BINDING_HEADER_<header>`; the Lua runs insecurely; `keystate` is `"down"` (or `"up"` with `runOnUp="true"`) |
 | Scroll lists | `CreateScrollBoxListLinearView()`, `view:SetElementInitializer(template, fn)`, `ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, view)`, `CreateDataProvider()`; template `MinimalScrollBar` — present |
 | Dropdown | `WowStyle1DropdownTemplate` + `dropdown:SetupMenu(function(dd, root) root:CreateButton(text, fn) end)`; `UIDropDownMenuTemplate` also exists |
 | Panel frame | `ButtonFrameTemplate` (portrait, title, inset, close); `ButtonFrameTemplate_HidePortrait`/`_HideButtonBar`; `UIPanelWindows[name] = {area="left", pushable=1, whileDead=1}`; `ShowUIPanel`/`HideUIPanel` |
@@ -197,13 +200,51 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
   Limits: QuestieDB says the delta base supplies no complete objectives, restrictions or gameplay behavior; its `LoadDynamic`
   (faction- and class-conditional) corrections are not read; category "zones" (16941 Crafting, 16611 Ruins of Lordaeron, 16919 Hall of
   Thanes, 16732, 16544) have no uiMapID, so those quests keep no `zone` and are listed in data-gaps.md.
-- **Consequence (2026-10-20):** `Guides/HordeWindshaperDruid.lua` is drafted from these layers (Zephras Isle chapter `zephras-isle-1-12`, 90
-  quests, race bit 8589934592) and the Windshaper's own druid chain is routed from the pack: A Student of Nature 92485, Child of Nature
+- **Consequence (2026-10-20):** `Guides/HordeWindshaperDruid.lua` was first drafted from these layers (Zephras Isle chapter, 90 quests, race
+  bit 8589934592) and the Windshaper's own druid chain is routed from the pack: A Student of Nature 92485, Child of Nature
   94911 (starts with Muln Earthfury in Mulgore, ends with Turak in Thunder Bluff), Moonglade 94913, The Great Ursera Spirit 94006,
-  Strength and Mercy 94638. The Windshaper's Cat Form chain is in too (98340, 98341, 98404, 98738, 98362; `windshaper-cat-form-20`). Still not in the pack: what
-  follows Zephras Isle after level 12, and objective counts and positions for several quests (the chapters carry `.todo` steps naming
-  them). `Core/Learn.lua` remains the way to fill the gaps from play. Objective kill counts are not kept in the pack at all, so
-  `tools/guide_sim.py` uses a parameter for them.
+  Strength and Mercy 94638. The Windshaper's Cat Form chain is in too (98340, 98341, 98404, 98738, 98362). Since 2026-10-21 the guide is the
+  Route Planner's route (docs/PLANNER.md): the drafted chapters (`zephras-isle-1-12`, `skyborne-arrival-12`, `windshaper-cat-form-20`) were
+  replaced by `windshaper-druid-NN-<zone>` chapters, and `tools/drafts.json` keeps their entries only for the planner's `--chain` hints.
+  The pack does know the mainland quests of the Windshaper race (Welcome to Azeroth 95350, Journey to the Crossroads 98024). Still not in the
+  pack: how a Windshaper leaves the island (no transport, crossing or flight master for Zephras Isle; the only link is the island story's last
+  quest, The Earthen Ring 95349, which ends in Mulgore: answered by research on 2026-10-21, see "Skyborne exit" below; VERIFY(beta)), and objective
+  counts and positions for several quests (the chapters carry `.todo` steps naming them). `Core/Learn.lua` remains the way to fill the gaps
+  from play. Objective kill counts are not kept in the pack at all, so `tools/guide_sim.py` uses a parameter for them.
+
+### Skyborne exit (research 2026-10-21; beta-era fan guides and the Warcraft Wiki; nothing seen in the game: every line is VERIFY(beta))
+How a Horde Windshaper leaves Zephras Isle. The Horde sources agree with each other (one outlier is ignored):
+- **The chain.** The island story ends at the Shrine of Akir with the finale ("Making Our Move", "The Inner Sanctum", "Confront Lorthuna": a
+  scripted boss fight, Rohash is summoned, Kirin Tor and Earthen Ring reinforcements arrive), hand-ins with Ayessa Dawnsinger (in Valanaar)
+  and Talanis Shadowsong, back to Ayessa, then "The Fate of Zephras" and "What Comes Next", then "The Earthen Ring" from Ayessa Dawnsinger.
+  That is the pack's chain 93836 -> 93090 -> 95349, which ends in Mulgore with Alaana Stormwalker (she gives Welcome to Azeroth 95350).
+- **The vehicle.** An airship (the guides also say zeppelin or skyship; the real name is unknown) leaves from Valanaar's southwest or
+  westernmost dock (the wait is about 7 to 8 minutes) and lands at Skywatcher Plateau, north-west Mulgore, beside Thunder Bluff (the flight
+  master is in Thunder Bluff). The beta-era Horde path then goes on to Orgrimmar (Thrall); "Exploring the Horde", the tour of the faction
+  leaders, starts with Nazgrel there.
+- **The level.** The island is levels 1 to 12; beta players leave at about 12 to 14. No source gives the level of the exit quest.
+- **Alliance (High Order Skyborne), for the record:** "The Magical City of Dalaran" from Elaadrin Evengale, a skycutter from the tower south
+  of Valanaar to Dalaran (landing by the Kirin Tor camp west of the city), then a Skyborne portal to Stormwind. The airship to Dalaran that
+  the user remembered is this route.
+- **Outlier, ignored:** gamer-guides.com sends the Horde by boat to Dalaran and the Orgrimmar portal; four other sources and the pack's own
+  chain say Mulgore.
+- **Unknown:** whether the airship can be boarded without the quest chain; the exact dock position; the vehicle's real name; the level of
+  the exit quest.
+- Sources: [Warcraft Wiki: Zephras Isle](https://warcraft.wiki.gg/wiki/Zephras_Isle),
+  [classicwowforever.com: boats and zeppelins](https://classicwowforever.com/boats-and-zeppelins/),
+  [classicwowforever.com: Zephras Isle (Skyborne)](https://classicwowforever.com/guides/wow-forever-zephras-isle-skyborne/),
+  [wowhandbook.com: Zephras Isle](https://wowhandbook.com/zones/zephras-isle/),
+  [warcrafttavern.com: Zephras Isle walkthrough](https://www.warcrafttavern.com/forever/guides/zephras-isle-walkthrough/).
+- **What the project does with it (batch 1):** the Skyborne guide's island part ends with the finale and the exit chain, even in HARDCORE:
+  the guide's entry in `tools/drafts.json` has `"require": [95349, 94638]` (the planner option of docs/PLANNER.md, "Required quests": the
+  quests they need, 31 with the closure, are required too, a zone lock keeps the route on the island until that work is done); three notes warn
+  about the finale (92947, 93958, 92646: the scripted boss fight, reinforcements arrive); the airship is a hand-authored ride
+  (`Guides/Travel/Borders.lua`: map IDs 2521 to 1412, a wait of 450 s, no dock position) that the generator writes as a step with the wait
+  and a `.todo` listing what is unverified, until a recorded ride replaces it. The route leaves the island at about level 15 (HARDCORE's
+  one-level rule needs level 12 for 95349, which is level 13), later than the 12 to 14 the guides report.
+- **To confirm in the game** (backlog verify item "Skyborne exit in the game"): the quest chain and the level it is done at, the dock
+  position, the vehicle's name, the landing spot, and whether the airship can be boarded before the chain is done. A Windshaper's recorded
+  play (the friend's, or the user's) answers all of it: `/signpost learned` lists the ride once someone has ridden it.
 
 ## Observed in the game (user reports)
 - 2026-10-20, a level-1 Troll in the Valley of Trials: Gornek offers **Cutting Teeth** and **Wayward Weapons**, Kaltunk offers **Your Place in the
@@ -227,11 +268,22 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
 - [ ] The **Journal window** (`UI/Journal.lua`, `/signpost`) in the real client: `WowStyle1DropdownTemplate` as a `DropdownButton` with `SetupMenu` and
   `CreateRadio` (the menu API), `SearchBoxTemplate`, three `PanelTabButtonTemplate` tabs below the frame (`PanelTemplates_SetNumTabs/SetTab`),
   `UICheckButtonTemplate` rows, plain scroll lists, the LibDBIcon minimap button and the AddOn Compartment click. Does it lay out and work?
-- [ ] **Druid forms in Forever** (sources disagree; the druid guide's Moonglade steps assume the first reading): is **Teleport: Moonglade**
-  a level-10 trainer spell as in Classic, or a reward of the Bear Form chain (one Forever guide lists it as a reward)? How does a druid
-  get back from Moonglade (hearthstone, a flight path, the spell)? Is **Cat Form** (level 20) a new quest chain ("The Great Cat Spirit",
-  three relics in the Stormrage Barrow Dens: ForeverChanges, beta) or a trainer spell (another guide)? Does the Windshaper Skyborne druid
-  have its own chain ("The Great Windborne Cat Spirit")? Record the quest IDs with `Core/Learn.lua` (docs/CLASS-QUESTS.md).
+- [ ] **Druid forms in Forever** (sources disagree; no route assumes either reading; the guides' Moonglade steps say "cast Teleport: Moonglade
+  if you have it, else the way is not in the data" and tell a druid not to walk, `travelHints` in `Classes/DRUID.lua`): is
+  **Teleport: Moonglade** a level-10 trainer spell as in Classic, or a reward of the Bear Form chain (one Forever guide lists it as a
+  reward)? How does a druid get back from Moonglade (hearthstone, a flight path, the spell)? Is **Cat Form** (level 20) a new quest chain
+  ("The Great Cat Spirit", three relics in the Stormrage Barrow Dens: ForeverChanges, beta) or a trainer spell (another guide)? Does the
+  Windshaper Skyborne druid have its own chain ("The Great Windborne Cat Spirit")? Record the quest IDs with `Core/Learn.lua`
+  (docs/CLASS-QUESTS.md).
+- [ ] **Teleport: Moonglade** (VERIFY(beta)): does a Forever druid get it at all, at what level, from the class trainer or by what quest,
+  and what does it cost (cast time, reagents, cooldown)? Nothing in the guides or the Route Planner assumes it: the planner prices the Tauren
+  HARDCORE route's trips to Moonglade as a walk (22 to 25 minutes each way), and the guide's steps for them name the spell as a way if the
+  druid has it, tagged VERIFY(beta), and say not to walk (from Classic memory the road overland is for levels 48 and up). A
+  scratch run of the planner with every trip to or from Moonglade priced at 2 minutes (two runs, with the rules of the day) took 1 to 2.5
+  hours (3 to 8%) off 29 to 30 hours of play, which is inside the search's own noise, and about 8 hours off the class-quest charge: the
+  spell would mostly let the class chains be done when they open. To answer: a druid at level 10 opens the class trainer and looks for
+  the spell, and the reward screen of the last Bear Form quest (Body and Heart); the user's druid or the friend's data (docs/SHARING-DATA.md)
+  would show it. Backlog: the question on Teleport: Moonglade.
 - [ ] **Positions in the guides** come from QuestieDB's converted Classic Era coordinates (Mulgore's map was re-scaled in the conversion,
   factor 0.835; the NPC and terrain world positions are assumed unchanged). Walk the first Mulgore and Durotar steps and confirm the pins.
 - [ ] `C_QuestLog.GetAllCompletedQuestIDs()` populated at `PLAYER_ENTERING_WORLD` or only after a `QUEST_LOG_UPDATE`? (A new character
@@ -263,6 +315,10 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
   `GetAddOnMemoryUsage("Signpost_Data")` after `UpdateAddOnMemoryUsage()`, and no Lua errors from the generated files.
 - [ ] Whether QuestieDB's instance uiMapIDs exist on Forever (`C_Map.GetMapInfo(279)`, say): 374 pack quests use one as
   `quests[].zone`.
+- [ ] **The experience table** (`Engine/Placement.lua` `XP_TO_NEXT`, VERIFY(launch)): Classic's table, the same as `tools/sim_params.json`.
+  A level 1 character's `UnitXPMax("player")` is 400 (probe 1.60.1.70450), Classic's first entry; read it at every level (the pace recorder
+  could store it at each `PLAYER_LEVEL_UP`) and compare. Only its shape matters to Find my place. Backlog: the question on Forever's
+  experience table.
 
 Added by the Wave 1 modules (each has a matching `VERIFY(beta)`/`VERIFY(launch)` comment in the code; `/signpost context`
 saves Engine/Context's view to `SignpostDB.context` for comparison):
@@ -278,6 +334,20 @@ Quests and spells (Engine/Context.lua, Engine/Directives.lua, Engine/Progress.lu
 - [ ] `C_Item.GetItemNameByID` exists (`C_Item.GetItemInfo` does).
 - [ ] At login on a character with turned-in quests: does auto-skip happen at once (STEP_CHANGED "load") or only at the first
   `CONTEXT_CHANGED("quests")` ("auto")? Ties to the `GetAllCompletedQuestIDs` probe above.
+- [ ] At login on a character with a **group quest in the quest log** whose step is current: is the quest log read (`GetNumQuestLogEntries`,
+  `GetInfo`) when Progress first evaluates? An optional-only step (Engine/Conditions.lua `IsComplete`) is passed while its quest is not
+  in the log, so an empty log at `PLAYER_LOGIN` would pass the step under the player (the other steps just wait). Since the batch 1
+  review the step is passed only once `ns.Context:QuestLogLoaded()` (a `QUEST_LOG_UPDATE` arrived, or the walk found a quest), and
+  waits like any step before that. To answer: does `QUEST_LOG_UPDATE` come after the log is there, also for a character whose log is
+  empty, and when (`/signpost context` saves `questLogLoaded`; `/signpost debug on` logs the events)? (Accept a group quest,
+  `/reload`, read the step in `/signpost step`.)
+- [ ] **Find my place at login** (`Engine/Placement.lua`, `Progress:Place`; user 2026-10-21; built on the mock, none of it seen in the client):
+  with a character that has quest history (say level 10 with a dozen quests turned in) and no progress in a guide, is the placement
+  made at once at login (`SignpostCharDB.progress[guide].placed.reason == "first"`, mode `history`), or only after the 5 s wait on
+  the level alone (mode `level`) with `"refine"` when the list arrives? That is: is `C_QuestLog.GetAllCompletedQuestIDs()` filled at
+  `PLAYER_LOGIN` (or `IsQuestFlaggedCompleted` right per quest), or only after the first `QUEST_LOG_UPDATE`? Is the pointer on the
+  step the character is really at, and do the chat lines read right? (Select a guide for a character with history, `/reload`,
+  read `placed` with `tools/read_savedvars.py`; `/signpost place` asks again, `<` takes it back, `/signpost reset progress` starts over.)
 
 Professions (Core/Player.lua, Engine/Professions.lua, Engine/Directives.lua, Core/Learn.lua)
 - [ ] `GetProfessionInfo` keeps the retail return order (skill line 7th); the first two `GetProfessions` values are the
@@ -288,6 +358,53 @@ Professions (Core/Player.lua, Engine/Professions.lua, Engine/Directives.lua, Cor
 - [ ] `UNIT_SPELLCAST_SUCCEEDED("player", castGUID, spellID)` fires once per crafted item with the recipe's spell ID (`.craft`).
 - [ ] `GetTrainerServiceSkillLine(i)` names the profession as `GetProfessionInfoBySkillLineID` does (Learn's trainer skill).
 - [ ] VERIFY(launch): profession rank-up thresholds (Classic trains the next rank at max − 25: 50/75, 125/150, 200/225).
+- [ ] **Profession tracks** (`Guides/Professions/`, the Troll Hunter's five; every number in them is Classic's, marked VERIFY(launch)): at
+  the Orgrimmar trainers (Thuwd for Skinning, Kamari and Karolek for Leatherworking, Arnok for First Aid, Zamja for Cooking, Lumak for
+  Fishing) which ranks each one offers and what each rank asks (Classic: Journeyman level 10 and skill 50, Expert level 20 and skill 125,
+  Artisan level 35 and skill 200), and whether the trainer titles in the pack ("Journeyman Leatherworker", "Expert Leatherworker") mean what
+  they did in Classic. The trainers' positions are QuestieDB's converted Classic coordinates: walk to the pins in Orgrimmar, Undercity and
+  Thunder Bluff. (`/signpost debug on` at a trainer records its services.)
+- [ ] **Forever-only profession content** that the pack's Forever layers carry and no track uses yet: a "Junior Skinning Trainer" (Kagil) in
+  the Valley of Trials; a "Camping 101: <profession>" quest for every profession (Brakk at Razor Hill gives them, each needs the profession
+  and ends at its trainer; the Cooking one is in the route already); "Craftsman's Writ" crafting quests. What they teach, ask and give is
+  unknown: take each once and let `Core/Learn.lua` record it.
+- [ ] Where Expert First Aid, Cooking and Fishing are taught (the data names no trainer or book for them), who sells a fishing pole, and
+  where to fish (the data has no fishing spots, so `.fish` is unused).
+
+Profession recorder (Core/LearnProfessions.lua; built on the mock, none of it seen in the client; each call goes through `Util.Call`
+and has a `VERIFY(beta)` comment). How to answer: recording on (a dev build always; a release build after the box in Journal >
+Settings), open the trainer window of each profession you have and of your class, open each profession window you have (again after
+a skill-up), type `/signpost probe` and `/signpost learned`, `/reload`, then `python tools/read_savedvars.py probe recorder learned`
+(`probe.recorder` lists which functions exist in both shapes and what the client's own `C_TrainerUI` and `C_TradeSkillUI` hold;
+`recorder` is the last window's report: which API answered, how many services or recipes had each field).
+- [ ] Trainer functions, which shape exists: `C_TrainerUI.GetNumTrainerServices/GetTrainerServiceInfo/GetTrainerServiceCost/
+  GetTrainerServiceLevelReq/GetTrainerServiceSkillLine/GetTrainerServiceSkillReq/GetTrainerServiceItemLink` or the globals of the
+  same names (the globals except `GetTrainerServiceSkillReq` were present on 1.60.1.70450; the `C_TrainerUI` namespace and
+  `GetTrainerServiceSkillReq` were never probed). What `GetTrainerServiceInfo(i)` answers (`name, rank text, type` as in Classic,
+  or one table) and the values of the type (`available`, `unavailable`, `used`, `header`).
+- [ ] A service's spell: `GetTrainerServiceItemLink(i)` is a `spell:`/`enchant:` link, or an `item:` link of what it makes (then the
+  spell is `C_TooltipInfo.GetTrainerService(i).id`, the open probe above). `GetTrainerServiceSkillLine(i)` answers a skill line ID or
+  the profession's name (the recorder reads both); `GetTrainerServiceCost(i)` is copper; `GetTrainerServiceSkillReq(i)` answers
+  `skill name, required rank`.
+- [ ] Trade skill window, modern shape: `C_TradeSkillUI.GetAllRecipeIDs`, `GetRecipeInfo(id)` (`name`, `learned`, `relativeDifficulty`
+  with `Enum.TradeskillRelativeDifficulty` Optimal 0, Medium 1, Easy 2, Trivial 3), `GetRecipeSchematic(id, false)` (`outputItemID`,
+  `reagentSlotSchematics[].reagents[1].itemID` and `.quantityRequired`, `Enum.CraftingReagentType.Basic`). Classic shape:
+  `GetNumTradeSkills`, `GetTradeSkillInfo` (name, type `optimal/medium/easy/trivial/header`), `GetTradeSkillRecipeLink`,
+  `GetTradeSkillItemLink`, `GetTradeSkillNumReagents`, `GetTradeSkillReagentInfo`, `GetTradeSkillReagentItemLink`. Which shape
+  answers on Forever (the recorder tries the modern one first and the Classic one when it lists nothing).
+- [ ] Which profession the window shows and the character's skill in it: `C_TradeSkillUI.GetChildProfessionInfo()` and
+  `GetBaseProfessionInfo()` (`professionID`, `parentProfessionID`, `skillLevel`, `maxSkillLevel`), `C_TradeSkillUI.GetTradeSkillLine()`
+  (skill line ID, name, rank, max rank, modifier, parent ID) or the global `GetTradeSkillLine()` (name, rank, max rank). Whether the
+  window shows the child skill lines the probe found (2937-2948, one per primary profession: the recorder files a recipe under the
+  parent) and whether the skill values agree with `GetProfessionInfo`'s rank (`recorder.tradeSkill.skillFrom` says which source was used).
+- [ ] Other players' windows: `C_TradeSkillUI.IsTradeSkillLinked()` / `IsTradeSkillGuild()` (or the globals) exist and are true for a
+  linked or a guild trade skill window (the recorder never reads such a window).
+- [ ] Events: which of `TRADE_SKILL_SHOW`, `TRADE_SKILL_LIST_UPDATE`, `TRADE_SKILL_DATA_SOURCE_CHANGED`, `TRADE_SKILL_UPDATE` register
+  (the probe's event list has them all) and which fire when a window opens and after a craft; the recorder reads once, 0.5 s after the
+  last of them. `TRAINER_UPDATE` after a purchase or a filter change.
+- [ ] Do the values make sense: a service's cost in copper against the trainer's window; a recipe's difficulty against the window's
+  colour at the same skill; `python tools/import_savedvars.py --merge-learned --pack <a copy of the pack>` files the services under the
+  right profession (class trainers are reported as "no profession" until the classes table takes them).
 
 Travel (Engine/Travel.lua, Engine/Context.lua, Core/Learn.lua, tools/guide_travel.py, tools/wowhead_export.py)
 - [ ] Boarding signals on a boat or zeppelin, each an assumption (with the transport probe above): the map position or
@@ -303,6 +420,26 @@ Travel (Engine/Travel.lua, Engine/Context.lua, Core/Learn.lua, tools/guide_trave
   (the travel planner assumes 60 min).
 - [ ] `MERCHANT_UPDATE` registers (Learn's vendor items; `MERCHANT_SHOW` alone is enough otherwise).
 - [ ] Each flight master stands in the map `guide_travel.py` picks from the taxi pin (the city map for "Orgrimmar, Durotar").
+- [ ] **Rides recorded** (`Core/Learn.lua`, `learned.rides`; built on the mock, none of it seen in the client): standing on a
+  moving boat or zeppelin `GetUnitSpeed("player")` is about 0 while `UnitPosition` follows the deck (Learn sees "carried"), or
+  the map position is missing (Learn counts that too); `IsInInstance()` and `UnitIsDeadOrGhost("player")` answer plain booleans.
+  Check: type `/signpost ride zeppelin` (or `boat`), ride once, then `/signpost learned` says 1 ride and `python
+  tools/read_savedvars.py learned` shows a `rides` entry whose docks lie within about 50 yd of where you boarded and stepped off,
+  with the area texts (`fromArea`, `toArea`, they tell a boat from a zeppelin) and `secs`; a hearthstone, a flight or an instance
+  entry must leave no ride behind.
+- [ ] **Innkeepers recorded** (`learned.inns`): the gossip option that sets the home carries the `BinderGossipIcon` file (its ID
+  or its path) or the words "inn" and "home"; `GetBindLocation()` changes within a few seconds of setting the home (stored as the
+  inn's `n`; Learn polls it once a second, so `HEARTHSTONE_BOUND` is not needed).
+- [ ] The `.fp` steps the travel generator proposes (`tools/guide_travel.py`, flight masters from the pack's NPC records) are
+  completed by opening that flight master's flight map (`.fp` needs `TAXIMAP_OPENED` and a known node), and a flight master the
+  pack places by NPC record stands where the record says (positions are QuestieDB's Classic baseline).
+- [ ] **The Skyborne's airship** (`Guides/Travel/Borders.lua`, the `ride` entry; fan guides and the Warcraft Wiki, see "Skyborne exit"
+  above; nothing seen in the game): where it leaves (Valanaar's southwest or westernmost dock; no position is in the data, so the
+  step is a `.todo`), the vehicle's name (airship, zeppelin or skyship), where it lands (Skywatcher Plateau, north-west Mulgore: does
+  `.zone 1412` complete there?), the wait (7 to 8 minutes; priced as 450 s) and whether it can be boarded before the island's quest
+  chain is done. Ride it once after `/signpost ride zeppelin`: `/signpost learned` counts the ride, and the recorded ride replaces the
+  entry, so the step becomes a `.zeppelin` (a dock area with "airship", "skyship" or "skydock" in its name is classed as a zeppelin;
+  QuestieDB's area table calls the island's dock "Valanaar Skydocks").
 
 Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.lua's lists)
 - [ ] Atlases `Waypoint-MapPin-Tracked`, `Waypoint-MapPin-Untracked`, `Objective-Header`; files
@@ -320,19 +457,44 @@ Step frame and pins (UI/StepFrame.lua, UI/Pins.lua; add the names to Core/Probe.
   and no counters; up to ten lines (`MAX_BODY_LINES`) of `GameFontHighlight` at 260 px lay out without clipping a line or
   covering more than the old five did.
 - [ ] **Quest tracking follows the step** (`Engine/Tracking.lua`, user 2026-10-20; built on the mock, none of it seen in the client;
-  `/signpost probe` now lists the names, and the Classic ones as expected-absent): do `C_QuestLog.AddQuestWatch(questID[, watchType])`,
-  `RemoveQuestWatch(questID)`, `GetQuestWatchType(questID)` (nil for a quest nobody tracks?), `GetNumQuestWatches()`,
-  `GetQuestIDForQuestWatchIndex(i)`, `C_SuperTrack.GetSuperTrackedQuestID()`, `SetSuperTrackedQuestID(questID)` and
-  `Enum.QuestWatchType.Manual` exist on Forever, and does `AddQuestWatch` take the watch type? Or is it the Classic shape (global
-  `AddQuestWatch(logIndex)`, `IsQuestWatched`, `GetQuestIndexForWatch`, which the module falls back to, with
-  `C_QuestLog.GetLogIndexForQuestID` and `GetQuestIDForLogIndex` for the numbers)? Does the watch list read back an add or a
-  remove at once, before `QUEST_WATCH_LIST_CHANGED` (the module compares right after, and stops for the session if no quest of
-  a step shows as tracked)? How many quests can be tracked: a full tracker refuses the add, which the module takes for a broken
-  `AddQuestWatch` (it then leaves the tracker alone and stops). Does `C_QuestLog.GetInfo` list the quests under a collapsed
-  header (the module asks `Context:QuestInLog` either way)? Does the game's own auto-tracking (on accept, on progress) leave the module's result
-  alone (a quest accepted mid-step is untracked at the next change of the quest log's set of quests)? Do the minimap and the
-  objective tracker then show only the step's quests with their progress, and does the check box under "Quest tracker" in
-  Journal > Settings (second column) fit the pane?
+  `/signpost probe` lists the names, and the Classic ones as expected-absent).
+  **How to run it, short:** in game, out of combat, with at least one quest in the log: `/signpost tracking test`, wait two
+  seconds, `/reload`. It watches one quest and unwatches it again (the tracker is as it was afterwards; the chat says what
+  happened, and says plainly if it could not put it back) and records, in `SignpostDB.probe.tracking`, the shape (retail or
+  Classic), which of the functions exist, `Enum.QuestWatchType`, each call's return or error with what the client then said
+  (count of tracked quests, whether the quest is tracked, its watch type, whether it is in the list: this answers "does the list
+  read back an add or a remove at once"), the same read again 1.5 s later, the watch events that arrived meanwhile, and any
+  `MAX_WATCHABLE_QUESTS` / `Constants.QuestWatchConsts` the client names. Claude reads it with `python tools/read_savedvars.py
+  probe`. Meanwhile the module keeps the first twelve observations of the game's own tracking in `SignpostDB.probe.trackingSeen`
+  (a quest that arrived: is it already tracked, as which watch type; a change of the tracker and who it was taken for), so a few
+  minutes of normal play with the guide on (accept a quest, kill something for another) answer the auto-tracking question.
+  `/signpost tracking` prints the module's state, what it keeps to give back and which functions exist.
+  **Still to read from the client:** do `C_QuestLog.AddQuestWatch(questID[, watchType])`, `RemoveQuestWatch(questID)`,
+  `GetQuestWatchType(questID)` (nil for a quest nobody tracks?), `GetNumQuestWatches()`, `GetQuestIDForQuestWatchIndex(i)`,
+  `C_SuperTrack.GetSuperTrackedQuestID()`, `SetSuperTrackedQuestID(questID)` and `Enum.QuestWatchType` (Automatic, Manual) exist
+  on Forever, and does `AddQuestWatch` take the watch type? Or is it the Classic shape (global `AddQuestWatch(logIndex)`,
+  `IsQuestWatched`, `GetQuestIndexForWatch`, which the module falls back to, with `C_QuestLog.GetLogIndexForQuestID` and
+  `GetQuestIDForLogIndex` for the numbers)? Does the watch list read back an add or a remove at once, before the event (the module
+  compares right after; if no quest of a step shows as tracked it backs off for the client and tries again after 5 s, 15 s, ...)?
+  How many quests can be tracked, and what does `AddQuestWatch` answer when the tracker is full (the module takes it for a broken
+  `AddQuestWatch`, backs off and retries until the player frees a slot)? Does `C_QuestLog.GetInfo` list the quests under a
+  collapsed header (the module asks `Context:QuestInLog` either way)? Does the game track a quest as it is accepted and as its
+  progress changes, as which `Enum.QuestWatchType`, and does `GetQuestWatchType` tell that from the player's own tracking (the
+  module ignores Automatic watches when comparing; without watch types it cannot tell them apart and backs off for the player)?
+  Does `QUEST_WATCH_LIST_CHANGED` exist, and does it fire for the module's own writes before or after the call returns? Does
+  `PLAYER_LOGOUT` fire on `/reload` before the SavedVariables are written (the module looks at the tracker then, so that a change
+  by the player just before a reload is remembered)? Does turning
+  the setting off give the tracker back as the player had it, and does showing the step card again (`/signpost show`, the Journal's
+  box) set the tracking for the current step? Do the minimap and the objective tracker then show only the step's quests with their
+  progress, and does the check box under "Quest tracker" in Journal > Settings (second column) fit the pane?
+- [ ] **Quest log capacity: 40, confirmed by the user in game, 2026-10-21** (Forever raised the Classic limit of 25 to 40; the planner
+  assumes 40). The client's own answer is recorded as the evidence and a cross-check, not yet read: `/signpost probe` records
+  `SignpostDB.probe.questLogMax = { canAccept, canAcceptKind, legacyGlobal, entries, quests, numQuests }` and prints "quest log: N
+  quests now; limit per GetMaxNumQuestsCanAccept: X, per MAX_QUESTLOG_QUESTS: Y". Does
+  `C_QuestLog.GetMaxNumQuestsCanAccept()` exist (`canAcceptKind`) and answer 40? Does the Classic global `MAX_QUESTLOG_QUESTS` exist
+  and say 25 or 40? Run it with a few quests in the log (`entries` counts headers, `quests` the quests by walking the log, `numQuests`
+  is the client's own count; they differ while a header is collapsed and the client hides its quests from the walk, which also
+  answers the collapsed-header probe above). Move the answer to Verified with the build number.
 - [ ] The quest item button (`type = "item"`, `item = "item:<id>"`) uses the item by click and by `/click SignpostItemButton`,
   with `ActionButtonUseKeyDown` on and off; a step change in combat updates it after combat without `ADDON_ACTION_BLOCKED`.
 
@@ -372,6 +534,31 @@ Automation (Automation/*.lua, UI/Journal.lua, UI/StepFrame.lua; all built on the
   the pane at 800 x 560 (the longest first-column label ends at about x = 450).
 - [ ] `InCombatLockdown` and `UnitIsDeadOrGhost("player")` are plain booleans (never secret) and `SettingsPanel` is the
   Blizzard settings frame (an open panel blocks automation).
+
+Launcher: the minimap button, the quick menu, the AddOn Compartment and the key bindings (`UI/Launcher.lua`, `Bindings.xml`,
+`docs/INTERACTIONS.md`; user 2026-10-21; built on the mock, none of it seen in the client; each has a `VERIFY(beta)` comment)
+- [ ] **The quick menu** (`MenuUtil.CreateContextMenu` is verified present; `CreateTitle`, `CreateButton`, `CreateCheckbox` and `CreateDivider`
+  on its root description are not yet): a right-click on the minimap button and on the step card opens it at the cursor with the title,
+  the buttons, the three check boxes and the dividers laid out as in `docs/INTERACTIONS.md`; a check box click keeps the menu open and shows
+  the new state; a button click closes it and does its action; "Show the step card" unchecked hides the card, which is the menu's owner (the
+  menu then closes with it): is that acceptable? Opened during combat the menu and its entries raise no taint warning or
+  `ADDON_ACTION_BLOCKED` (the plan's acceptance for the Journal: it must just open). Without a Menu system the fallback (Settings tab, or
+  the Journal from the card) is never seen on Forever if this works.
+- [ ] **The AddOn Compartment**: a right-click on Signpost's entry reaches `Signpost_OnAddonCompartmentClick("Signpost", "RightButton")` (the
+  Blizzard source registers entries for any click; not seen on Forever); our menu, opened one frame later with `C_Timer.After(0, ...)`,
+  appears and is not closed by the compartment (and: is the delay needed? opening it at once is the simpler code); `IsShiftKeyDown()`
+  is true inside the click while Shift is held; the hover tooltip (`GameTooltip`, `ANCHOR_LEFT`) shows beside the entry and hides on
+  leave; both TOCs' `AddonCompartmentFuncOnEnter`/`OnLeave` lines are read (the client loads `Signpost_Camelot.toc`).
+- [ ] **The Key Bindings screen** shows the header "Signpost" with six labelled actions (Show or hide the Journal, Show or hide the step card,
+  Previous step, Next step, Skip this step, Find my place), most likely under the AddOns category; a bound key runs its `/signpost`
+  command, in combat too, with no `ADDON_ACTION_BLOCKED` or taint warning.
+- [ ] **The minimap button** (LibDBIcon button, `Media\icon-round`): left-click shows or hides the Journal, Shift + left-click the step
+  card, right-click the menu; dragging moves it and "Lock the minimap button's position" stops that; "Show the minimap button" and
+  `/signpost minimap` hide and bring it back, and `hide`, `lock` and the position survive `/reload`; the tooltip reads: name, `<chapter> ·
+  step i/N`, the step's first line, a blank line, three hint lines with yellow keys.
+- [ ] **Settings tab, first column at 800 x 560:** its eleven check boxes, now drawn at 26 (`CHECK_SIZE`), leave the step card steppers and
+  the profession line clear of the "How do I share what was recorded?" button at the bottom. If they do not, give the two minimap boxes
+  `column = 2` in `settingsList()` or shrink the boxes further.
 
 ## Wowhead Forever data environment (fill in Phase 1)
 Filled from the user's `python tools/wowhead_env.py` report (Claude Code never accesses Wowhead). Until that report

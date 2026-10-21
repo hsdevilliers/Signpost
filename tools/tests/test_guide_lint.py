@@ -384,6 +384,82 @@ class LintTest(LintCase):
         report = self.lint({"Guides/Test.lua": guide_lua(text)}, pack=True, tables={"maps": MAPS, "quests": quests, "npcs": NPCS, "travel": TRAVEL})
         self.assertEqual(self.codes(report), ["quest-level"])  # the walk is level 1 there: it cannot have it
 
+    # quests the pack gives objectives (201 kills, 202 explores, 203 both, 204 "talk to" the NPC that ends it) and plain deliveries (101)
+    OBJECTIVE_QUESTS = {
+        **QUESTS,
+        201: {"n": "Kill Ten", "r": 1, "s": {"npc": [1001]}, "e": {"npc": [1001]}, "o": [{"k": "kill", "id": 3001}]},
+        202: {"n": "Look Around", "r": 1, "s": {"npc": [1001]}, "e": {"npc": [1001]}, "o": [{"k": "explore", "p": [[10, 60, 60]]}]},
+        203: {"n": "Kill And Look", "r": 1, "s": {"npc": [1001]}, "e": {"npc": [1001]}, "o": [{"k": "kill", "id": 3001}, {"k": "explore", "p": [[10, 60, 60]]}]},
+        204: {"n": "Speak With Him", "r": 1, "s": {"npc": [1001]}, "e": {"npc": [1002]}, "o": [{"k": "kill", "id": 1002}]},
+    }
+
+    def objective_report(self, middle="", pack=True, quests=None, accept=("201", "202", "203", "204")):
+        """One step accepts the quests, `middle` (directive lines) follows, a last step turns them all in. Returns the report; the
+        default quests are accepted on lines 3 to 6 of the guide text."""
+        quests = quests or self.OBJECTIVE_QUESTS
+        text = "step\n  .goto 10,40,40\n" + "".join(f"  .accept {q}\n" for q in accept) + middle
+        text += "step\n  .goto 10,40,40\n" + "".join(f"  .turnin {q}\n" for q in accept)
+        tables = {"maps": MAPS, "quests": quests, "npcs": NPCS, "travel": TRAVEL}
+        return self.lint({"Guides/Test.lua": guide_lua(text)}, pack=pack, tables=tables)
+
+    def test_a_quest_with_objectives_needs_a_complete(self):
+        report = self.objective_report()
+        errors = [key for key in report.entries if key[0] == "error"]
+        self.assertEqual(sorted((key[1], key[4]) for key in errors), [("missing-complete", guide_line(n)) for n in (3, 4, 5)])
+        messages = {key[4]: key[2] for key in errors}
+        self.assertIn('quest 201 "Kill Ten" has objectives in the data pack (kill)', messages[guide_line(3)])
+        self.assertIn("no .complete for it", messages[guide_line(3)])
+        self.assertIn("(explore)", messages[guide_line(4)])
+        self.assertIn("(kill, explore)", messages[guide_line(5)])  # the objectives' kinds are named
+        self.assertEqual(self.codes(report, "warning"), [])
+        # the quest the pack models as "talk to the NPC that ends it" (204) and the plain delivery (101) are not in it
+        delivery = self.objective_report(accept=("101", "204"))
+        self.assertEqual(self.codes(delivery), [])
+
+    def test_a_complete_for_each_objective_satisfies_it(self):
+        middle = "step\n  .goto 10,40,40\n  .complete 201\n  .complete 202,1\n  .complete 203,1\n  .complete 203,2\n"
+        self.assertEqual(self.codes(self.objective_report(middle)), [])
+        self.assertEqual(self.codes(self.objective_report(middle), "warning"), [])
+        # in a step of its own or beside the accept: any `.complete` of the quest counts
+        beside = "  .complete 201\n  .complete 202\n  .complete 203\n"
+        self.assertEqual(self.codes(self.objective_report(beside)), [])
+
+    def test_some_objectives_but_not_all_is_a_warning(self):
+        middle = "step\n  .goto 10,40,40\n  .complete 201\n  .complete 202\n  .complete 203,1\n"
+        report = self.objective_report(middle)
+        self.assertEqual(self.codes(report), [])  # nothing is missing altogether
+        warnings = [key for key in report.entries if key[0] == "warning"]
+        self.assertEqual([(key[1], key[4]) for key in warnings], [("partial-complete", guide_line(5))])
+        self.assertIn("no .complete for objective 2 (explore)", warnings[0][2])
+        self.assertIn("add .complete 203,2", warnings[0][2])
+
+    def test_a_todo_that_names_the_quest_marks_it(self):
+        by_name = 'step\n  .todo "Kill Ten: read what it asks in the quest log"\n'
+        report = self.objective_report(by_name)
+        self.assertEqual(sorted(key[4] for key in report.entries if key[0] == "error"), [guide_line(4), guide_line(5)])  # 201 is marked
+        by_id = 'step\n  .todo "quest 202 and 203: objectives not known yet"\n'
+        report = self.objective_report(by_name + by_id)
+        self.assertEqual(self.codes(report), [])
+        # a `.todo` about something else marks nothing
+        other = 'step\n  .todo "travel from here to there: no route yet"\n'
+        self.assertEqual(self.codes(self.objective_report(other)), ["missing-complete"] * 3)
+        # a quest number inside a longer number is not the quest
+        longer = 'step\n  .todo "quest 12012 is another"\n'
+        self.assertEqual(self.codes(self.objective_report(longer)), ["missing-complete"] * 3)
+
+    def test_objectives_need_the_data_pack_and_a_turn_in(self):
+        self.assertEqual(self.codes(self.objective_report(pack=False)), [])  # without the pack the objectives are not known
+        self.assertEqual(self.codes(self.objective_report(pack=False), "warning"), [])
+        self.files({"Guides/Test.lua": guide_lua("step\n  .goto 10,40,40\n  .accept 201\n")})
+        tables = {"maps": MAPS, "quests": self.OBJECTIVE_QUESTS, "npcs": NPCS, "travel": TRAVEL}
+        report, _, _ = guide_lint.lint(self.root, write_pack(self.pack_dir, tables))
+        self.assertEqual(self.codes(report), ["never-turned-in"])  # one finding for the quest, not two
+
+    def test_the_note_says_the_objectives_are_not_checked_without_the_pack(self):
+        self.files({"Guides/Test.lua": guide_lua("step\n  .goto 10,40,40\n")})
+        report, _, _ = guide_lint.lint(self.root, None, why_no_pack="--no-pack")
+        self.assertTrue(any("quests whose objectives never appear as a .complete" in note for note in report.notes))
+
     def test_prerequisites_chains_and_other_races_are_checked(self):
         quests = {
             **QUESTS,
@@ -572,6 +648,20 @@ class LintTest(LintCase):
                 ("unmatched-anchor", "Guides/Professions/skinning.lua", text_line(5)),
             ],
         )
+
+    def test_track_steps_above_the_guides_levels_are_a_note(self):
+        # a guide that stops at level 20 does not reach a level 40 step (a specialization): not required yet, as for class
+        # chains; a level the guide does reach, with no chapter starting there, is a real gap
+        guide = guide_lua("#chapter 1-20 West\nstep\n  .goto 10,50,50\n", levels=(1, 20))
+        track = '#track skinning\nstep @level 40\n  .todo "later"\nstep @level 15\n  .todo "inside"\n'
+        report = self.lint({"Guides/Test.lua": guide, "Guides/Professions/skinning.lua": track_lua("skinning", track)})
+        self.assertEqual(self.found(report), [("unmatched-anchor", "Guides/Professions/skinning.lua", text_line(4))])
+        note = "guide test-guide: 1 track step(s) anchored above its highest chapter level are not required yet"
+        self.assertEqual([n for n in report.notes if "track step(s)" in n], [note])
+        # a track with only the late step passes
+        track = '#track skinning\nstep @level 40\n  .todo "later"\n'
+        report = self.lint({"Guides/Test.lua": guide, "Guides/Professions/skinning.lua": track_lua("skinning", track)})
+        self.assertEqual(self.codes(report), [])
 
     def test_gate_tokens_and_profession_keys(self):
         text = (

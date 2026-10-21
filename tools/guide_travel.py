@@ -13,7 +13,9 @@ The travel graph comes from the data pack (../Signpost_Data: maps with world rec
 the travel table's flight masters, boats, zeppelins, inns and learned crossings) and Guides/Travel/Borders.lua. Costs
 are seconds: walking at running speed, flights a fixed cost plus distance, boats and zeppelins a wait plus the
 crossing, the hearthstone a cast (once an hour, tracked with a rough clock). Coordinates are only ever copied from that
-data; where the graph has none, the proposal is a `.todo` step.
+data; where the graph has none, the proposal is a `.todo` step. A class module's `travelHints` (Classes/<CLASS>.lua, keyed by a
+zone's uiMapID) give that class's guides their own words for a trip they must not walk (a druid's trip to or from Moonglade): in
+place of a walk, a `.todo` with the class's way and a `.note` that says not to walk (class_hints); a real flight or hearth stands.
 """
 
 from __future__ import annotations
@@ -23,12 +25,12 @@ import heapq
 import math
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from signpost_tools import datapack, guidefile  # noqa: E402
+from signpost_tools import datapack, guidefile, pricing  # noqa: E402
 from signpost_tools.guidefile import Coord, Directive, Route, RouteStep  # noqa: E402
 from signpost_tools.savedvars import LuaParseError, load_savedvars  # noqa: E402
 
@@ -36,22 +38,29 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Enum.FlightPathFaction values in C_TaxiMap results (docs/FOREVER-API-NOTES.md).
 TAXI_SIDES = {0: "both", 1: "Horde", 2: "Alliance"}
 ZONE_TYPE = 3  # Enum.UIMapType.Zone (cities are zones too)
+# The service bits of npcs[...].flags in the pack (Data/Schema.lua: vendor 4, flight master 8, trainer 16, innkeeper 128).
+FLIGHT_MASTER_FLAG = 8
+INNKEEPER_FLAG = 128
+NODE_MATCH_YARDS = 100.0  # a flight master and a client flight node this close are the same flight path (as the exporter)
 
-# Costs, in seconds.
-WALK_SPEED = 7.0  # yards per second on foot
-UNKNOWN_WALK = 90.0  # a walk inside a zone between points whose positions are not known
-FLIGHT_OVERHEAD = 30.0
-FLIGHT_SPEED = 25.0  # yards per second along the straight line (taxi routes wind)
-UNKNOWN_FLIGHT = 180.0
-TRANSPORT_WAIT = 180.0
-TRANSPORT_SPEED = 20.0
-TRANSPORT_ACROSS = 120.0  # a crossing between two world instances (continents)
-HEARTH_SECONDS = 30.0  # cast and loading screen
+# Costs, in seconds. The numbers and the reasoning for each are in signpost_tools/pricing.py (tools/sim_params.json can override them),
+# which the Route Planner and the guide simulator use too: one price for travel. The names stay for the code that imports them.
+WALK_SPEED = pricing.PRICES.walk_speed  # yards per second on foot
+UNKNOWN_WALK = pricing.PRICES.unknown_walk  # a walk inside a zone between points whose positions are not known
+FLIGHT_OVERHEAD = pricing.PRICES.flight_overhead
+FLIGHT_SPEED = pricing.PRICES.flight_speed  # yards per second along the straight line (taxi routes wind)
+UNKNOWN_FLIGHT = pricing.PRICES.unknown_flight
+TRANSPORT_WAIT = pricing.PRICES.transport_wait
+TRANSPORT_SPEED = pricing.PRICES.transport_speed
+TRANSPORT_ACROSS = pricing.PRICES.transport_across  # a crossing between two world instances (continents)
+HEARTH_SECONDS = pricing.PRICES.hearth  # cast and loading screen
 # VERIFY(beta): the hearthstone cooldown on Forever (Classic's is 60 minutes).
 HEARTH_COOLDOWN = 3600.0
-TODO_PENALTY = 120.0  # a crossing whose coordinates are not known yet...
-UNKNOWN_CROSS = 600.0  # ...costs this plus the penalty, so known routes win
-STEP_SECONDS = 45.0  # each step's own time in the clock that tracks the hearthstone cooldown
+TODO_PENALTY = pricing.PRICES.crossing_penalty  # a crossing whose coordinates are not known yet...
+UNKNOWN_CROSS = pricing.PRICES.unknown_crossing  # ...costs this plus the penalty, so known routes win (a search weight, not play time)
+# Each step's own time in the clock that tracks the hearthstone cooldown. It prices nothing in a route's total (SimStep.seconds is the
+# travel alone): only `.home` after `.home` is judged by this clock, so it runs slow against the ~3 minutes a step takes in the full simulation.
+STEP_SECONDS = 45.0
 
 
 # The data pack --------------------------------------------------------------------------------------------------------
@@ -336,8 +345,46 @@ def _taxi_zone(geo: Geo, name: str, point: tuple[int, float, float]) -> int | No
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _by_id(item: tuple) -> tuple:
+    return (0, item[0], "") if isinstance(item[0], int) else (1, 0, str(item[0]))
+
+
+def service_npcs(pack: Pack, flag: int) -> list[tuple[object, dict]]:
+    """The pack's NPC records that carry a service flag (flight master, innkeeper, ...), in ID order."""
+    found = []
+    for npc, record in sorted(pack.table("npcs").items(), key=_by_id):
+        flags = record.get("flags") if isinstance(record, dict) else None
+        if isinstance(flags, int) and not isinstance(flags, bool) and flags & flag:
+            found.append((npc, record))
+    return found
+
+
+def derive_flight_masters(pack: Pack, geo: Geo, nodes: list[FlightNode], covered: set) -> dict[object, dict]:
+    """Flight master records ({ node, p, side }, as the travel table's) for the pack's own flight master NPCs that no travel
+    record covers: the QuestieDB layer's NPCs carry the flight master flag and a position (a Classic Era baseline, not
+    Forever's truth), and the client's taxi map names the node. Each NPC takes the nearest client node of a side it can
+    serve within NODE_MATCH_YARDS; a node keeps the nearest of the NPCs that match it. An NPC that matches no node (a
+    flight path the client does not list) is left out: a `.fly` needs the node's name."""
+    best: dict[int, tuple[float, object, dict]] = {}
+    for npc, record in service_npcs(pack, FLIGHT_MASTER_FLAG):
+        coord, side = coord_of(record.get("p")), side_of(record.get("side"))
+        if npc in covered or coord is None:
+            continue
+        pick: tuple[float, int] | None = None
+        for index, node in enumerate(nodes):
+            if not (side == "both" or node.side in ("both", side)):
+                continue
+            distance = geo.distance(coord, node.coord)
+            if distance is not None and distance <= NODE_MATCH_YARDS and (pick is None or distance < pick[0]):
+                pick = (distance, index)
+        if pick is not None and (pick[1] not in best or pick[0] < best[pick[1]][0]):
+            best[pick[1]] = (pick[0], npc, {"node": nodes[pick[1]].name, "p": [coord.map, coord.x, coord.y], "side": side})
+    return {npc: record for _, npc, record in best.values()}
+
+
 def flight_nodes(pack: Pack, geo: Geo) -> list[FlightNode]:
-    """Every flight node: the client's taxi map pins (continents), positioned by the pack's flight masters if known."""
+    """Every flight node: the client's taxi map pins (continents), positioned by the flight masters the pack knows: its
+    travel table's, else its own flight master NPCs (matched to the nodes by position)."""
     nodes: list[FlightNode] = []
     for map_id in sorted(geo.maps):
         for entry in geo.maps[map_id].get("taxi") or []:
@@ -353,12 +400,14 @@ def flight_nodes(pack: Pack, geo: Geo) -> list[FlightNode]:
                 zone = _taxi_zone(geo, name, point) if point else None
                 coord = geo.local(zone, point) if zone is not None and point else None
             nodes.append(FlightNode(name, side_of(entry.get("faction")), zone, coord, entry.get("id")))
-    masters = _keyed(pack.table("travel").get("flightMasters"))
-    for npc, master in sorted(masters.items(), key=lambda item: str(item[0])):
+    masters = dict(_keyed(pack.table("travel").get("flightMasters")))
+    from_npcs = derive_flight_masters(pack, geo, nodes, set(masters))
+    masters.update(from_npcs)
+    for npc, master in sorted(masters.items(), key=_by_id):
         if not isinstance(master, dict) or not isinstance(master.get("node"), str):
             continue
         coord, side = coord_of(master.get("p")), side_of(master.get("side"))
-        origin = f"flight master {npc} (data pack)"
+        origin = f"flight master {npc} ({'data pack NPC record' if npc in from_npcs else 'data pack'})"
         matched = False
         for index, node in enumerate(nodes):
             if names_match(node.name, master["node"]) and (side == "both" or node.side in ("both", side)):
@@ -371,12 +420,32 @@ def flight_nodes(pack: Pack, geo: Geo) -> list[FlightNode]:
     return nodes
 
 
+phrases = guidefile.phrases  # words from a string, or from a list of phrases read as "a, b and c"
+
+
 @dataclass(frozen=True)
 class Transport:
+    """A boat or zeppelin between two zones. Its docks are known (the pack's record: someone rode it) or not yet (a ride
+    in Guides/Travel/Borders.lua: hand-authored with the zones only, since a dock position is never made up)."""
+
     kind: str  # boat or zeppelin
-    a: Coord
-    b: Coord
+    a: Coord | None
+    b: Coord | None
     side: str
+    zone_a: int | None = None
+    zone_b: int | None = None
+    label: str = ""  # what the guides call it ("airship"); the step says it instead of the kind
+    wait: float = TRANSPORT_WAIT  # seconds at the dock
+    wait_text: str = ""  # the wait in the player's words ("7 to 8 minutes")
+    from_text: str = ""  # where it leaves, in words ("Valanaar's southwest dock")
+    to_text: str = ""  # where it lands
+    verify: str = ""  # what nobody has confirmed in the game, in words
+    oneway: bool = False  # only from a to b is known
+    origin: str = ""
+
+    @property
+    def placed(self) -> bool:
+        return self.a is not None and self.b is not None
 
 
 @dataclass(frozen=True)
@@ -419,15 +488,31 @@ class World:
                 continue
             a, b, side = coord_of(entry.get("from")), coord_of(entry.get("to")), side_of(entry.get("side"))
             if a and b and entry.get("kind") in ("boat", "zeppelin") and usable(side, faction):
-                self.transports.append(Transport(entry["kind"], a, b, side))
+                self.transports.append(
+                    Transport(entry["kind"], a, b, side, zone_a=self.zone(a.map), zone_b=self.zone(b.map), origin="data pack")
+                )
         self.inns = []
-        for npc, entry in _keyed(travel.get("inns")).items():
+        listed = _keyed(travel.get("inns"))
+        for npc, entry in listed.items():
             coord = coord_of(entry.get("p")) if isinstance(entry, dict) else None
             if coord and usable(side_of(entry.get("side")), faction):
                 self.inns.append(Inn(npc, coord, side_of(entry.get("side"))))
+        # The pack's own innkeeper NPCs (the QuestieDB layer flags them) cover the inns no travel record lists.
+        for npc, record in service_npcs(self.pack, INNKEEPER_FLAG):
+            coord = coord_of(record.get("p"))
+            if npc not in listed and coord and usable(side_of(record.get("side")), faction):
+                self.inns.append(Inn(npc, coord, side_of(record.get("side"))))
         learned = [self._crossing(entry, "data pack") for entry in travel.get("crossings") or []]
         learned = [crossing for crossing in learned if crossing and usable(crossing.side, faction)]
-        hand = [self._crossing(entry, f"{path}:{line}") for path, line, entry in borders or []]
+        hand, rides = [], []
+        for path, line, entry in borders or []:
+            if isinstance(entry, dict) and entry.get("ride") is not None:  # a ride is no walkable crossing, valid or not
+                ride = self._ride(entry, entry["ride"], f"{path}:{line}") if isinstance(entry["ride"], dict) else None
+                if ride and usable(ride.side, faction):
+                    rides.append(ride)
+            else:
+                hand.append(self._crossing(entry, f"{path}:{line}"))
+        self._add_rides(rides)
         # Learned crossings replace hand-authored ones of the same name, and coordinate-less ones for the same zones.
         for crossing in [c for c in hand if c and usable(c.side, faction)]:
             pair = {crossing.zone_a, crossing.zone_b}
@@ -452,6 +537,49 @@ class World:
         if isinstance(entry.get("src"), str):
             origin = f"{origin} ({entry['src']})"
         return Crossing(name, a, b, self.zone(map_a), self.zone(map_b), origin, side_of(entry.get("side")))
+
+    def _ride(self, entry: dict, ride: dict, origin: str) -> Transport | None:
+        """A hand-authored ride (Guides/Travel/Borders.lua): the zones, the kind, and words for the player. Its docks are
+        read as coordinates only if the entry holds them; the tools never make one up."""
+        map_a, map_b = map_of(entry.get("from")), map_of(entry.get("to"))
+        if ride.get("kind") not in ("boat", "zeppelin") or map_a is None or map_b is None:
+            return None
+
+        def words(key: str) -> str:
+            return phrases(ride.get(key))
+
+        wait = ride.get("wait")
+        usable_wait = isinstance(wait, (int, float)) and not isinstance(wait, bool) and wait >= 0
+        return Transport(
+            ride["kind"],
+            coord_of(entry.get("from")),
+            coord_of(entry.get("to")),
+            side_of(entry.get("side")),
+            zone_a=self.zone(map_a),
+            zone_b=self.zone(map_b),
+            label=words("label"),
+            wait=float(wait) if usable_wait else TRANSPORT_WAIT,
+            wait_text=words("waitText"),
+            from_text=words("fromText"),
+            to_text=words("toText"),
+            verify=words("verify"),
+            oneway=entry.get("oneWay") is True,
+            origin=origin,
+        )
+
+    def _add_rides(self, rides: list[Transport]) -> None:
+        """A ride someone recorded (the pack's transports, docks and all) replaces the hand-authored one between the same two
+        zones, as a learned crossing does; it keeps the hand-authored name, wait and direction, which the record lacks."""
+        for ride in rides:
+            pair = {ride.zone_a, ride.zone_b}
+            found = next((n for n, t in enumerate(self.transports) if t.placed and {t.zone_a, t.zone_b} == pair), None)
+            if found is None:
+                self.transports.append(ride)
+            else:
+                recorded = self.transports[found]
+                self.transports[found] = replace(
+                    recorded, label=ride.label, wait=ride.wait, wait_text=ride.wait_text, oneway=ride.oneway
+                )
 
     def inn_in(self, zone: int | None) -> Coord | None:
         """An innkeeper's position in that zone (the data pack's), when there is exactly one."""
@@ -528,6 +656,7 @@ class SimStep:
     fps: list[str]
     bind: str | None
     clock: float
+    seconds: float = 0.0  # what the step's travel took: walking, flights, boats (not STEP_SECONDS)
 
 
 @dataclass
@@ -607,22 +736,40 @@ def _step_events(rs: RouteStep, world: World, fps: list[KnownFP], bind: Bind | N
     return events
 
 
-def _seconds(world: World, coord: Coord | None, event: _Event) -> float:
+def _across(world: World, coord: Coord | None, event: _Event) -> bool:
+    """A walk from `coord` to the event's point that goes between two world instances (continents)."""
+    if coord is None or event.coord is None or event.kind != "point":
+        return False
+    here, there = world.geo.instance(coord.map), world.geo.instance(event.coord.map)
+    return here is not None and there is not None and here != there
+
+
+def _seconds(world: World, coord: Coord | None, event: _Event, prices: pricing.Prices | None = None) -> float:
+    """What one event of a step costs the player, who stands at `coord`: the prices are signpost_tools/pricing.py's."""
+    prices = prices or pricing.PRICES
     distance = world.geo.distance(coord, event.coord)
     if event.effect == "fly":
-        return FLIGHT_OVERHEAD + distance / FLIGHT_SPEED if distance is not None else UNKNOWN_FLIGHT
+        return prices.flight(distance)
     if event.effect == "home":
-        return HEARTH_SECONDS
+        return prices.hearth
     if event.directive.name in ("boat", "zeppelin") and event.kind == "arrive":
-        return TRANSPORT_WAIT + (distance / TRANSPORT_SPEED if distance is not None else TRANSPORT_ACROSS)
-    return distance / WALK_SPEED if distance is not None else 0.0
+        return prices.transport(distance)
+    if distance is None:
+        # A walk that cannot be measured costs nothing, except a change of continent: nobody walks that, and no travel step says how it
+        # is made (the pack has no zeppelin or boat yet), so it costs what the planner charges for one.
+        return prices.continent if _across(world, coord, event) else 0.0
+    return prices.walk(distance)
 
 
-def simulate(route: Route, world: World) -> Simulation:
-    """Walk the route: zones, flight paths, hearth, expected level; uncovered transitions and travel problems."""
+def simulate(route: Route, world: World, prices: pricing.Prices | None = None) -> Simulation:
+    """Walk the route: zones, flight paths, hearth, expected level; uncovered transitions and travel problems. Each step's travel
+    time is SimStep.seconds, priced by signpost_tools/pricing.py. A change of zone is never free: a `.zone` step leaves the player
+    nowhere in particular, and the walk to the next place is measured from the last place the route named (it used to cost nothing)."""
+    prices = prices or pricing.PRICES
     sim = Simulation()
     zone: int | None = None
     coord: Coord | None = None
+    last_point: Coord | None = None  # the last position the walk knew: where a walk starts when a zone change left `coord` unknown
     setter: RouteStep | None = None
     fps: list[KnownFP] = []
     bind: Bind | None = None
@@ -637,6 +784,7 @@ def simulate(route: Route, world: World) -> Simulation:
         arrivals = {event.zone for event in events if event.kind == "arrive"}
         travels = any(d.name in guidefile.TRAVEL_MOVES for d in rs.directives)
         checked = False
+        spent = 0.0
         for event in events:
             d = event.directive
             if event.effect == "fly" and not any(names_match(fp.name, d.args["node"]) for fp in fps):
@@ -663,15 +811,22 @@ def simulate(route: Route, world: World) -> Simulation:
                     message = f"targets in {world.label(zone)} and {world.label(event.zone)} in one step with no travel"
                     sim.issues.append(SimIssue(rs, d.line, "warning", "zone-jump", message))
             if event.kind is not None:
-                clock += _seconds(world, coord, event)
+                origin = coord if coord is not None else (last_point if event.kind == "point" else None)
+                took = _seconds(world, origin, event, prices)
+                clock += took
+                spent += took
                 zone, coord, setter = event.zone, event.coord, rs
+                if event.coord is not None:
+                    last_point = event.coord
+                elif event.effect in ("fly", "home"):
+                    last_point = None  # a flight or a hearthstone to a place the data does not give moved the player: the old point is stale
             if event.effect == "fp":
                 fps.append(KnownFP(d.args["node"], d.args["map"], world.zone(d.args["map"]), rs))
             elif event.effect == "hs":
                 bind = Bind(d.args["inn"], zone, coord, rs)
         clock += STEP_SECONDS
         known = [fp.name for fp in fps]
-        sim.steps.append(SimStep(rs, zone_in, zone, coord, level, known, bind.name if bind else None, clock))
+        sim.steps.append(SimStep(rs, zone_in, zone, coord, level, known, bind.name if bind else None, clock, spent))
     return sim
 
 
@@ -689,7 +844,7 @@ class Place:
 
 @dataclass
 class Leg:
-    kind: str  # walk, cross, cross-todo, fly, boat, zeppelin, hearth
+    kind: str  # walk, cross, cross-todo, fly, boat, zeppelin, ride-todo (a ride whose docks are not recorded), hearth
     a: Place
     b: Place
     seconds: float
@@ -750,12 +905,16 @@ def plan_travel(
                 seconds = FLIGHT_OVERHEAD + distance / FLIGHT_SPEED if distance is not None else UNKNOWN_FLIGHT
                 link(i, j, "fly", seconds, b.ref)
     for transport in world.transports:
-        i = add(Place(world.zone(transport.a.map), transport.a, "dock", transport.kind, transport))
-        j = add(Place(world.zone(transport.b.map), transport.b, "dock", transport.kind, transport))
+        i = add(Place(transport.zone_a, transport.a, "dock", transport.kind, transport))
+        j = add(Place(transport.zone_b, transport.b, "dock", transport.kind, transport))
         distance = world.geo.distance(transport.a, transport.b)
-        seconds = TRANSPORT_WAIT + (distance / TRANSPORT_SPEED if distance is not None else TRANSPORT_ACROSS)
-        link(i, j, transport.kind, seconds, transport)
-        link(j, i, transport.kind, seconds, transport)
+        seconds = transport.wait + (distance / TRANSPORT_SPEED if distance is not None else TRANSPORT_ACROSS)
+        kind = transport.kind
+        if not transport.placed:  # the zones are linked, the docks are not known: a `.todo` step, priced high
+            seconds, kind = seconds + TODO_PENALTY, "ride-todo"
+        link(i, j, kind, seconds, transport)
+        if not transport.oneway:
+            link(j, i, kind, seconds, transport)
     if bind is not None and hearth_ready and bind.zone is not None:
         link(0, add(bind), "hearth", HEARTH_SECONDS, bind)
     by_zone: dict[int, list[int]] = {}
@@ -799,11 +958,69 @@ def fly_name(world: World, node: FlightNode) -> str:
     return node.name if clash else short
 
 
+def _plain(text: str) -> str:
+    """Text for a quoted `.todo`: no double quote, no `--` (a comment) and no `>>` (the text of the line)."""
+    return text.replace('"', "'").replace("--", "-").replace(">>", ">")
+
+
+def placeholder_lines(world: World, from_zone: int | None, to_zone: int) -> list[str]:
+    """One travel step the guide cannot give directions for yet: a `.todo` that says in plain words what the player does
+    (from what the data knows: the two zones, and whether they share a continent) and the `.zone` that completes it. No
+    coordinate is written: the step must not look as if it were placed (the `.goto` of a step positions it for the
+    profession tracks' `@zone` anchors, so a pin to the destination would move the step into the zone it ends in)."""
+    geo = world.geo
+    here, there = _plain(geo.name(from_zone)) if from_zone is not None else "here", _plain(geo.name(to_zone))
+    worlds = (geo.instance(from_zone) if from_zone is not None else None, geo.instance(to_zone))
+    if None in worlds:
+        what = f"Get from {here} to {there}: the guide has no route for this yet."
+    elif worlds[0] != worlds[1]:
+        what = (
+            f"Get from {here} to {there}: they are on different continents, so you need a boat, a zeppelin or another ride, "
+            "and the guide has no dock for it yet."
+        )
+    else:
+        what = f"Walk from {here} to {there}: the guide has no waypoints for this yet, so find your own way."
+    return [f'.todo "{what} This step is done when you arrive in {there}."', f".zone {to_zone} >> Go to {there}"]
+
+
+def ride_lines(world: World, leg: Leg) -> list[str]:
+    """The step for a ride whose docks nobody has recorded (a hand-authored ride, Guides/Travel/Borders.lua): what to take,
+    from where to where, how long to wait, and in plain words what nobody has confirmed in the game. It is still a `.todo`
+    (the dock position is missing) and a `.zone` (the step is done on arrival), and carries no coordinate."""
+    ride = leg.ref
+    forward = leg.a.zone == ride.zone_a
+    here, there = _plain(world.geo.name(leg.a.zone)), _plain(world.geo.name(leg.b.zone))
+    start, end = (ride.from_text, ride.to_text) if forward else (ride.to_text, ride.from_text)
+    label = _plain(ride.label or ride.kind)
+    origin = f"{_plain(start)} ({here})" if start else here
+    target = f"{_plain(end)} ({there})" if end else there
+    lines = [f".zone {leg.b.zone} >> Take the {label} from {origin} to {target}"]
+    if ride.wait_text:
+        lines.append(f".note Expect to wait about {_plain(ride.wait_text)} for it.")
+    unverified = _plain(ride.verify) if ride.verify else "where the dock is"
+    lines.append(f'.todo "Not verified in the game: {unverified}. This step is done when you arrive in {there}."')
+    return lines
+
+
 def plan_steps(world: World, plan: Plan) -> list[list[str]]:
-    """The plan as DSL steps (each a list of directive lines). Coordinates come only from the graph's data."""
+    """The plan as DSL steps (each a list of directive lines). Coordinates come only from the graph's data; a run of
+    borders whose crossing points are not known yet is one `.todo` step for the whole walk."""
     steps: list[list[str]] = []
+    unplaced: list[Leg] = []
+
+    def flush() -> None:
+        if unplaced:
+            steps.append(placeholder_lines(world, unplaced[0].a.zone, unplaced[-1].b.zone))
+            unplaced.clear()
+
     for leg in plan.legs:
         zone = leg.b.zone
+        if leg.kind == "walk":  # inside a zone: no step of its own
+            continue
+        if leg.kind == "cross-todo":
+            unplaced.append(leg)
+            continue
+        flush()
         if leg.kind == "cross":
             crossing = leg.ref
             via = f" ({crossing.name})" if crossing.name else ""
@@ -813,15 +1030,6 @@ def plan_steps(world: World, plan: Plan) -> list[list[str]]:
                     f".zone {zone} >> Cross into {world.geo.name(zone)}{via}",
                 ]
             )
-        elif leg.kind == "cross-todo":
-            crossing = leg.ref
-            what = crossing.name or f"{world.geo.name(leg.a.zone)} to {world.geo.name(zone)}"
-            steps.append(
-                [
-                    f'.todo "border {what}: no crossing coordinates yet (record them in game or in Borders.lua)"',
-                    f".zone {zone} >> Go into {world.geo.name(zone)}",
-                ]
-            )
         elif leg.kind == "fly":
             lines = []
             if leg.a.coord is not None:
@@ -829,43 +1037,142 @@ def plan_steps(world: World, plan: Plan) -> list[list[str]]:
                 lines.append(f".goto {leg.a.coord.dsl()} >> Go to the flight master{origin}")
             lines.append(f".fly {fly_name(world, leg.ref)}")
             steps.append(lines)
+        elif leg.kind == "ride-todo":
+            steps.append(ride_lines(world, leg))
         elif leg.kind in ("boat", "zeppelin"):
             route = f"{leg.a.coord.dsl()} > {leg.b.coord.dsl()}"
-            steps.append([f".{leg.kind} {route} >> Take the {leg.kind} to {world.geo.name(zone)}"])
+            label = _plain(leg.ref.label) if getattr(leg.ref, "label", "") else leg.kind
+            steps.append([f".{leg.kind} {route} >> Take the {label} to {world.geo.name(zone)}"])
         elif leg.kind == "hearth":
             steps.append([f".home >> Hearth to {leg.b.label}"])
+    flush()
     return steps
 
 
 def no_route_steps(world: World, from_zone: int, to_zone: int) -> list[list[str]]:
-    reason = f"travel from {world.geo.name(from_zone)} to {world.geo.name(to_zone)}: the travel graph has no route yet"
-    return [[f'.todo "{reason}"', f".zone {to_zone} >> Go to {world.geo.name(to_zone)}"]]
+    """The placeholder for a change of zone the graph has no route for (see placeholder_lines)."""
+    return [placeholder_lines(world, from_zone, to_zone)]
+
+
+# A class's own way to a zone -----------------------------------------------------------------------------------------------
+#
+# A class module (`Classes/<CLASS>.lua`) may say, in `travelHints` keyed by a zone's uiMapID, that its guide's characters have a way of
+# their own to that zone and that the road is not one to walk: a druid's Teleport: Moonglade, and the way overland to Moonglade (from
+# Classic memory: through Felwood or Winterspring, zones for levels 48 and up) for a HARDCORE character of level 10 to 30. For every
+# trip to or from such a zone in a guide of that class the generator then writes the class's own words in place of a walk: wherever
+# the data holds no way that stays off the road (a flight path, a boat or the hearthstone is one: a real plan stands), the step is
+# a `.todo` with the class's words, a `.note` that says not to walk, and the `.zone` that completes it on arrival, as the plain
+# placeholder is. The words are data, and a guide of another class never reads them. No coordinate or ID is written.
+
+
+@dataclass(frozen=True)
+class TravelHint:
+    zone: int  # the zone the class has its own way to (the hint's uiMapID, as the travel graph counts zones)
+    to: str  # how to get there instead of walking
+    back: str  # how to get back
+    unsafe: str  # why the road is not one to walk
+
+
+def class_hints(project: guidefile.Project, cls: str | None, world: World) -> dict[int, TravelHint]:
+    """The travel hints of a class module by zone. An entry that lacks a word is left out (the project load reports it)."""
+    module = project.classes.get(cls) if cls else None
+    table = module.travel_hints if module is not None else None
+    hints: dict[int, TravelHint] = {}
+    for key, entry in table.items() if isinstance(table, dict) else ():
+        if type(key) is not int or not isinstance(entry, dict):
+            continue
+        words = {name: guidefile.wrapped(entry.get(name)) for name in guidefile.TRAVEL_HINT_WORDS}
+        if all(words.values()):
+            zone = world.zone(key)
+            hints[zone] = TravelHint(zone, **words)
+    return hints
+
+
+def travel_hint(hints: dict[int, TravelHint] | None, from_zone: int | None, to_zone: int | None) -> TravelHint | None:
+    """The hint that applies to a change of zone: the one for the zone it goes to, else the one for the zone it leaves."""
+    if not hints:
+        return None
+    return hints.get(to_zone) or hints.get(from_zone)
+
+
+def overland(plan: Plan | None, zone: int) -> bool:
+    """Whether getting to or from `zone` takes a walk over a border (placed or not). No plan counts: it is the plain placeholder,
+    which tells the player to find a way on foot."""
+    if plan is None:
+        return True
+    return any(leg.kind in ("cross", "cross-todo") and zone in (leg.a.zone, leg.b.zone) for leg in plan.legs)
+
+
+def hint_lines(world: World, hint: TravelHint, from_zone: int | None, to_zone: int) -> list[str]:
+    """The step for a trip a class has its own way for: what to do instead of walking (the class module's words), that it is not
+    to be walked and why, and the `.zone` that completes it on arrival. Like the plain placeholder it carries no coordinate."""
+    geo = world.geo
+    here = _plain(geo.name(from_zone)) if from_zone is not None else "here"
+    there = _plain(geo.name(to_zone))
+    going = to_zone == hint.zone
+    lead = f"Go to {there}" if going else f"Return from {here} to {there}"
+    how = _plain(hint.to if going else hint.back).rstrip(".")
+    return [
+        f'.todo "{lead}: {how}. This step is done when you arrive in {there}."',
+        f".note Do not walk it: {_plain(hint.unsafe).rstrip('.')}.",
+        f".zone {to_zone} >> Go to {there}",
+    ]
+
+
+@dataclass
+class Proposal:
+    """The steps for one change of zone: the plan they come from (None: the plain placeholder or a hint stood in)."""
+
+    plan: Plan | None
+    steps: list[list[str]]
+    hint: TravelHint | None = None  # set when a class's own words stand in for a walk
+
+
+def steps_for(
+    world: World, plan: Plan | None, from_zone: int, to_zone: int, hints: dict[int, TravelHint] | None = None
+) -> Proposal:
+    """The steps for a plan (a placeholder when there is none), with the class's own words in place of a plan that walks into or
+    out of a zone the class has hints for. A plan that flies, sails or hearths in or out stands: the data supports it."""
+    hint = travel_hint(hints, from_zone, to_zone)
+    if hint is not None and overland(plan, hint.zone):
+        return Proposal(None, [hint_lines(world, hint, from_zone, to_zone)], hint)
+    if plan is None:
+        return Proposal(None, no_route_steps(world, from_zone, to_zone))
+    return Proposal(plan, plan_steps(world, plan))
 
 
 def render_steps(steps: list[list[str]]) -> str:
     return "\n".join("step\n" + "\n".join(f"  {line}" for line in lines) for lines in steps)
 
 
-def describe_cost(plan: Plan | None) -> str:
+def describe_cost(plan: Plan | None, hint: TravelHint | None = None) -> str:
+    if hint is not None:
+        return "no walk proposed (the class module's own words stand in)"
     if plan is None:
         return "no route"
     if any(leg.kind == "cross-todo" for leg in plan.legs):
         return "time unknown (a border without coordinates)"
+    if any(leg.kind == "ride-todo" for leg in plan.legs):
+        return "time unknown (a ride whose docks are not recorded)"
     return f"about {max(1, round(plan.seconds / 60))} min"
 
 
-def propose(world: World, transition: Transition) -> tuple[Plan | None, list[list[str]]]:
-    """The cheapest travel for an uncovered transition, as DSL steps (a .todo step when the graph has no route)."""
+def _places(world: World, transition: Transition) -> tuple[Place, Place, Place | None]:
     start = Place(transition.from_zone, transition.from_coord, "start", "start")
     goal = Place(transition.to_zone, transition.to_coord, "goal", "goal")
     bind = None
     if transition.bind is not None and transition.bind.zone is not None:
         here = transition.bind.coord or world.inn_in(transition.bind.zone)  # only used to cost the walk from the inn
         bind = Place(transition.bind.zone, here, "inn", transition.bind.name)
+    return start, goal, bind
+
+
+def propose(world: World, transition: Transition, hints: dict[int, TravelHint] | None = None) -> Proposal:
+    """The cheapest travel for an uncovered transition, as DSL steps (a .todo step when the graph has no route, and the class's
+    own words where its guide must not walk: see steps_for)."""
+    start, goal, bind = _places(world, transition)
     plan = plan_travel(world, start, goal, [fp.name for fp in transition.fps], bind, transition.hearth_ready)
-    if plan is None:
-        return None, no_route_steps(world, transition.from_zone, transition.to_zone)
-    return plan, plan_steps(world, plan)
+    return steps_for(world, plan, transition.from_zone, transition.to_zone, hints)
 
 
 # Command line --------------------------------------------------------------------------------------------------------
@@ -912,8 +1219,119 @@ def _after(rs: RouteStep | None) -> str:
     return f"{rs.source.path}:{rs.source.file_line(rs.step.end_line)}"
 
 
-def report_route(route: Route, world: World, simulate_steps: bool) -> list[str]:
+# Flight paths learned on the way ---------------------------------------------------------------------------------------
+#
+# A `.fly` needs an earlier `.fp` that teaches it, and nothing in a guide teaches one until its author adds the step. A route
+# passes flight masters all the time (the quest hubs are towns), so where passing one would let a later change of zone fly
+# instead of walk, the generator proposes the `.fp` step too: right after the step that passes the flight master. Only
+# flight paths a later zone change would use are proposed, so the guide never asks for a detour for nothing, and a zone
+# change that waits for one is proposed in the pass after the `.fp` step is in (rebuild_drafts and the planner repeat the
+# pass until nothing is left to propose). The flight masters are the pack's: the travel table's, else its own NPC records
+# (a Classic baseline, matched to the client's flight nodes).
+
+LEARN_FLIGHT_PATHS = True  # propose `.fp` steps; `--no-learn-flight-paths` turns it off for one run
+LEARN_RADIUS = 150.0  # yards: a step this close to a flight master passes it (the planner's hubs are 150 yd wide)
+LEARN_GAIN = 90.0  # seconds a flight must save on a zone change before the route is asked to learn a flight path for it
+
+
+@dataclass
+class Lesson:
+    """A flight path the route can learn where it passes the flight master."""
+
+    node: FlightNode
+    index: int  # the route step that passes the flight master (the `.fp` step goes after it)
+    step: RouteStep
+
+
+def route_points(route: Route, world: World) -> list[list[tuple[int, Coord]]]:
+    """Where each step sends the player, as (zone, position): what `simulate` reads from the step (its `.goto`, `.path`,
+    `.fish`, boat and zeppelin ends, flight landings, and the pack's quest givers for an `.accept` or `.turnin`)."""
+    found = []
+    for rs in route.steps:
+        events = _step_events(rs, world, [], None, None)
+        found.append([(event.zone, event.coord) for event in events if event.coord is not None and event.zone is not None])
+    return found
+
+
+def learnable_flight_paths(route: Route, world: World, sim: Simulation, radius: float = LEARN_RADIUS) -> list[Lesson]:
+    """The flight paths the route does not teach, at the first step that ends in the flight master's zone having passed it."""
+    if not sim.steps:
+        return []
+    points = route_points(route, world)
+    taught = sim.steps[-1].fps
+    lessons = []
+    for node in world.nodes:
+        if not node.exact or node.zone is None or node.coord is None:
+            continue
+        if any(names_match(name, node.name) for name in taught):
+            continue
+        for index, rs in enumerate(route.steps):
+            if rs.track is not None or sim.steps[index].zone_out != node.zone:  # a track step belongs to a shared file
+                continue
+            near = (world.geo.distance(coord, node.coord) for zone, coord in points[index] if zone == node.zone)
+            if any(distance is not None and distance <= radius for distance in near):
+                lessons.append(Lesson(node, index, rs))
+                break
+    return lessons
+
+
+def flights_to_learn(
+    world: World, transition: Transition, lessons: list[Lesson], before: int, hints: dict[int, TravelHint] | None = None
+) -> list[Lesson]:
+    """The flight paths the route should learn before this zone change because the best plan with them flies: those the
+    route passes at or before step `before` (-1: the start), not taught yet, and used by a flight of the faster plan."""
+    known = [fp.name for fp in transition.fps]
+    options = [
+        lesson
+        for lesson in lessons
+        if lesson.index <= before and not any(names_match(name, lesson.node.name) for name in known)
+    ]
+    if not options:
+        return []
+    start, goal, bind = _places(world, transition)
+    now = plan_travel(world, start, goal, known, bind, transition.hearth_ready)
+    better = plan_travel(world, start, goal, known + [lesson.node.name for lesson in options], bind, transition.hearth_ready)
+    # A trip the class's guide must not walk (see class_hints) has no walk to compare with, and a flight that still ends in the walk
+    # is no help: it is the class's own words or a flight all the way.
+    hint = travel_hint(hints, transition.from_zone, transition.to_zone)
+    if hint is not None:
+        if better is not None and overland(better, hint.zone):
+            return []
+        if now is not None and overland(now, hint.zone):
+            now = None
+    # No plan without the flight paths means a placeholder step: any flight is an improvement. Otherwise it must save time.
+    if better is None or (now is not None and now.seconds - better.seconds < LEARN_GAIN):
+        return []
+    used = [leg.a.ref for leg in better.legs if leg.kind == "fly"] + [leg.b.ref for leg in better.legs if leg.kind == "fly"]
+    return [lesson for lesson in options if lesson.node in used]
+
+
+def lesson_steps(world: World, lesson: Lesson) -> list[list[str]]:
+    """The step that learns the flight path: go to the flight master, `.fp` (done when the game knows the node)."""
+    node = lesson.node
+    return [[f".goto {node.coord.dsl()} >> Go to the flight master", f".fp {node.coord.map},{fly_name(world, node)}"]]
+
+
+def report_route(
+    route: Route, world: World, simulate_steps: bool, learn: bool | None = None, hints: dict[int, TravelHint] | None = None
+) -> list[str]:
+    """The report for one route. `hints` are the route's class's travel hints (class_hints), by zone."""
     sim = simulate(route, world)
+    lessons = learnable_flight_paths(route, world, sim) if (LEARN_FLIGHT_PATHS if learn is None else learn) else []
+    position = {id(rs): index for index, rs in enumerate(route.steps)}
+    # The flight paths to learn first: for each zone change that would fly if the route passed its flight masters earlier.
+    asked: dict[str, tuple[Lesson, list[int]]] = {}  # node name -> (lesson, the zone changes that want it)
+    for number, transition in enumerate(sim.transitions, 1):
+        before = position.get(id(transition.before), -1) if transition.before is not None else -1
+        for lesson in flights_to_learn(world, transition, lessons, before, hints) if lessons else []:
+            asked.setdefault(lesson.node.name, (lesson, []))[1].append(number)
+    wanted = {number: [] for _, numbers in asked.values() for number in numbers}
+    for lesson, numbers in asked.values():
+        for number in numbers:
+            wanted[number].append(lesson.node.name)
+    # A flight path step goes in after the step that passes its flight master; travel steps for another zone change that
+    # leaves from the same step wait for the next pass, so that the two never go in at the same place in the wrong order.
+    anchors = {id(lesson.step) for lesson, _ in asked.values()}
     out = [f"== {route.guide.id} [{route.variant.label()}]: {len(sim.transitions)} uncovered zone change(s)"]
     if simulate_steps:
         out.append(f"   {'#':>4}  {'step':<28} {'zone':<28} {'level':>5}  flight paths / hearth")
@@ -925,17 +1343,34 @@ def report_route(route: Route, world: World, simulate_steps: bool) -> list[str]:
             where = f"{issue.step.source.path}:{issue.step.source.file_line(issue.line)}"
             out.append(f"   {where}: {issue.severity}: {issue.message}")
     for number, transition in enumerate(sim.transitions, 1):
-        plan, steps = propose(world, transition)
+        before = transition.before.id if transition.before else "start"
+        heading = (
+            f"-- {number}. {before} ({world.label(transition.from_zone)}) -> {transition.after.id} "
+            f"({world.label(transition.to_zone)})"
+        )
+        if number in wanted:
+            out += ["", f"{heading}, waits for the flight path(s) to learn first: {', '.join(wanted[number])}"]
+            continue
+        if transition.before is not None and id(transition.before) in anchors:
+            out += ["", f"{heading}, waits: a flight path step goes in right after {transition.before.id} first"]
+            continue
+        proposal = propose(world, transition, hints)
         known = ", ".join(fp.name for fp in transition.fps) or "none"
         bind = transition.bind.name if transition.bind else "unknown"
-        cost = describe_cost(plan)
-        before = transition.before.id if transition.before else "start"
         out += [
             "",
-            f"-- {number}. {before} ({world.label(transition.from_zone)}) -> {transition.after.id} "
-            f"({world.label(transition.to_zone)}), {cost}",
+            f"{heading}, {describe_cost(proposal.plan, proposal.hint)}",
             f"-- insert after {_after(transition.before)}; flight paths known: {known}; hearth: {bind}",
-            render_steps(steps),
+            render_steps(proposal.steps),
+        ]
+    for lesson, numbers in sorted(asked.values(), key=lambda item: item[0].index):
+        uses = ", ".join(str(n) for n in numbers)
+        out += [
+            "",
+            f"-- flight path {lesson.node.name} ({world.label(lesson.node.zone)}): the route passes its flight master at "
+            f"step {lesson.step.id}; zone change(s) {uses} fly from or to it",
+            f"-- insert after {_after(lesson.step)}; flight path to learn on the way",
+            render_steps(lesson_steps(world, lesson)),
         ]
     return out
 
@@ -962,7 +1397,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--guide", action="append", help="only this guide id (repeatable)")
     parser.add_argument("--faction", help="only this faction's variants (with --from: whose transports and flights)")
     parser.add_argument("--race", help="only this race's variants (raceFile token)")
-    parser.add_argument("--class", dest="cls", help="only this class's variants (classFile token)")
+    parser.add_argument("--class", dest="cls", help="only this class's variants (classFile token; with --from: whose travel hints)")
     parser.add_argument("--profession", action="append", default=[], help="merge exactly these tracks (repeatable)")
     parser.add_argument("--no-tracks", action="store_true", help="simulate the route without profession tracks")
     parser.add_argument("--simulate", action="store_true", help="print the step-by-step simulation")
@@ -970,6 +1405,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--to", dest="goal", help="with --from: to <map>,<x>,<y>")
     parser.add_argument("--fp", action="append", default=[], help="with --from: a known flight path (repeatable)")
     parser.add_argument("--bind", help="with --from: <map>,<x>,<y> of the inn the hearthstone is set to")
+    parser.add_argument(
+        "--no-learn-flight-paths",
+        action="store_true",
+        help="do not propose `.fp` steps for flight masters the route passes (a later zone change would fly from them)",
+    )
     options = parser.parse_args(argv)
     safe_stdout()
 
@@ -994,9 +1434,9 @@ def main(argv: list[str] | None = None) -> int:
             bind is not None,
         )
         from_zone, to_zone = world.zone(start.map), world.zone(goal.map)
-        steps = plan_steps(world, plan) if plan else no_route_steps(world, from_zone, to_zone)
-        print(f"-- {world.label(from_zone)} -> {world.label(to_zone)}: {describe_cost(plan)}")
-        print(render_steps(steps))
+        proposal = steps_for(world, plan, from_zone, to_zone, class_hints(project, options.cls, world))
+        print(f"-- {world.label(from_zone)} -> {world.label(to_zone)}: {describe_cost(proposal.plan, proposal.hint)}")
+        print(render_steps(proposal.steps))
         return 0
     guides = [guide for gid, guide in sorted(project.guides.items()) if not options.guide or gid in options.guide]
     if not guides:
@@ -1011,7 +1451,10 @@ def main(argv: list[str] | None = None) -> int:
 
     for guide in guides:
         for route in guide_routes(project, guide, options, world_for):
-            print("\n".join(report_route(route, world_for(route.variant.faction), options.simulate)))
+            learn = False if options.no_learn_flight_paths else None
+            world = world_for(route.variant.faction)
+            hints = class_hints(project, route.variant.cls, world)  # a class's own words for the trips it must not walk
+            print("\n".join(report_route(route, world, options.simulate, learn, hints)))
     return 0
 
 

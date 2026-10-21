@@ -51,7 +51,7 @@ Use `[[ ... ]]`, or `[=[ ... ]=]` when the text itself contains `]]`.
 | `#class <list>`, `#race <list>`, `#faction <name>` | guide | informational; selection uses the `Register` table |
 | `#include <chapterId>` | guide or chapter | splice that registered chapter's text here, before gating; nested includes are fine, a cycle or unknown id is an error |
 | `#chapter <levels> <name> [#dungeon]` | guide or chapter | start a chapter; `<levels>` is `N` or `N-M`; `#dungeon` makes it a dungeon chapter (Skip toggle, PLAN §3.3) |
-| `#skipquest <questID> >> <reason>` | guide or chapter | the class/profession quest coverage lint accepts this quest as skipped on purpose |
+| `#skipquest <questID> >> <reason>` | guide or chapter | the class/profession quest coverage lint accepts this quest as skipped on purpose; the Route Planner also writes one, with the reason and the numbers, for every quest it picked up on the way and did not finish (`not finished by this route: ...`, docs/PLANNER.md) |
 | `#track <key>` | track | first statement of a track file |
 
 Steps in a guide's own text before its first `#chapter` form an implicit chapter named after the guide, levels from
@@ -91,18 +91,18 @@ no profession plan, `.prof` sees an empty plan.
 
 Arguments are comma-separated unless noted; `<map>` is a uiMapID; `x`/`y` are percent (0–100) of that map; a
 `<key>` is a profession key (`skinning`, `firstaid`, ...). A step **completes** when every completable directive in it
-is satisfied (directives about a quest named by `.optional` don't count). A step with no completable directive
-completes only by the player's `>`.
+is satisfied (directives about a quest named by `.optional` don't count; a step made of nothing else never holds the
+player up: see "Optional-only steps"). A step with no completable directive completes only by the player's `>`.
 
 Core directives (`Engine/Directives.lua`):
 
 | Directive | Satisfied when | Pin |
 |---|---|---|
-| `.goto <map>,<x>,<y>[,<radius>]` | the player is within radius yards (default 10) — only if it is the step's only completable directive; otherwise it just places the pin | yes (none in a doing step: see "Step kinds") |
+| `.goto <map>,<x>,<y>[,<radius>]` | the player is within radius yards (default 10) — only if it is the step's only completable directive; otherwise it just places the pin | yes (none in a doing step; one for each NPC of a joined step: see "Step kinds") |
 | `.accept <questID>` | the quest is in the log, or flagged completed | quest giver (data pack) or the step's `.goto` |
 | `.turnin <questID>` | the quest is flagged completed | quest ender |
 | `.complete <questID>[,<objective>]` | that objective (its number in the quest log, from 1) or all are finished, or the quest is complete or turned in | objective area (none in a doing step: see "Step kinds") |
-| `.optional <questID>` | — (modifier: this quest's directives don't block completion) | |
+| `.optional <questID>` | — (modifier: this quest's directives don't count toward completion; a step made of nothing else is an optional-only step: see "Optional-only steps") | |
 | `.reward <questID>,<choice\|itemID>` | — (read by automation); a value up to 10 is a choice index, a larger one an item ID | |
 | `.train <spellID>` / `.train class` | the spell is known; `class` = every spell the class module lists at or below the player's level | trainer |
 | `.trainprof <key>` | the profession is learned, or its maximum skill rose since the step became current, or there is nothing to train (its top rank, or skill more than 25 below the maximum) | trainer |
@@ -126,6 +126,16 @@ from, explore objectives their area.
 A `.complete` line shows the quest and nothing else (`Complete "<quest>"`, or `Complete objective 2 of "<quest>"` for the
 per-objective form): never an objective's counters ("Mottled Boar slain: 3/10"), in any step. The quest log has them.
 
+A **grind step** is not a kind of step of its own: when a route has to kill for a level before anything else opens, the guide writes `.level N` (satisfied when
+the player has reached level N) and a `.note` that says how much that is, on the step the grind follows (the Route Planner writes it so, docs/PLANNER.md):
+
+```
+.level 12 -- reach it first: kill or grind on the way
+.note Grind about 2,400 experience before you go on: about 55 kills of creatures near your level (an estimate)
+```
+
+The numbers are the model's, rounded to two figures, and promise nothing: rested experience, the quests in the log and the creatures at hand change them.
+
 Travel directives (`Engine/Travel.lua`):
 
 | Directive | Satisfied when | Pin |
@@ -138,6 +148,35 @@ Travel directives (`Engine/Travel.lua`):
 | `.hs <inn name>` | `GetBindLocation()` is the inn | innkeeper |
 | `.home` | the zone changed to the bind location's after the hearthstone cast | |
 
+The travel generator (`tools/guide_travel.py`) writes these shapes: a border with known points is `.path <a> ; <b>` and `.zone <map> >>
+Cross into X (name)`; a flight is `.goto <flight master> >> Go to the flight master` and `.fly <node>`, after a step that teaches the flight
+path (`.goto <flight master>` and `.fp <map>,<node>`, proposed where the route passes the flight master and a later trip flies from it); a
+boat or zeppelin is `.boat|.zeppelin <dock> > <dock> >> Take the zeppelin to X`; the hearthstone is `.home`. A zone change whose way the data
+does not hold yet is a **placeholder**: `.todo "Walk from X to Y: the guide has no waypoints for this yet, so find your own way. This step is
+done when you arrive in Y."` and `.zone <Y> >> Go to Y`. The `.zone` completes the step on arrival (the `.todo` beside it is only a note, see
+above). It has no `.goto`: one in the destination would make the step count as a step of that zone for the profession tracks' `@zone` anchors.
+The wording follows what is known (two continents: "they are on different continents, so you need a boat, a zeppelin or another ride, and the
+guide has no dock for it yet") and never carries a coordinate.
+
+A ride the tools know but whose docks nobody has recorded (a hand-authored `ride` entry in `Guides/Travel/Borders.lua`: today the Skyborne's
+airship off Zephras Isle) is a real step of three lines, still with no coordinate and no `.goto`: `.zone <map> >> Take the airship from
+<dock> (<zone>) to <landing> (<zone>)`, `.note Expect to wait about 7 to 8 minutes for it.` and `.todo "Not verified in the game: <what nobody
+has confirmed>. This step is done when you arrive in <zone>."`. `.zeppelin`/`.boat` need both docks' positions, so they take the step over once
+a ride is recorded (the pack's record replaces the entry and keeps its name and wait), and until then the `.todo` marks the gap.
+
+A class that has a way of its own to a zone, and a road to it that is not one to walk, says so in its module (`travelHints` in `Classes/<CLASS>.lua`,
+keyed by the zone's uiMapID: today the druid's Moonglade, 1450), and the generator then writes the class's words for every trip to or from that
+zone in a guide of that class, in place of the plain placeholder: `.todo "Go to Moonglade: cast Teleport: Moonglade if you have it (VERIFY(beta):
+where a druid learns it), else the way is not in the data. This step is done when you arrive in Moonglade."`, `.note Do not walk it: from Classic
+memory (not confirmed in Forever) the road overland runs through Felwood or Winterspring, zones for levels 48 and up, so it is not safe at your
+level.` and the same `.zone <Y> >> Go to Y` as the plain placeholder, so the step is done on arrival and nothing about its completion changes. The
+way back reads `Return from Moonglade to X: use your hearthstone or a flight path if you have one (VERIFY(beta): the way back is not in the
+data).` The words replace any plan that walks over a border into or out of the zone, whether the border's points are known or not (no `.path`
+toward a zone the class must not walk to); a plan that flies, sails or hearths in or out stands, so once the route has taught the flight path
+(an `.fp` step where it passes the flight master) the later trips fly, and the generator proposes that `.fp` step even where walking would be
+nearly as quick, because walking is no alternative. A guide of another class never reads these words (`--class` on the command line picks the class
+for a single `--from`/`--to` trip).
+
 Class directives come from class modules (`Classes/<CLASS>.lua`): e.g. `.tame <npcID>`, `.ammo ...`. Using one in a
 chapter without a `.class` gate is a lint error.
 
@@ -149,9 +188,9 @@ changes: a step completes when every completable directive in it is satisfied.
 
 | Kind | What it holds | Done when | Markers (map pin, minimap pin, edge arrow) |
 |---|---|---|---|
-| **Pick up** | one area, N `.accept` (a `.goto` for each NPC when several stand in the area: each is a pin; without the data pack only the first pin is named for the quests) | every quest is in the log (or done already) | the quest givers |
+| **Pick up** | one area, N `.accept` (a `.goto` for each NPC when several stand in the area: each is a pin, named for its own NPC's quests: see "Joined steps") | every quest is in the log (or done already) | the quest givers |
 | **Doing** | N `.complete <questID>` (with `.goto`, `.use`, `.note`, ...) | every one of those quests is complete in the quest log | none |
-| **Hand in** | N `.turnin` (a `.goto` for each NPC when several stand in the area: each is a pin; without the data pack only the first pin is named for the quests) | every quest is turned in | the quest enders |
+| **Hand in** | N `.turnin` (a `.goto` for each NPC when several stand in the area: each is a pin, named for its own NPC's quests: see "Joined steps") | every quest is turned in | the quest enders |
 | **Hand in + pick up** | `.turnin` and `.accept` at one place | all of them | both |
 
 The guide's markers exist to steer the player **to a place**: where to pick up, where to hand in, and travel. A marker
@@ -174,10 +213,12 @@ log already marks, on the map and the minimap, where each quest's objectives are
 - Any other step keeps its markers as they always were, including an old hand-written step that mixes a `.complete`
   with a `.turnin` or an `.accept` (its `.complete` still pins the objective area).
 
-The step frame lists the quests of a doing step: one line per `.complete`, naming the quest, with a done mark (`[x]` or
-`[ ]`) and no objective counters. A step of one quest reads like a step of five. The step completes when every
-`.complete` quest in it is complete in the quest log (all its objectives finished, or the quest is ready to hand in, or it
-is handed in already); the `.goto` neither holds it up nor ends it.
+The step frame lists the quests of a step: one line per `.accept`, `.complete` and `.turnin`, naming the quest, with a
+done mark (`[x]` or `[ ]`: in the log or done already, complete, handed in) and no objective counters. A step of one quest
+reads like a step of five, and a pick-up or a hand-in of five says which of them are done. Every other line (travel,
+`.train`, `.buy`, `.skill`, notes, ...) has no mark. A doing step completes when every `.complete` quest in it is complete
+in the quest log (all its objectives finished, or the quest is ready to hand in, or it is handed in already); the `.goto`
+neither holds it up nor ends it.
 
 `.complete <questID>` is for a quest that is done within the step (all of its objectives). `.complete <questID>,<objective>`
 (the objective's number in the quest log) stays for a quest whose objectives are spread over several steps: each step
@@ -189,15 +230,83 @@ quest log's tracker is set to the quests the step is about, the quests of its `.
 in the quest log (a quest under a collapsed header is in it): they are tracked first, and only once the client has tracked at
 least one of them is every other tracked quest untracked, so the minimap and the quest tracker show only those quests, and
 the tracker shows their progress (the step frame does not). If the client tracks none of them (it raises or refuses, a full
-tracker looks the same) the tracker is left as it was and the module stops until the setting is toggled. A step that names no
-quest in the log (a pick-up, a trip) leaves the tracking as it is. It acts only while all of these hold: the player has not
-turned it off (Journal > Settings > Quest tracker; on until they do), a guide is active, and the step card is shown (the
-saved setting, `/signpost hide` and the Journal's "Show the step card"; with the card hidden it does nothing at all, while
-the card's own hides in combat, when dead or with the Journal open do not count). It does not fight the player: a quest the
-log already had that is tracked or untracked by hand (or by the game) during the step stays so until the step changes, even
-if the change is put back, and the step announced again after the guide is parsed again keeps that. The tracker is pointed
-once at the first quest of the step that is not complete, when the step begins. The player's earlier tracking is not
-restored afterwards.
+tracker looks the same) the tracker is left as it was and the module tries again a little later (after 5, 15, 45, 120 and 300
+seconds, and at a later step or change of the quest log, never in a burst). A step that names no quest in the log (a pick-up, a
+trip) leaves the tracking as it is. It acts only while all of these hold: the player has not turned it off (Journal >
+Settings > Quest tracker; on until they do), a guide is active, and the step card is shown (the saved setting, `/signpost
+hide` and the Journal's "Show the step card"; with the card hidden it does nothing at all, and showing the card again sets the
+tracking for the current step at once, while the card's own hides in combat, when dead or with the Journal open do not
+count). It does not fight the player: a quest the log already had that the player tracks or untracks by hand during the step
+stays so until the step changes, even if the change is put back, and the step announced again after the guide is parsed again
+keeps that, as does a reload in the middle of the step. What the game itself tracks as it goes (a quest as it is accepted, or
+as its progress changes) is not taken for the player's doing where the client says so, and a quest it tracks that is not the
+step's is untracked. The tracker is pointed once at the first quest of the step that is not complete, when the step begins.
+When the player turns the setting off (or no guide is left) the module gives back what they were tracking before it first
+changed the tracker, without undoing anything they changed since, and says so in chat. `/signpost tracking` shows what the
+module is doing; `/signpost tracking test` checks the client's watch functions.
+
+### Joined steps
+
+The tools write one pick-up or hand-in step for the NPCs of an area, each NPC's `.goto` followed by what is done there:
+
+```
+step
+  .goto 1411,43.29,68.53
+  .accept 4641 -- A
+  .goto 1411,42.06,68.33
+  .turnin 4641 -- A
+  .accept 788 -- B
+```
+
+A directive that names a pin (`.accept`, `.turnin`, `.train`, `.buy`, a `.complete` outside a doing step, ...) stands
+behind the `.goto` before it, up to the next `.goto`; one that comes before the first `.goto` stands behind the first. The
+step draws **one pin for each `.goto`, named for the directives behind it** (`Engine/Conditions.lua`, `:Targets`):
+
+- With the data pack the pins are the NPCs, and an NPC's pin within a `.goto`'s radius merges into the `.goto`'s. Without
+  it the `.goto` is the pin, its kind and label coming from the directives behind it (a turn-in names the pin before a
+  pick-up does).
+- A directive that is satisfied (the quest is in the log, handed in, or complete, for `.accept`, `.turnin`, `.complete`)
+  stops being named, and a place whose directives are all satisfied draws no pin any more (the rule of a marker that
+  shows where to go next, above). So the pin of a place names only the quests still open there, and a place with
+  something else left to ask (a `.level`, say) keeps a bare "Go to ..." pin.
+- A pin's tooltip lists the lines of the quests it names, and the lines about no quest; the step card lists every line of
+  the step, each quest with its done mark, whichever NPC it belongs to.
+
+### Optional-only steps (group quests)
+
+A step whose completable directives all belong to quests named by `.optional` is an **optional-only step**. A `.goto`, a
+`.todo` or a `.note` beside them count for nothing; a `.level`, `.train`, `.buy`, `.skill` or any other completable
+directive of its own makes it an ordinary step again. The tools write each stage of a group (elite) quest of a normal
+route this way: one step to take it, one to do it, one to hand it in, or all three in one.
+
+```
+step
+  .goto 1421,65.71,23.67
+  .complete 442 -- Assault on Fenris Isle
+  .optional 442 -- group quest: Assault on Fenris Isle
+```
+
+An optional-only step **never holds the player up**:
+
+- While none of its quests is in the quest log the step is complete: auto-advance passes it, and the Journal's route list
+  shows it skipped (`[-]`, not done) unless its quest was done.
+- A quest the player took decides the step as in any other: its directives must be satisfied, so the route waits at "do
+  it" until the objectives are finished and at "hand it in" until the quest is handed in; a quest the player took is not
+  skipped under their feet. Of a step about several optional quests only the ones in the quest log count.
+- All of this holds once the game has sent the quest log (a moment after login): until then an empty log may only be a log
+  that has not arrived, so the step waits for its quest's directives like any other step and is passed only when they are
+  satisfied (or with `>`); a group quest you hold is never passed because the log was not there yet.
+- The group quest that is **coming up** is a line of the step card, beside the current step: `Optional: <quest> (group
+  quest)`, one line for each quest (each once) of the optional-only steps among the next three steps of the route that is
+  neither in the quest log nor done, at most two, in the small text of the `Ongoing:` lines and apart from the ten body
+  lines. It goes when the quest is in the log or done, or its step has been passed. The current step's own quests are its
+  lines as in any step.
+- The Journal's route list tags such a step `(group quest)`.
+
+Any other step that mentions an optional quest keeps the rule of the table above: the directives of the optional quest do
+not count while anything else in the step does, so a pick-up of an ordinary quest and a group quest at one NPC is done
+when the ordinary quest is. The engine does not know a quest's level, so the card cannot yet retire the line when the
+character is five levels above the quest (the user's wish, 2026-10-20): that needs the level in the guide (backlog).
 
 ## Display text
 
@@ -232,6 +341,43 @@ step's route step (the same visit or a later one), `@level` and `@zone` from its
 of the place it lands in: inside a chapter, that chapter; between two chapters, never a dungeon chapter when the other
 is not (a dungeon's Skip must not skip profession steps), else the earlier chapter when a step in that gap is `@hub`,
 else the later one.
+
+## Writing a track
+
+What the five shipped tracks (`Guides/Professions/`, the Troll Hunter's default plan) settled, so the next one starts from it:
+
+```
+#track skinning
+step @zone 1454                           -- the first visit to Orgrimmar
+  .race Troll                             -- the position below is this route's: gate it
+  .goto 1454,63.36,45.42 -- Thuwd, Skinning Trainer (npc 7088)
+  .trainprof skinning >> Learn Skinning from Thuwd
+  .sticky .skill skinning 150             -- the skill goal rides beside the route from here on
+  .note Skin every beast you kill. Classic's ranks, unverified in Forever: Apprentice to 75, Journeyman to 150.
+step @zone 1458                           -- the next rank, at the next town with a trainer on the route
+  .race Troll
+  .goto 1458,70.16,59.18 -- Killian Hagey, Skinning Trainer (npc 7087)
+  .trainprof skinning >> Train your next Skinning rank from Killian Hagey
+```
+
+- **The first `.trainprof` step of a track teaches the profession**: skipping it declines the profession (`TaughtTrack` in
+  `Engine/Progress.lua`), so it is the track's first step, carries the `.sticky .skill <key> <N>` goal and tells the player that skipping
+  it drops the profession's other steps. Every later `.trainprof` step is a rank step.
+- **A rank step is `.trainprof <key>` again, at the next trainer the route passes.** The directive passes by itself while the skill is more
+  than 25 below the cap, and is satisfied by the cap rising (or by learning the profession, for a character that had not), so one step serves
+  every rank and its text says "your next rank". The level and skill a rank asks are a `.note`: Classic's numbers until Forever's are known.
+- **Anchors without `.hub` lines** (the planner writes none into the chapters): `@zone <uiMapID>` puts a step before the first route step in
+  that map from the place of the track's previous step on. The same anchor twice in a row lands at the same place, so a later visit to a
+  town is reached by putting a step for another town between the two. `@level <N>` is for what belongs to a level wherever the player is.
+  When a regenerated route no longer visits a town a track names, the lint reports `unmatched-anchor`: anchor that step again.
+- **A step with its own position belongs to one route.** The guide of another race would report an unmatched anchor for it, or take a
+  trainer that is not on its way: gate such a step with `.race` (one file may hold the steps of several races), and the lint stays clean for
+  the guides of the other races.
+- **A `@level` anchor above the guide's highest chapter level is not an error**: the guide stops before it, so the engine drops the step
+  (`guide.errors` says `No route step matches @level N`) and the lint only notes it ("not required yet", as for class chains). The
+  Leatherworking specialization (a `.todo` at level 40) is one.
+- A `.todo` beside another completable directive is a note the lint lists: what the data does not know (a fishing spot, where an Expert rank
+  is taught) is written down so, never guessed.
 
 ## Parsing rules
 

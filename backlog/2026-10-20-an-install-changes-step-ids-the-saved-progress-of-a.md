@@ -1,12 +1,14 @@
 ---
 title: An install changes step ids: the saved progress of a character playing the old guide points at nothing
 kind: finding
-status: open
+status: done
 priority: normal
 area: engine, release
 source: claude
 raised: 2026-10-20
 raised_in: independent review of the installed Troll Hunter guide, 2026-10-20
+closed: 2026-10-21
+resolution: batch 1 (WP-B, branch feat/find-my-place): a saved place that is not in the guide (and no mark that matches) is now placed by the character's quests and level instead of starting over at step 1, after a chat line that the guide was updated; pinned by tests/progress_placement_spec.lua (a saved place that is not in the guide). The old rule (after the furthest done step) stays where some marks still match.
 ---
 
 ## What

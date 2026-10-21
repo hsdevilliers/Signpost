@@ -1,7 +1,8 @@
 -- The Journal: the big window (PLAN §3.2). A guide picker, a search box and three tabs: Route (the chapters and their
 -- steps, click one to jump to it), the class tab (the class's quest chains and how far along they are) and Settings
--- (the step card, the pins, data sharing, the detected profession plan). Opened with /signpost, the minimap button, the
--- AddOn Compartment entry or a right-click on the step card. Stock Blizzard templates only (ButtonFrameTemplate,
+-- (the step card, the pins, data sharing, the detected profession plan). Opened with /signpost, a click on the minimap
+-- button or the AddOn Compartment entry, the quick menu (also reached by a right-click on the step card) or a key
+-- binding: all of those are UI/Launcher.lua. Stock Blizzard templates only (ButtonFrameTemplate,
 -- PanelTabButtonTemplate, SearchBoxTemplate, WowStyle1DropdownTemplate, UICheckButtonTemplate, UIPanelButtonTemplate,
 -- the scroll frame templates).
 -- VERIFY(beta): layout and templates in the real client (FOREVER-API-NOTES "Open probes"); the specs run on a mock.
@@ -18,12 +19,16 @@ local WIDTH, HEIGHT = 800, 560
 local LEFT_WIDTH = 210
 local ROW = 22
 local AUTOMATION_X = 470 -- the Settings tab's second column, in pane coordinates
+-- The Settings tab's check boxes. UICheckButtonTemplate is 32 square; eleven of them in the first column (two more
+-- came with the minimap button's settings) would have pushed the card steppers and the plan text over the buttons at
+-- the bottom of the pane, so the boxes are drawn smaller: eleven rows take what nine took.
+-- VERIFY(beta): the column fits the pane (FOREVER-API-NOTES "Open probes").
+local CHECK_SIZE = 26
 local FAR_JUMP = 20 -- a click on a step further away than this needs Shift
 local HIGHLIGHT_SECONDS = 5
 local TABS = { "route", "class", "settings" }
 
 ns.SavedVars:RegisterDefaults("account", "journal", { tab = "route" })
-ns.SavedVars:RegisterDefaults("account", "minimapButton", { hide = false })
 
 local function progress()
 	return ns.Progress
@@ -50,15 +55,31 @@ local function currentChapterIndex()
 	end
 end
 
-local function describe(step)
-	local p = progress()
-	if p and p.Describe then
-		local ok, text = ns.SafeCall(p.Describe, p, step)
-		if ok and type(text) == "string" then
-			return text
+-- What ns.Conditions:OptionalOnly says of a step made only of group (optional) quests, else nil.
+local function optionalOnly(step)
+	local conditions = ns.Conditions
+	if conditions and conditions.OptionalOnly then
+		local ok, found = ns.SafeCall(conditions.OptionalOnly, conditions, step, ns.Context)
+		if ok and type(found) == "table" then
+			return found
 		end
 	end
-	return tostring(step.id)
+end
+
+local function describe(step)
+	local p = progress()
+	local text = tostring(step.id)
+	if p and p.Describe then
+		local ok, described = ns.SafeCall(p.Describe, p, step)
+		if ok and type(described) == "string" then
+			text = described
+		end
+	end
+	-- a group quest says so first: a long line is cut at the row's edge
+	if optionalOnly(step) then
+		text = "|cff909090" .. L["(group quest)"] .. "|r " .. text
+	end
+	return text
 end
 
 -- Scroll lists ----------------------------------------------------------------------------------------------------
@@ -142,7 +163,9 @@ local function stepMark(step, current)
 	if step.index == current then
 		return MARK.current
 	elseif p and p:IsDone(step.id) then
-		return MARK.done
+		-- a group quest's step the route passed without the quest done: the player left it, they did not do it
+		local group = optionalOnly(step)
+		return (group and not group.fulfilled) and MARK.skipped or MARK.done
 	elseif p and p:IsSkipped(step.id) then
 		return MARK.skipped
 	end
@@ -305,7 +328,43 @@ local function buildRoute(frame, host)
 	leftHost:SetWidth(LEFT_WIDTH)
 	pane.chapters = newList(leftHost, LEFT_WIDTH - 24)
 	pane.chapters.scroll:SetPoint("TOPLEFT", leftHost, "TOPLEFT", 0, 0)
-	pane.chapters.scroll:SetPoint("BOTTOMRIGHT", leftHost, "BOTTOMRIGHT", -22, 0)
+	pane.chapters.scroll:SetPoint("BOTTOMRIGHT", leftHost, "BOTTOMRIGHT", -22, 30)
+	-- "Find my place" (Engine/Placement.lua): moves the pointer to the step the level and the quests say, and shows it.
+	local place = CreateFrame("Button", nil, leftHost, "UIPanelButtonTemplate")
+	place:SetSize(LEFT_WIDTH - 24, 22)
+	place:SetPoint("BOTTOMLEFT", leftHost, "BOTTOMLEFT", 0, 2)
+	place:SetText(L["Find my place"])
+	place:SetScript("OnClick", function()
+		ns.SafeCall(function()
+			local p = progress()
+			if p and p.Place and p:Place({ reason = "manual" }) then
+				Journal:ShowCurrent()
+			else
+				Util.Print(L["No guide is loaded for this character."])
+			end
+		end)
+	end)
+	place:SetScript("OnEnter", function(self)
+		if GameTooltip and GameTooltip.SetOwner then
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:AddLine(L["Find my place"], 1, 0.82, 0)
+			GameTooltip:AddLine(
+				L["Moves you to the step your level and the quests you have done or are on say you are at."],
+				1,
+				1,
+				1,
+				true
+			)
+			GameTooltip:AddLine(L["The < button on the step card takes it back."], 0.6, 0.6, 0.6, true)
+			GameTooltip:Show()
+		end
+	end)
+	place:SetScript("OnLeave", function()
+		if GameTooltip and GameTooltip.Hide then
+			GameTooltip:Hide()
+		end
+	end)
+	pane.place = place
 	local rightHost = CreateFrame("Frame", nil, pane)
 	rightHost:SetPoint("TOPLEFT", leftHost, "TOPRIGHT", 10, 0)
 	rightHost:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", 0, 0)
@@ -551,7 +610,25 @@ local function settingsList()
 			set = plainSetting("pins", "showNext", refreshPins),
 		},
 		{
-			label = L["Help improve the guides: record where NPCs and quests are while I play"],
+			label = L["Show the minimap button"],
+			get = function()
+				return ns.Launcher ~= nil and not ns.Launcher:ButtonHidden()
+			end,
+			set = function(value)
+				ns.Launcher:SetButtonHidden(not value)
+			end,
+		},
+		{
+			label = L["Lock the minimap button's position"],
+			get = function()
+				return ns.Launcher ~= nil and ns.Launcher:ButtonLocked()
+			end,
+			set = function(value)
+				ns.Launcher:SetButtonLocked(value)
+			end,
+		},
+		{
+			label = L["Help improve the guides: record NPCs, quests, trainers and recipes"],
 			get = function()
 				return ns.Contribute and ns.Contribute:Enabled()
 			end,
@@ -692,6 +769,7 @@ local function buildSettings(frame, host)
 	local anchor2 = pane.automationHeader
 	for _, def in ipairs(settingsList()) do
 		local check = CreateFrame("CheckButton", nil, pane, "UICheckButtonTemplate")
+		check:SetSize(CHECK_SIZE, CHECK_SIZE)
 		if def.column == 2 then
 			-- A box with a `section` starts a small header of its own in the column; the check box right under a header
 			-- sits 4 to its left, as under the Automation header (the box's art has that much padding).
@@ -1005,6 +1083,7 @@ for _, message in ipairs({
 	"CONTRIBUTE_CHANGED",
 	"PROFESSION_PLAN_CHANGED",
 	"GUIDE_SELECTED",
+	"GUIDE_PLACED",
 }) do
 	ns.Events:RegisterMessage(message, requestRefresh)
 end
@@ -1015,33 +1094,4 @@ ns.Slash:Register("journal", function(args)
 	Journal:Show(tab ~= "" and tab or nil)
 end, L["open the Journal: journal | route | class | settings"])
 
--- The minimap button (LibDataBroker + LibDBIcon, bundled in Libs/): left-click toggles, right-click opens Settings.
-ns.Events:RegisterMessage("DB_READY", function()
-	local stub = LibStub
-	local broker = stub and stub("LibDataBroker-1.1", true)
-	local icon = stub and stub("LibDBIcon-1.0", true)
-	if not (broker and icon and ns.db) then
-		return
-	end
-	local object = broker:NewDataObject("Signpost", {
-		type = "launcher",
-		text = "Signpost",
-		icon = "Interface\\AddOns\\Signpost\\Media\\icon-round",
-		OnClick = function(_, button)
-			ns.SafeCall(function()
-				if button == "RightButton" then
-					Journal:Show("settings")
-				else
-					Journal:Toggle()
-				end
-			end)
-		end,
-		OnTooltipShow = function(tooltip)
-			tooltip:AddLine("Signpost", 1, 0.82, 0)
-			tooltip:AddLine(L["Left-click: open the Journal. Right-click: settings."], 1, 1, 1)
-		end,
-	})
-	if object and not icon:IsRegistered("Signpost") then
-		icon:Register("Signpost", object, ns.db.minimapButton)
-	end
-end)
+-- The minimap button, the AddOn Compartment entry, the quick menu and the key bindings are UI/Launcher.lua.
