@@ -142,7 +142,13 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   (the Skyborne's) cannot reach the other continents' class quests before it leaves, however hard they are pushed.
 - **The search is rough**: two settings that look alike (a width of 30 or 60, 4 or 8 parts to a level) can differ by hours on a guide with many class
   quests (the druids), and a wider beam is not always better. `thorough` runs several and keeps the best; read the baseline line of the report, which
-  says how much faster the result is than the greedy route, and distrust a route that is not clearly faster.
+  says how much faster the result is than the greedy route, and distrust a route that is not clearly faster. Measured on the Tauren Druid (beam, total =
+  play + zone-change cost + the class-quest charge): widths 20, 30 and 45 and 4 parts give 48h59, 44h40, 43h02 and 50h42; leaving the data and the settings
+  alone and changing `loot_seconds` from 4 to 4.1 gives 50h33, and `interact_seconds` from 12 to 12.5 gives 53h38. The play time moves less (24h57 to
+  29h36 over those six runs) than the total; most of the swing is the charge for class quests done late (15 to 24 hours), i.e. whether the beam happened
+  to hold a route that makes the Moonglade trip early. So a total is comparable only between runs of the same data and settings, and a change of data is
+  judged by the play time and the "done at level" line of the class quests, or by the deterministic `greedy` preset (the escorts and events above cost it
+  23 to 45 minutes of play on the three guides).
 - **The quest log is not limited** (25 in Classic); the route may hold more at a moment than the game allows (backlog: `limit-the-quest-log`).
 - **The escort and event times are assumptions** (`escort_seconds`, `event_seconds`): Classic's escorts take about 5 to 12 minutes with their
   pauses, none is measured for Forever. The flag comes from QuestieDB's Classic baseline, so an escort Forever added is not flagged, and what the

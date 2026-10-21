@@ -102,17 +102,18 @@ def replay(events: list, rules: availability.Rules, assume_level: int = 1) -> li
         if not isinstance(event, dict):
             continue
         name = event.get("e")
-        args = event.get("a") if isinstance(event.get("a"), dict) else {}
+        first = svfiles.event_arg(event.get("a"), 1)  # integer-keyed in a real file (svfiles.event_arg), string-keyed in a JSON copy
+        first = first if isinstance(first, int) and not isinstance(first, bool) else None
         state = event.get("s") if isinstance(event.get("s"), dict) else {}
-        if name == "QUEST_ACCEPTED" and isinstance(args.get("1"), int):
-            active.add(args["1"])
-        elif name == "QUEST_TURNED_IN" and isinstance(args.get("1"), int):
-            done.add(args["1"])
-            active.discard(args["1"])
-        elif name == "QUEST_REMOVED" and isinstance(args.get("1"), int):
-            active.discard(args["1"])
-        elif name == "PLAYER_LEVEL_UP" and isinstance(args.get("1"), int):
-            level = args["1"]
+        if name == "QUEST_ACCEPTED" and first is not None:
+            active.add(first)
+        elif name == "QUEST_TURNED_IN" and first is not None:
+            done.add(first)
+            active.discard(first)
+        elif name == "QUEST_REMOVED" and first is not None:
+            active.discard(first)
+        elif name == "PLAYER_LEVEL_UP" and first is not None:
+            level = first
         elif name in ("GOSSIP_SHOW", "QUEST_GREETING"):
             standing = state.get("standing") if isinstance(state.get("standing"), dict) else {}
             if isinstance(standing.get("level"), int):
