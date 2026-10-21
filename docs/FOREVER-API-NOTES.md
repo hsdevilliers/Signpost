@@ -382,8 +382,9 @@ Launcher: the minimap button, the quick menu, the AddOn Compartment and the key 
   on its root description are not yet): a right-click on the minimap button and on the step card opens it at the cursor with the title,
   the buttons, the three check boxes and the dividers laid out as in `docs/INTERACTIONS.md`; a check box click keeps the menu open and shows
   the new state; a button click closes it and does its action; "Show the step card" unchecked hides the card, which is the menu's owner (the
-  menu then closes with it): is that acceptable? Without a Menu system the fallback (Settings tab, or the Journal from the card) is
-  never seen on Forever if this works.
+  menu then closes with it): is that acceptable? Opened during combat the menu and its entries raise no taint warning or
+  `ADDON_ACTION_BLOCKED` (the plan's acceptance for the Journal: it must just open). Without a Menu system the fallback (Settings tab, or
+  the Journal from the card) is never seen on Forever if this works.
 - [ ] **The AddOn Compartment**: a right-click on Signpost's entry reaches `Signpost_OnAddonCompartmentClick("Signpost", "RightButton")` (the
   Blizzard source registers entries for any click; not seen on Forever); our menu, opened one frame later with `C_Timer.After(0, ...)`,
   appears and is not closed by the compartment (and: is the delay needed? opening it at once is the simpler code); `IsShiftKeyDown()`

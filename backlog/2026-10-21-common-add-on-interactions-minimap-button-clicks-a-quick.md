@@ -1,12 +1,14 @@
 ---
 title: Common add-on interactions: minimap button clicks, a quick menu, key bindings (the usual conventions)
 kind: feature
-status: doing
+status: done
 priority: normal
 area: ui
 source: user
 raised: 2026-10-21
 raised_in: the user, 2026-10-21 (batch 1, WP-I)
+closed: 2026-10-21
+resolution: Batch 1, branch feat/launcher-interactions (WP-I; the PR number follows): the conventions researched and written down with their sources (docs/INTERACTIONS.md); the minimap button (left = Journal, Shift-left = step card, right = quick menu, tooltip with where you are), the AddOn Compartment click and hover, the quick menu shared with the step card's right-click, six key bindings (Bindings.xml), Show and Lock the minimap button in the Settings tab, /signpost card and /signpost minimap. Specs and mutation checks pass. Not seen in the game: the play check is the item launcher-in-the-game-quick-menu-compartment-right-click-key, the probes are in FOREVER-API-NOTES (Launcher).
 ---
 
 ## What

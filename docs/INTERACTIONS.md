@@ -120,10 +120,13 @@ its reason:
    obvious.
 8. **The Settings tab's check boxes are drawn at 26 instead of 32** (`CHECK_SIZE` in `UI/Journal.lua`). The first column now holds eleven
    boxes, and at the template's size the card steppers and the profession line would have run over the buttons at the bottom. Eleven
-   smaller rows take the room nine took. This was worked out from the code, not seen in the client (probe below).
+   smaller rows take the room nine took. This was worked out from the code, not seen in the client (probe below). The pane is full, though:
+   the next setting needs a scrolling or a second page (backlog: *the-journal-s-settings-tab-is-full*).
 9. **Not done: a LibDataBroker data source with the current step as its text** (for Titan Panel, ChocolateBar and the like). The launcher
    object already appears in those bars with its icon, tooltip and clicks; a text-bearing second object is a small addition but nobody can
-   confirm it without such a bar, so it is a backlog item rather than code.
+   confirm it without such a bar, so it is a backlog item rather than code (backlog: *a-libdatabroker-data-source-with-the-current-step*).
+10. **`Launcher:Where()` builds the step card's `<chapter> · step i/N` text a second time** instead of calling the card's own function, so
+    that `UI/StepFrame.lua` is touched only in `OnRightClick` while other work edits it (backlog: *launcher-where-copies-the-step-card-s-header*).
 
 ## 4. What only the real client can confirm
 
