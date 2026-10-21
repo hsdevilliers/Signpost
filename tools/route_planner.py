@@ -579,7 +579,7 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
             "completed     ",
             f"{len(p['completed'])} more quests the search left unfinished were finished instead (completeness {pl.s.completeness:.2f}, trips up to "
             f"{pl.s.completeness_trip:g} s): the route stops at their objectives right after the pick-up: {names}" + (" ..." if len(p["completed"]) > 6 else "")
-            + (f"; {unplaced} of them have an objective with no position in the data, which the planner works where the quest is picked up, with no walk"
+            + (f"; {unplaced} with an objective that has no position in the data, which the planner works where the quest is picked up, with no walk"
                if unplaced else ""),
         ):
             out(line)
@@ -681,7 +681,7 @@ def report_left_out(out: Out, pl: engine.Planner, plan: engine.Plan, limit: int 
     summary = ", ".join(f"{n} {names.get(code, code)}" for code, n in sorted(codes.items(), key=lambda kv: (-kv[1], near_first.get(kv[0], 5))))
     unplaced = sum(1 for r in records if r.get("unplaced"))
     out(f"unfinished    {len(records)} quests the search picked up on the way and did not finish are not in the route ({summary})"
-        + (f"; {unplaced} of them have an objective with no position in the data:" if unplaced else ":"))
+        + (f"; {unplaced} with an objective that has no position in the data:" if unplaced else ":"))
     shown = sorted(records, key=lambda r: (near_first.get(r["code"], 5), -r["ratio"]))[:limit]
     for r in shown:
         for line in labelled(

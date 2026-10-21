@@ -1156,17 +1156,20 @@ class Planner:
         return q is not None and any(not o.spots for o in q.objectives)
 
     def _pickups(self, plan: Plan) -> dict[int, tuple]:
-        """Where each quest of this route was picked up: {quest: (the character's level, the place, the hub's name)}, the first time."""
+        """Where each quest of this route was picked up, the first time: {quest: (the character's level, the place, the hub's name, whether the route goes
+        on to a hub where the quest is handed in)}."""
         found: dict[int, tuple] = {}
         path, st = [], plan.final
         while st is not None and st.visit is not None:
             path.append(st)
             st = st.parent
         path.reverse()
-        for state in path:
+        for index, state in enumerate(path):
             for a in state.visit.actions:
                 if a.kind == "accept" and a.quest not in found:
-                    found[a.quest] = (state.level, a.place, self.hubs[state.visit.hub].label if state.visit.hub is not None else "")
+                    later = {s.visit.hub for s in path[index + 1 :] if s.visit.hub is not None}
+                    found[a.quest] = (state.level, a.place, self.hubs[state.visit.hub].label if state.visit.hub is not None else "",
+                                      bool(later & set(self.quests[a.quest].end_hubs)))
         return found
 
     def _finishable(self, plan: Plan, candidates: set) -> tuple[dict, dict]:
@@ -1198,10 +1201,11 @@ class Planner:
                 continue
             place = next(a.place for a in plan.visits[picked].actions if a.kind == "accept" and a.quest == qid)
             far, objective_hubs, end_seconds, end_hub = self.trip(q, place)
-            if far > s.completeness_trip or end_seconds > s.completeness_trip:
+            passes = bool({h for h in hubs[picked + 1 :] if h is not None} & set(q.end_hubs))  # the route goes on to a hub where it is handed in
+            if far > s.completeness_trip or (end_seconds > s.completeness_trip and not passes):
                 continue
             visiting = list(objective_hubs)
-            if end_hub not in set(h for h in hubs[picked + 1 :] if h is not None) and (not visiting or visiting[-1] != end_hub):
+            if not passes and (not visiting or visiting[-1] != end_hub):
                 visiting.append(end_hub)
             lifts.setdefault(picked, set()).add(qid)
             stops.setdefault(picked, []).extend(visiting)
@@ -1213,7 +1217,7 @@ class Planner:
         route walks), handin (the place to hand it in is), level (it could not be worked then), unfinished (a stop was added and it still was not
         finished)."""
         q, s = self.quests[qid], self.s
-        picked_level, place, hub = found if found else (None, q.start_places[0], "")
+        picked_level, place, hub, passes = found if found else (None, q.start_places[0], "", False)
         level = max(1, picked_level or 1)
         far, _hubs, end_seconds, _end = self.trip(q, place)
         rate, pace = self._quest_rate(q, level), self.xp_pace(level)
@@ -1228,7 +1232,7 @@ class Planner:
                    if level < s.cap else "the route had reached the cap")
         elif far > reach:
             code, why = "far", f"its objectives are {far:.0f} s of walking away (the route walks up to {reach:.0f} s for a quest it picked up)"
-        elif end_seconds > reach:
+        elif end_seconds > reach and not passes:
             code, why = "handin", f"it is handed in {end_seconds:.0f} s of walking away and the route does not pass there"
         else:
             code = "price"

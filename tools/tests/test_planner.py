@@ -910,6 +910,9 @@ class CompletenessTest(PlannerCase):
             self.QA: {"n": "Camp Cleanup", "r": 1, "l": 2, "o": [{"id": 1010, "k": "kill"}], **HOME},
             301: {"n": "Far Hunt", "r": 1, "l": 2, "o": [{"id": 1011, "k": "kill"}], **HOME},
             302: {"n": "Too Early", "r": 1, "l": 6, "o": [{"id": 1010, "k": "kill"}], **HOME},  # six levels above a level 1 character: not to be worked yet
+            303: {"n": "Far Ender", "r": 1, "l": 2, "o": [{"id": 1010, "k": "kill"}], "s": START, "e": {"npc": [1003]}, "side": "Horde"},  # the camp, handed in 96 s away
+            304: {"n": "Find The Thing", "r": 1, "l": 2, "o": [{"id": 9999, "k": "item"}], "s": START, "e": {"npc": [1003]}, "side": "Horde"},  # no position
+            305: {"n": "Two Camps", "r": 1, "l": 2, "o": [{"id": 1011, "k": "kill"}, {"id": 1010, "k": "kill"}], **HOME},  # the far boar (86 s) and the camp
             **extra,
         }
 
@@ -930,6 +933,11 @@ class CompletenessTest(PlannerCase):
         pl.rate_curve[level] = pl._quest_rate(pl.quests[self.QA], level) / ratio
         pl._ratio.clear()
         return raw
+
+    def raw_at_giver(self, pl):
+        """The route as the search wrote it when it never left the giver's hub: everything offered there is accepted and nothing is worked elsewhere."""
+        giver = self.hubs(pl)[0]
+        return pl._finish(pl.visit(pl.start(giver), giver))
 
     def record(self, plan, quest=None):
         return next(r for r in plan.stats["left_out"] if r["quest"] == (quest or self.QA))
@@ -956,6 +964,8 @@ class CompletenessTest(PlannerCase):
         self.assertEqual(written.stats["completed"], [])
         r = self.record(written)
         self.assertEqual((r["code"], r["quest"], r["level"]), ("price", self.QA, 2))
+        self.assertEqual(r["picked_level"], written.visits[0].level)  # where and when it was picked up
+        self.assertIn("Giver", r["hub"])
         self.assertAlmostEqual(r["trip"], 160 / guide_travel.WALK_SPEED, places=1)
         self.assertAlmostEqual(r["ratio"], 0.8, places=2)
         self.assertGreater(r["rate"], 0.0)
@@ -972,7 +982,7 @@ class CompletenessTest(PlannerCase):
         written = pl.tidy(self.raw(pl), giver)
         self.assertIn(self.QA, written.final.done)
         self.assertEqual(written.final.active, {})
-        self.assertEqual(written.stats["completed"], [self.QA])
+        self.assertEqual(written.stats["completed"], [self.QA, 303])  # (303 is worked in the same stop, and handed in where the route goes on to)
         self.assertNotIn(self.QA, written.stats["removed"])
         hubs = [v.hub for v in written.visits]
         self.assertEqual(hubs[:3], [giver, camp, giver])  # picked up, the objectives right after, back to hand it in (the route does not pass there again)
@@ -983,6 +993,7 @@ class CompletenessTest(PlannerCase):
         self.assertGreaterEqual(written.visits[1].seconds, 160 / guide_travel.WALK_SPEED)  # the trip is in the route's time: the walk to the camp
         self.assertEqual([r["quest"] for r in written.stats["left_out"] if r["quest"] == self.QA], [])  # and it is not left out any more
         self.assertNotIn(self.QA, before.final.done)  # (what the same route does without)
+        self.assertEqual(pl.tidy(written, giver).stats["completed"], [self.QA, 303])  # a plan tidied again still says what it saved
 
     def test_completeness_off_changes_nothing(self):
         pl = self.camp()
@@ -1063,6 +1074,63 @@ class CompletenessTest(PlannerCase):
         self.assertEqual(r["code"], "unfinished")
         self.assertIn("still did not finish it", r["why"])
 
+    def test_the_walk_to_hand_a_quest_in_counts_unless_the_route_goes_there_anyway(self):
+        pl = self.camp(completeness=0.01)
+        giver, camp, away = self.hubs(pl)
+        alone = pl.tidy(self.raw_at_giver(pl), giver)  # never goes to the hub where 303 is handed in, 96 s away
+        self.assertNotIn(303, alone.final.done)
+        r = self.record(alone, 303)
+        self.assertEqual(r["code"], "handin")
+        self.assertIn("handed in 96 s of walking away and the route does not pass there", r["why"])
+        passing = self.camp(completeness=0.01)  # this one goes on to that hub: the hand-in costs nothing
+        written = passing.tidy(self.raw(passing), giver)
+        self.assertIn(303, written.final.done)
+        self.assertEqual([v.hub for v in written.visits].count(away), 1)  # (no stop of its own there)
+        wide = self.camp(completeness=0.01, completeness_trip=100.0)
+        self.assertIn(303, wide.tidy(self.raw_at_giver(wide), giver).final.done)  # a trip of 100 s covers it, with a stop at the hand-in
+
+    def test_an_objective_with_no_position_is_unplaced_and_the_records_and_the_count_say_so(self):
+        pl = self.camp(completeness=0.01, completeness_trip=120.0)
+        giver = self.hubs(pl)[0]
+        self.assertTrue(pl.unplaced(304))
+        self.assertTrue(pl.unplaced(216))
+        for placed in (self.QA, 201, 99999):  # an objective with a position, none at all, a quest nobody routes
+            self.assertFalse(pl.unplaced(placed), placed)
+        written = pl.tidy(self.raw_at_giver(pl), giver)
+        self.assertIn(304, written.stats["completed"])  # worked where it is picked up, handed in 96 s away: a stop for that
+        self.assertEqual(written.stats["completed_unplaced"], [304])  # and counted, because its work was planned with no walk at all
+        short = self.camp(completeness=0.01)
+        left = short.tidy(self.raw_at_giver(short), giver)
+        r = self.record(left, 304)
+        self.assertEqual((r["code"], r["unplaced"]), ("handin", True))
+        self.assertIn("an objective of it has no position in the data", r["why"])
+        self.assertFalse(self.record(left, 303)["unplaced"])
+        self.assertNotIn("no position", self.record(left, 303)["why"])
+
+    def test_a_quest_with_two_objectives_is_walked_to_the_farthest_and_the_stops_go_nearest_first(self):
+        pl = self.camp()
+        giver, camp, _away = self.hubs(pl)
+        q = pl.quests[305]
+        far_hub = pl.quests[301].objectives[0].hubs[0]
+        far, stops, _end_seconds, end_hub = pl.trip(q, q.start_places[0])
+        self.assertAlmostEqual(far, 600 / guide_travel.WALK_SPEED)  # the far boar, 86 s
+        self.assertEqual((stops, end_hub), ([camp, far_hub], giver))
+        self.assertEqual(pl.trip(pl.quests[201], pl.quests[201].start_places[0])[:2], (0.0, []))  # no objective: nothing to walk to
+
+    def test_a_quest_picked_up_at_the_cap_is_not_finished(self):
+        pl = self.camp(completeness=0.01)
+        raw = self.raw(pl)
+        self.assertEqual(pl._finishable(raw, {self.QA})[0], {0: {self.QA}})
+        pl.s = dataclasses.replace(pl.s, cap=raw.visits[0].level)
+        self.assertEqual(pl._finishable(raw, {self.QA}), ({}, {}))  # at the cap nothing that is not a class quest pays
+
+    def test_a_calibration_forgets_the_ratios_it_made_before(self):
+        pl = self.camp()
+        plan = pl.plan("greedy", self.hubs(pl)[0])
+        pl._ratio[(self.QA, 1)] = 123.0
+        pl.calibrate(plan)
+        self.assertEqual(pl._ratio, {})
+
     def test_nothing_is_dropped_silently(self):
         pl = self.camp()
         written = pl.tidy(self.raw(pl), self.hubs(pl)[0])
@@ -1092,6 +1160,7 @@ class SettingsTest(unittest.TestCase):
     def test_settings_are_frozen_and_replaceable(self):
         s = engine.Settings()
         self.assertEqual((s.cap, s.hub_radius, s.zone_friction), (30, 150.0, 180.0))
+        self.assertEqual((s.completeness, s.completeness_trip), (0.0, 30.0))  # completeness is off until the user has chosen a value
         self.assertEqual(dataclasses.replace(s, cap=20).cap, 20)
         with self.assertRaises(dataclasses.FrozenInstanceError):
             s.cap = 5  # type: ignore[misc]

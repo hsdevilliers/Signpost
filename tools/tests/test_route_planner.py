@@ -279,7 +279,7 @@ class SearchReportTest(unittest.TestCase):
         text = " ".join(self.report(settings, quests, finals=12, baseline_seconds=1000.0, chosen="beam", completed=[1, 2, 3], completed_unplaced=[2]).split())
         self.assertIn("completed 3 more quests the search left unfinished were finished instead (completeness 0.60, trips up to 40 s): "
                       "the route stops at their objectives right after the pick-up: Quest 1, Quest 2, Quest 3", text)
-        self.assertIn("; 1 of them have an objective with no position in the data", text)
+        self.assertIn("; 1 with an objective that has no position in the data", text)
         plain = " ".join(self.report(settings, quests, finals=12, baseline_seconds=1000.0, chosen="beam", completed=[1], completed_unplaced=[]).split())
         self.assertNotIn("no position in the data", plain)
         self.assertNotIn("more quests the search left unfinished", self.report(finals=12, baseline_seconds=1000.0, chosen="beam"))  # nothing finished: no line
@@ -354,8 +354,8 @@ class LeftOutReportTest(unittest.TestCase):
 
     def test_the_quests_with_an_objective_the_data_cannot_place_are_counted(self):
         text = " ".join(self.lines([self.record(1, unplaced=True), self.record(2), self.record(3, unplaced=True)]).split())
-        self.assertIn("; 2 of them have an objective with no position in the data:", text)
-        self.assertNotIn("have an objective with no position", " ".join(self.lines([self.record(1)]).split()))
+        self.assertIn("; 2 with an objective that has no position in the data:", text)
+        self.assertNotIn("no position in the data", " ".join(self.lines([self.record(1)]).split()))
 
     def test_a_long_list_is_cut_and_says_where_the_rest_is(self):
         text = " ".join(self.lines([self.record(n) for n in range(1, 21)], limit=5).split())
