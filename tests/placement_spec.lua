@@ -362,8 +362,11 @@ describe("Placement:Find", function()
 				local with = Placement:Find(g, thin)
 				assert.are.equal(Placement:Find(g, thin, { tolBase = 0, tolSpan = 0 }).index, with.index)
 				assert.is_true(with.index >= 74)
-				-- the same tolerance without the gate would have kept the pointer behind, at step 62
+				-- the same tolerance without the gate would have kept the pointer behind, at step 62...
 				assert.is_true(Placement:Find(g, thin, { gateLow = 0, gateHigh = 0 }).index <= 64)
+				-- ...and a gate that is half open, with half of it
+				local half = Placement:Find(g, thin, { gateLow = 0.3, gateHigh = 0.6 }).index
+				assert.is_true(half > 64 and half < with.index)
 			end)
 
 			it("holds the pointer at the end of a history of most quests done", function()
@@ -381,12 +384,25 @@ describe("Placement:Find", function()
 				assert.is_true(Placement:Find(g, snapshot, { tolBase = 0, tolSpan = 0 }).index >= 74)
 			end)
 
+			it("is not given to a pointer with nothing of the history behind it", function()
+				-- one trip, then quests 1 to 14 over levels 1 to 3. Quest 2 is in the log and nothing is done: the pointer
+				-- belongs behind the accept of quest 2, and the level 2 puts it there too (step 8). A pointer before quest 1
+				-- must not keep the whole tolerance: nothing shows that this character has played the guide up to there.
+				local steps = { "go" }
+				for _, text in ipairs(questline(1, 14)) do
+					steps[#steps + 1] = text
+				end
+				local g = guide({ { levels = { 1, 3 }, steps = steps } })
+				assert.are.equal(8, Placement:Find(g, snap({ level = 2, active = { 2 } })).split)
+			end)
+
 			it("is not given to a character with no history: the level is all there is", function()
 				local g = guide(LONG)
-				assert.are.equal(
-					Placement:Find(g, snap({ level = 13 }), { tolBase = 0, tolSpan = 0 }).index,
-					Placement:Find(g, snap({ level = 13 })).index
-				)
+				local alone = snap({ level = 13 })
+				local without = Placement:Find(g, alone, { tolBase = 0, tolSpan = 0 }).index
+				assert.are.equal(without, Placement:Find(g, alone).index)
+				-- not even when the gate that would have shut it is off
+				assert.are.equal(without, Placement:Find(g, alone, { gateLow = 0, gateHigh = 0 }).index)
 			end)
 		end)
 

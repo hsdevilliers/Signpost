@@ -386,9 +386,9 @@ function Placement:Fit(labels, stats, lv, top, span, snapshot, opts)
 					-- the history outweighs a level that is a little off: more in a long chapter, whose line is the less
 					-- certain, and only as far as the quests show the character playing the guide up to here
 					local tolerance = tolBase + tolSpan * (span[k] or 0)
-					local labeled = open + done
-					if gateHigh > gateLow and labeled > 0 then
-						local share = done / labeled
+					if gateHigh > gateLow then
+						local labeled = open + done
+						local share = labeled > 0 and done / labeled or 0 -- nothing before k: nothing shows it
 						tolerance = tolerance * math.min(1, math.max(0, (share - gateLow) / (gateHigh - gateLow)))
 					end
 					gap = math.max(0, gap - tolerance)
