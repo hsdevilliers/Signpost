@@ -590,7 +590,9 @@ Step 7 — **cross-check & gap report** (`tools/report_gaps.py`): quests with no
 without a trainer, zone pairs with no crossing coordinates. The in-game **Learn** module fills gaps as the user plays: NPC positions
 on `QUEST_ACCEPTED`, `QUEST_TURNED_IN`, `GOSSIP_SHOW`, `TRAINER_SHOW`, `MERCHANT_SHOW` (via `UnitGUID("npc")` → npcID and the
 player's position); flight-master and dock positions on `TAXIMAP_OPENED` and on boarding; **zone crossings** on `ZONE_CHANGED_NEW_AREA`
-(last position in the old zone + first in the new one). `tools/import_savedvars.py --merge-learned` folds all of it into the data pack with `src="learned"`.
+(last position in the old zone + first in the new one); **profession data** on `TRAINER_SHOW`/`TRAINER_UPDATE` and the `TRADE_SKILL_*`
+events (what each trainer teaches and charges; each trade skill window's recipes with item, reagents and the difficulty at the
+character's skill: `Core/LearnProfessions.lua`, filed under `professions[skillLine]`). `tools/import_savedvars.py --merge-learned` folds all of it into the data pack with `src="learned"`.
 
 Other sources (note licenses): QuestieDB Forever branch — since 2026-10-17 a layer of the private pack (decided above:
 `tools/questie_import.py`, facts only; GPL, so never copied into this public repo), wago.tools Forever client tables

@@ -804,6 +804,28 @@ describe("Core/LearnProfessions", function()
 			assert.is_table(world)
 		end)
 
+		it("shows the new counts in the consent window", function()
+			local ns, mock, world, win = load({ release = true })
+			ns.Contribute:SetEnabled(true)
+			talkTo(world, TRAINER, "Trainer")
+			win.trainer.services = betaServices()
+			win.trade.recipes = alphaRecipes()
+			mock.fire("TRAINER_SHOW")
+			openTradeSkill(mock)
+			ns.UI.Contribute:Show()
+			local frame = ns.UI.Contribute.frame
+			local shown
+			frame.State.SetText = function(_, text)
+				shown = text
+			end
+			ns.UI.Contribute:Refresh()
+			assert.are.equal(
+				"Recorded so far: 1 NPCs, 0 objects, 0 quests, 0 flight nodes, 0 zone crossings, 3 trainer services, 3 recipes.",
+				shown
+			)
+			assert.are.same({}, mock.errors)
+		end)
+
 		it("counts what it recorded for /signpost learned", function()
 			local ns, mock, world, win = load()
 			talkTo(world, TRAINER, "Trainer")
