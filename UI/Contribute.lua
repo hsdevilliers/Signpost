@@ -23,10 +23,11 @@ local function text(parent, font, anchor, offsetY, content)
 	return line
 end
 
--- VERIFY(beta): layout and templates in the real client (FOREVER-API-NOTES "Open probes"); specs run on a mock.
--- VERIFY(beta): layout and templates in the real client (FOREVER-API-NOTES "Open probes"); specs run on a mock.
+-- VERIFY(beta): layout and templates in the real client (FOREVER-API-NOTES "Open probes"); specs run on a mock. The
+-- text names everything the recorder keeps about the player (docs/SHARING-DATA.md has the same list), which made it
+-- longer: the window is 30 taller than it was.
 function Window:Create()
-	local frame = UI:CreateDialogFrame(WINDOW_NAME, 500, 440)
+	local frame = UI:CreateDialogFrame(WINDOW_NAME, 500, 470)
 	UI:SetDialogTitle(frame, L["Help improve Signpost"])
 	local host = UI:DialogHost(frame)
 
@@ -43,7 +44,9 @@ function Window:Create()
 			.. L["where boats and zeppelins dock, what trainers teach and charge, and the recipes in your profession windows, "]
 			.. L["so the guides get better. "]
 			.. L["Only IDs, names of NPCs, objects, flight nodes, places, spells and recipes, trainer prices "]
-			.. L["and map positions are recorded. "]
+			.. L["and map positions are recorded, with four things about you: your skill in a profession next to each recipe, "]
+			.. L["whether you already know a service a trainer offers, "]
+			.. L["how long a boat or zeppelin ride took, and your faction. "]
 			.. L["No chat, none of your gold and no player or pet names."]
 	)
 
@@ -93,7 +96,7 @@ function Window:Create()
 		end)
 	end)
 
-	frame.Check, frame.State, frame.Change = check, state, change
+	frame.What, frame.Check, frame.State, frame.Change = what, check, state, change
 	frame:Hide()
 	return frame
 end
