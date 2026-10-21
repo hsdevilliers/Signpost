@@ -25,3 +25,6 @@ The Forever layer of the pack comes from the client's dumps and positions learne
 ## Notes
 
 - The friend's hardcore-druid SavedVariables (import path) are the natural second source.
+- First data point (2026-10-21, from the lead): the five distinct quests the user's characters accepted in their first Skyborne/Troll session
+  (92460, 92461, 92462, 92463 and 97279) are ALL in the pack's Quests.lua. So the Infestation Investigation omission (92462) is the planner, not the
+  data. The full audit (every accepted quest of a recorded session against the pack and the guides) is still open.
