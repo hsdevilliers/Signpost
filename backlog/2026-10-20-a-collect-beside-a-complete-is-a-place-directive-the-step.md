@@ -33,3 +33,6 @@ follow), or give the guide a way to say it (a DSL change: ask first).
 
 No shipped guide uses `.collect` yet (the drafted chapters write item objectives as `.complete <quest>,<objective>`), so nothing
 changes today.
+
+Batch 1 (2026-10-21): decided that nothing changes while no shipped guide uses `.collect` (`.collect` stays a place directive, `isPlace`
+untouched). The item stays open for the user's answer.

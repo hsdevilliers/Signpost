@@ -103,12 +103,13 @@ describe("completion", function()
 		assert.is_true(isComplete(ns, step, context))
 	end)
 
-	it("a step with nothing but optional quests completes once they are done", function()
+	it("a step with nothing but optional quests never holds the player up: see 'optional-only steps' below", function()
 		local step = mocks.step(ns, { ".goto 1411,42.1,68.7", ".accept 4402", ".optional 4402" })
 		context:Near(1411, 42.1, 68.7, 4)
 		local complete, detail = ns.Conditions:IsComplete(step, context, {})
-		assert.is_false(complete) -- the .goto is not the only completable directive
+		assert.is_true(complete) -- the quest is not in the log: nothing in the step waits for the player
 		assert.is_nil(detail.manual)
+		assert.is_false(detail[2]) -- its accept is not satisfied, though, and its line stays unmarked
 		context.log[4402] = true
 		assert.is_true(isComplete(ns, step, context))
 	end)
@@ -172,6 +173,203 @@ describe("completion", function()
 		assert.is_false(detail[2])
 		assert.are.equal(1, #ns.db.errors)
 		assert.truthy(ns.db.errors[1].msg:find("broken directive", 1, true))
+	end)
+end)
+
+-- A step whose completable directives all belong to `.optional` quests is how the planner writes a group quest of a
+-- normal route (docs/GUIDE-FORMAT.md "Optional-only steps"): it never holds the player up, unless the player took the
+-- quest, and then the quest is not skipped under their feet.
+describe("optional-only steps (group quests)", function()
+	local ns, context
+	before_each(function()
+		ns = mocks.load({
+			pack = { quests = { [442] = { n = "Assault on Fenris Isle" }, [443] = { n = "Second Hunt" } } },
+		})
+		context = mocks.context()
+	end)
+
+	-- The three shapes the planner writes for one group quest: go and take it, do it, hand it in (and all in one).
+	local ACCEPT = { ".goto 1421,65.7,23.7", ".accept 442", ".optional 442" }
+	local DOING = { ".goto 1421,65.7,23.7", ".complete 442", ".optional 442" }
+	local HAND_IN = { ".goto 1421,43.4,40.9", ".turnin 442", ".optional 442" }
+	local ALL_IN_ONE = {
+		".goto 1421,65.7,23.7",
+		".accept 442",
+		'.todo "Assault on Fenris Isle: objective 1 has no position in the pack"',
+		".complete 442,1",
+		".complete 442,2",
+		".turnin 442",
+		".optional 442",
+	}
+
+	it("never holds the player up while none of its quests is in the quest log", function()
+		for _, lines in ipairs({ ACCEPT, DOING, HAND_IN, ALL_IN_ONE }) do
+			local complete, detail = ns.Conditions:IsComplete(mocks.step(ns, lines), context, {})
+			assert.is_true(complete, lines[2])
+			assert.is_nil(detail.manual, lines[2])
+		end
+		-- the directives themselves are not satisfied: their lines stay unmarked
+		local _, detail = ns.Conditions:IsComplete(mocks.step(ns, DOING), context, {})
+		assert.is_false(detail[2])
+	end)
+
+	it("is the same for the parser's shape: no .optional line among the directives, step.optional instead", function()
+		local step = mocks.step(ns, { ".goto 1421,65.7,23.7", ".complete 442", ".optional 442" })
+		table.remove(step.directives) -- Engine/Parser.lua keeps .optional out of step.directives
+		assert.is_true(isComplete(ns, step, context))
+		context.log[442] = true
+		context.objectives[442] = { { text = "Fenris Keep: 0/1", finished = false } }
+		assert.is_false(isComplete(ns, step, context))
+	end)
+
+	it("is the same wherever the player stands: a .goto beside the quests places the pin and nothing else", function()
+		local step = mocks.step(ns, DOING)
+		context:Near(1421, 65.7, 23.7, 4000)
+		assert.is_true(isComplete(ns, step, context))
+		context.log[442] = true
+		context.objectives[442] = { { text = "Fenris Keep: 0/1", finished = false } }
+		context:Near(1421, 65.7, 23.7, 3) -- at the .goto, the quest still open: the .goto does not end the step
+		assert.is_false(isComplete(ns, step, context))
+	end)
+
+	it("a quest the player took decides the step, as in any step: it is not skipped under their feet", function()
+		context.log[442] = true
+		-- accepted: the accept line is satisfied
+		assert.is_true(isComplete(ns, mocks.step(ns, ACCEPT), context))
+		-- done step: the quest's objectives
+		context.objectives[442] = { { text = "Fenris Keep: 0/1", finished = false } }
+		assert.is_false(isComplete(ns, mocks.step(ns, DOING), context))
+		context.objectives[442][1].finished = true
+		assert.is_true(isComplete(ns, mocks.step(ns, DOING), context))
+		context.objectives[442][1].finished = false
+		context.ready[442] = true -- or the quest log says it can be handed in
+		assert.is_true(isComplete(ns, mocks.step(ns, DOING), context))
+		-- hand-in step: only the turn-in ends it
+		assert.is_false(isComplete(ns, mocks.step(ns, HAND_IN), context))
+		context.log[442], context.completed[442] = nil, true
+		assert.is_true(isComplete(ns, mocks.step(ns, HAND_IN), context))
+	end)
+
+	it("a step that does it all waits for every one of its lines once the quest is taken", function()
+		local step = mocks.step(ns, ALL_IN_ONE)
+		assert.is_true(isComplete(ns, step, context)) -- not taken: passed
+		context.log[442] = true
+		context.objectives[442] = { { text = "One: 0/1", finished = false }, { text = "Two: 0/1", finished = false } }
+		assert.is_false(isComplete(ns, step, context))
+		context.objectives[442][1].finished, context.objectives[442][2].finished = true, true
+		context.ready[442] = true
+		assert.is_false(isComplete(ns, step, context)) -- the turn-in is left
+		context.log[442], context.completed[442] = nil, true
+		assert.is_true(isComplete(ns, step, context))
+	end)
+
+	it("a quest the player has handed in already never holds it either", function()
+		context.completed[442] = true
+		for _, lines in ipairs({ ACCEPT, DOING, HAND_IN, ALL_IN_ONE }) do
+			assert.is_true(isComplete(ns, mocks.step(ns, lines), context), lines[2])
+		end
+	end)
+
+	it("of two optional quests only the one the player took decides", function()
+		local step = mocks.step(
+			ns,
+			{ ".goto 1421,65.7,23.7", ".complete 442", ".complete 443", ".optional 442", ".optional 443" }
+		)
+		assert.is_true(isComplete(ns, step, context)) -- neither taken
+		context.log[442] = true
+		context.objectives[442] = { { text = "One: 0/1", finished = false } }
+		assert.is_false(isComplete(ns, step, context)) -- 442 is open; 443 never mattered
+		context.objectives[442][1].finished = true
+		assert.is_true(isComplete(ns, step, context)) -- done with the one taken, the other left alone
+		context.log[443] = true -- and taking the other one as well makes it count too
+		context.objectives[443] = { { text = "Two: 0/1", finished = false } }
+		assert.is_false(isComplete(ns, step, context))
+	end)
+
+	it("an optional quest beside a directive that counts still does not count", function()
+		local step = mocks.step(ns, { ".goto 1421,43.4,40.9", ".turnin 446", ".accept 442", ".optional 442" })
+		assert.is_false(isComplete(ns, step, context))
+		context.completed[446] = true
+		assert.is_true(isComplete(ns, step, context)) -- the old rule: the group quest never mattered
+		assert.is_nil(ns.Conditions:OptionalOnly(step, context))
+	end)
+
+	it("a step with any other completable directive is not an optional-only step", function()
+		for _, line in ipairs({ ".level 5", ".skill skinning 5", ".train class", ".buy 401,5", ".craft 2152,1" }) do
+			local step = mocks.step(ns, { ".goto 1421,65.7,23.7", ".accept 442", line, ".optional 442" })
+			assert.is_nil(ns.Conditions:OptionalOnly(step, context), line)
+			assert.is_false(isComplete(ns, step, context), line) -- the other directive decides
+		end
+	end)
+
+	it(
+		"a .todo or a .note beside the optional quests does not change that, and an .optional alone is not one",
+		function()
+			local step =
+				mocks.step(ns, { ".goto 1421,65.7,23.7", ".accept 442", ".note Bring a friend.", ".optional 442" })
+			assert.is_true(isComplete(ns, step, context))
+			assert.is_table(ns.Conditions:OptionalOnly(step, context))
+			-- no directive of the quest at all: a lone .goto decides, and the step is not an optional-only one
+			local lone = mocks.step(ns, { ".goto 1421,65.7,23.7", ".optional 442" })
+			assert.is_false(isComplete(ns, lone, context))
+			assert.is_nil(ns.Conditions:OptionalOnly(lone, context))
+			-- a step that is only a .todo and an .optional line waits for the player, as ever
+			local todo = mocks.step(ns, { '.todo "Group quest: IDs pending"', ".optional 442" })
+			assert.is_false(isComplete(ns, todo, context))
+			assert.is_nil(ns.Conditions:OptionalOnly(todo, context))
+		end
+	)
+
+	it("sticky directives beside it never hold it up either", function()
+		local step = mocks.step(ns, { ".accept 442", ".optional 442", ".sticky .level 5" })
+		assert.is_true(isComplete(ns, step, context))
+		assert.is_table(ns.Conditions:OptionalOnly(step, context))
+	end)
+
+	describe("OptionalOnly", function()
+		it("is nil for any step that is not one", function()
+			local conditions = ns.Conditions
+			assert.is_nil(conditions:OptionalOnly(nil, context))
+			assert.is_nil(conditions:OptionalOnly(mocks.step(ns, { ".goto 1421,1,1", ".accept 442" }), context))
+			assert.is_nil(conditions:OptionalOnly(mocks.step(ns, { ".note Only a note." }), context))
+			assert.is_nil(
+				conditions:OptionalOnly(mocks.step(ns, { ".accept 787", ".accept 442", ".optional 442" }), context)
+			)
+		end)
+
+		it(
+			"names the quests, once each in directive order, and which of them are still there for the taking",
+			function()
+				local step = mocks.step(ns, {
+					".goto 1421,65.7,23.7",
+					".accept 443",
+					".accept 442",
+					".complete 443",
+					".optional 442",
+					".optional 443",
+				})
+				local found = ns.Conditions:OptionalOnly(step, context)
+				assert.are.same({ 443, 442 }, found.quests)
+				assert.are.same({ 443, 442 }, found.available)
+				assert.is_false(found.taken)
+				assert.is_false(found.fulfilled)
+				context.log[443] = true -- in the log: no longer there for the taking
+				context.completed[442] = true -- handed in: done
+				found = ns.Conditions:OptionalOnly(step, context)
+				assert.are.same({}, found.available)
+				assert.is_true(found.taken)
+				assert.is_false(found.fulfilled) -- 443 is not complete yet
+				context.completed[443] = true
+				assert.is_true(ns.Conditions:OptionalOnly(step, context).fulfilled)
+			end
+		)
+
+		it("reads the quests from step.optional too, and takes the step's states, which it never needs", function()
+			local step = mocks.step(ns, { ".accept 442" })
+			step.optional = { [442] = true }
+			assert.are.same({ 442 }, ns.Conditions:OptionalOnly(step, context).quests)
+			assert.are.same({ 442 }, ns.Conditions:OptionalOnly(step, context, {}).available)
+		end)
 	end)
 end)
 
@@ -483,6 +681,213 @@ describe("pins", function()
 	end)
 end)
 
+-- A pick-up or hand-in step of several NPCs of an area: each NPC's .goto is followed by its directives, and each NPC
+-- has one pin with its own quests (docs/GUIDE-FORMAT.md "Step kinds", docs/ENGINE.md Conditions :Targets).
+describe("pins of a joined step", function()
+	-- Test data, not real: three quest givers a little over a percent apart (more than NEAR_PERCENT), each with a quest.
+	local PACK = {
+		quests = {
+			[787] = { n = "The Basics", s = { npc = { 101 } }, e = { npc = { 101 } } },
+			[788] = { n = "Next Door", s = { npc = { 102 } }, e = { npc = { 102 } } },
+			[789] = { n = "Third House", s = { npc = { 103 } }, e = { npc = { 103 } } },
+		},
+		npcs = {
+			[101] = { n = "Giver One", p = { { 1411, 43.29, 68.53 } } },
+			[102] = { n = "Giver Two", p = { { 1411, 42.06, 68.33 } } },
+			[103] = { n = "Giver Three", p = { { 1411, 40.47, 68.0 } } },
+		},
+	}
+	local THREE = {
+		".goto 1411,43.29,68.53",
+		".accept 787",
+		".goto 1411,42.06,68.33",
+		".accept 788",
+		".goto 1411,40.47,68.0",
+		".accept 789",
+	}
+
+	-- { kind, quests... } of each pin, and where it stands
+	local function summary(pins)
+		local out = {}
+		for i, pin in ipairs(pins) do
+			out[i] = { pin.kind, pin.x, unpack(pin.quests or {}) }
+		end
+		return out
+	end
+
+	it("without the data pack each pin names its own NPC's quests, and goes when they are done", function()
+		local ns = mocks.load()
+		local step, context = mocks.step(ns, THREE), mocks.context()
+		local pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ { "accept", 43.29, 787 }, { "accept", 42.06, 788 }, { "accept", 40.47, 789 } }, summary(pins))
+		assert.are.same(
+			{ 'Accept "Quest #787"', 'Accept "Quest #788"', 'Accept "Quest #789"' },
+			{ pins[1].label, pins[2].label, pins[3].label }
+		)
+		assert.are.same({ 787, 788, 789 }, { pins[1].questID, pins[2].questID, pins[3].questID })
+		-- one accepted: its pin is gone and the others do not name it
+		context.log[787] = true
+		pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ { "accept", 42.06, 788 }, { "accept", 40.47, 789 } }, summary(pins))
+		assert.are.same({ 'Accept "Quest #788"', 'Accept "Quest #789"' }, { pins[1].label, pins[2].label })
+		-- another one handed in already counts the same
+		context.completed[789] = true
+		assert.are.same({ { "accept", 42.06, 788 } }, summary(ns.Conditions:Targets(step, context, {})))
+		context.log[788] = true
+		assert.are.same({}, ns.Conditions:Targets(step, context, {})) -- nothing left to visit
+		assert.are.same({}, ns.db.errors)
+	end)
+
+	it("with the data pack each NPC's pin is the NPC, and it goes when its quests are done", function()
+		local ns = mocks.load({ pack = PACK })
+		local step, context = mocks.step(ns, THREE), mocks.context()
+		local pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ { "accept", 43.29, 787 }, { "accept", 42.06, 788 }, { "accept", 40.47, 789 } }, summary(pins))
+		assert.are.same({ 101, 102, 103 }, { pins[1].npc, pins[2].npc, pins[3].npc })
+		assert.are.equal('Accept "The Basics" from Giver One', pins[1].label)
+		assert.are.equal('Accept "Third House" from Giver Three', pins[3].label)
+		context.log[787] = true
+		pins = ns.Conditions:Targets(step, context, {})
+		-- not a generic "Go to" pin where the finished NPC stands: nothing is drawn there
+		assert.are.same({ { "accept", 42.06, 788 }, { "accept", 40.47, 789 } }, summary(pins))
+		assert.are.same({ 102, 103 }, { pins[1].npc, pins[2].npc })
+		context.log[788], context.log[789] = true, true
+		assert.are.same({}, ns.Conditions:Targets(step, context, {}))
+	end)
+
+	it("a turn-in and a pick-up at one NPC share its pin, whatever the other NPCs do", function()
+		local ns = mocks.load()
+		local step = mocks.step(ns, {
+			".goto 1411,43.29,68.53",
+			".turnin 787",
+			".accept 788",
+			".goto 1411,42.06,68.33",
+			".accept 789",
+		})
+		local context = mocks.context()
+		local pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ { "turnin", 43.29, 787, 788 }, { "accept", 42.06, 789 } }, summary(pins))
+		assert.are.equal('Turn in "Quest #787"\nAccept "Quest #788"', pins[1].label)
+		context.completed[787] = true
+		pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ { "accept", 43.29, 788 }, { "accept", 42.06, 789 } }, summary(pins))
+	end)
+
+	it("a directive before the first .goto marks the first .goto", function()
+		local ns = mocks.load()
+		local step =
+			mocks.step(ns, { ".accept 787", ".goto 1411,43.29,68.53", ".goto 1411,42.06,68.33", ".accept 788" })
+		local pins = ns.Conditions:Targets(step, mocks.context(), {})
+		assert.are.same({ { "accept", 43.29, 787 }, { "accept", 42.06, 788 } }, summary(pins))
+	end)
+
+	it("keeps the .goto's own '>>' text and adds the quests under it", function()
+		local ns = mocks.load()
+		local step = mocks.step(
+			ns,
+			{ ".goto 1411,43.29,68.53 >> Talk to the first", ".accept 787", ".goto 1411,42.06,68.33", ".accept 788" }
+		)
+		local pins = ns.Conditions:Targets(step, mocks.context(), {})
+		assert.are.equal('Talk to the first\nAccept "Quest #787"', pins[1].label)
+		assert.are.equal('Accept "Quest #788"', pins[2].label)
+	end)
+
+	it("a finished .goto does not take the pin of an NPC still to visit", function()
+		-- the two givers stand within the nearness limit of both .goto lines: the first .goto would take the second
+		-- giver's pin once its own giver's pin is gone, if it still drew
+		local ns = mocks.load({
+			pack = {
+				quests = {
+					[787] = { n = "The Basics", s = { npc = { 101 } } },
+					[788] = { n = "Next Door", s = { npc = { 102 } } },
+				},
+				npcs = {
+					[101] = { n = "Giver One", p = { { 1411, 43.0, 68.5 } } },
+					[102] = { n = "Giver Two", p = { { 1411, 43.2, 68.6 } } },
+				},
+			},
+		})
+		local step = mocks.step(ns, { ".goto 1411,43.0,68.5", ".accept 787", ".goto 1411,43.2,68.6", ".accept 788" })
+		local context = mocks.context()
+		assert.are.equal(2, #ns.Conditions:Targets(step, context, {}))
+		context.log[787] = true
+		local pins = ns.Conditions:Targets(step, context, {})
+		assert.are.equal(1, #pins)
+		assert.are.same({ "accept", 102, 43.2, 788 }, { pins[1].kind, pins[1].npc, pins[1].x, pins[1].questID })
+		assert.are.equal('Accept "Next Door" from Giver Two', pins[1].label)
+	end)
+
+	it("a .goto with nothing behind it that names a pin keeps its pin: a .goto-only step is unchanged", function()
+		local ns = mocks.load()
+		local context = mocks.context()
+		context:Near(1411, 43.29, 68.53, 0) -- standing on it changes nothing
+		local pins = ns.Conditions:Targets(mocks.step(ns, { ".goto 1411,43.29,68.53" }), context, {})
+		assert.are.same({ { "goto", 43.29 } }, summary(pins))
+		assert.are.equal("Go to map 1411 43.3, 68.5", pins[1].label)
+		-- two .goto lines and no directive at all
+		pins =
+			ns.Conditions:Targets(mocks.step(ns, { ".goto 1411,43.29,68.53", ".goto 1411,42.06,68.33" }), context, {})
+		assert.are.same({ { "goto", 43.29 }, { "goto", 42.06 } }, summary(pins))
+		-- a .note or a .level behind a .goto does not name a pin either, whether the .level is met (1) or not (3)
+		pins = ns.Conditions:Targets(
+			mocks.step(ns, { ".goto 1411,43.29,68.53", ".note Wait here.", ".goto 1411,42.06,68.33", ".level 3" }),
+			context,
+			{}
+		)
+		assert.are.same({ { "goto", 43.29 }, { "goto", 42.06 } }, summary(pins))
+		pins = ns.Conditions:Targets(
+			mocks.step(ns, { ".goto 1411,43.29,68.53", ".level 1", ".goto 1411,42.06,68.33", ".level 3" }),
+			context,
+			{}
+		)
+		assert.are.same({ { "goto", 43.29 }, { "goto", 42.06 } }, summary(pins))
+	end)
+
+	it("a step with one .goto is unchanged: it keeps its pin after everything behind it is done", function()
+		local ns = mocks.load()
+		local step = mocks.step(ns, { ".goto 1411,43.29,68.53", ".accept 787", ".accept 788", ".level 5" })
+		local context = mocks.context()
+		local pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ { "accept", 43.29, 787, 788 } }, summary(pins))
+		context.log[787], context.log[788] = true, true -- the .level is open: the step is still on screen
+		pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ { "goto", 43.29 } }, summary(pins))
+		assert.are.equal("Go to map 1411 43.3, 68.5", pins[1].label)
+	end)
+
+	it("a joined step whose NPCs are all done draws nothing, though it still waits for its other lines", function()
+		local ns = mocks.load()
+		local step = mocks.step(
+			ns,
+			{ ".goto 1411,43.29,68.53", ".accept 787", ".goto 1411,42.06,68.33", ".accept 788", ".level 5" }
+		)
+		local context = mocks.context({ log = { [787] = true, [788] = true } })
+		assert.are.same({}, ns.Conditions:Targets(step, context, {}))
+		assert.is_false(isComplete(ns, step, context))
+	end)
+
+	it("sticky pins do not take a .goto's place, and a sticky .goto is not one of the step's", function()
+		local ns = mocks.load()
+		local step = mocks.step(ns, {
+			".goto 1411,43.29,68.53",
+			".accept 787",
+			".sticky .goto 1411,50,50",
+			".goto 1411,42.06,68.33",
+			".accept 788",
+		})
+		local pins = ns.Conditions:Targets(step, mocks.context(), {})
+		assert.are.same({ { "accept", 43.29, 787 }, { "accept", 42.06, 788 }, { "goto", 50 } }, summary(pins))
+		assert.is_true(pins[3].sticky)
+		-- a step with a single .goto of its own is not a joined step because of a sticky one: its pin stays
+		step = mocks.step(ns, { ".goto 1411,43.29,68.53", ".accept 787", ".sticky .goto 1411,50,50" })
+		local context = mocks.context({ log = { [787] = true } })
+		pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ { "goto", 43.29 }, { "goto", 50 } }, summary(pins))
+		assert.is_nil(pins[1].sticky)
+		assert.is_true(pins[2].sticky)
+	end)
+end)
+
 -- A doing step (a .complete and no place directive) draws no markers: the quest log marks the objectives, the guide's
 -- markers steer the player to a place (docs/GUIDE-FORMAT.md "Step kinds").
 describe("step kinds", function()
@@ -720,6 +1125,31 @@ describe("display lines", function()
 		assert.are.equal("use", info[3].name)
 		-- a step of one quest reads like a step of five
 		assert.are.same({ 'Complete "Quest #787"' }, lines({ ".goto 1411,43.2,71.7", ".complete 787" }))
+	end)
+
+	it("says which quest each line is about, for a pin's tooltip", function()
+		local _, info = ns.Conditions:Describe(
+			mocks.step(ns, {
+				".goto 1411,43.29,68.53",
+				".accept 787",
+				".complete 788,2",
+				".turnin 789",
+				".level 5",
+				".note Up the ramp.",
+				".sticky .complete 790",
+			}),
+			context,
+			{}
+		)
+		assert.are.same(
+			{ "accept", "complete", "turnin", "level", "note", "complete" },
+			{ info[1].name, info[2].name, info[3].name, info[4].name, info[5].name, info[6].name }
+		)
+		assert.are.same({ 787, 788, 789 }, { info[1].quest, info[2].quest, info[3].quest })
+		assert.is_nil(info[4].quest) -- a .level and a .note are about no quest
+		assert.is_nil(info[5].quest)
+		assert.are.equal(790, info[6].quest) -- the sticky line comes last
+		assert.is_true(info[6].sticky)
 	end)
 
 	it("marks which quests of a doing step are done", function()

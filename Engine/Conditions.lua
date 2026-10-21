@@ -1,6 +1,7 @@
 -- ns.Conditions: a step's completion, pins and display lines, computed from its directives' defs
--- (Engine/Directives.lua; docs/GUIDE-FORMAT.md "Directives" has the rules), and whether it is a doing step, which draws
--- no pins ("Step kinds" below).
+-- (Engine/Directives.lua; docs/GUIDE-FORMAT.md "Directives" has the rules), whether it is a doing step, which draws
+-- no pins ("Step kinds" below), and whether it is an optional-only step, which never holds the player up
+-- ("Optional-only steps" below).
 --
 -- Every call into a def runs under ns.SafeCall: a broken directive (a class module's, say) loses only its own result
 -- and its error goes to the error log. `states` is ns.Progress:State(step.id): states[i] belongs to step.directives[i]
@@ -158,22 +159,15 @@ end
 
 -- Completion ----------------------------------------------------------------------------------------------------------
 
--- complete, detail. detail[i] is whether step.directives[i] is satisfied (nil for directives that cannot be);
--- detail.manual is true when the step can only be completed by the player's ">".
---
--- Rules (GUIDE-FORMAT): every completable directive must be satisfied; a .goto counts only as the step's only
--- completable directive (otherwise it just places the pin); directives about an .optional quest count only when
--- nothing else does; sticky directives never hold the step up, so a step with nothing but sticky ones is complete at
--- once (its stickies stay active beside later steps); a step with nothing completable (notes, text) waits for ">".
-function Conditions:IsComplete(step, context, states)
+-- The step's completable directives sorted by how they count (the rules at IsComplete): { detail = { [i] = whether
+-- step.directives[i] is satisfied (nil for directives that cannot be) }, counted = the results of the directives that
+-- count, optionals = { { quest, ok }, ... } the directives about an .optional quest, quests = those quests (each once),
+-- stickies = how many sticky directives the step has }.
+local function survey(step, context, states)
 	local detail = {}
-	if type(step) ~= "table" then
-		return false, detail
-	end
-	context = context or ns.Context
 	local optional = optionalQuests(step)
 	local completable, stickies = 0, 0
-	local gotos, counted, optionals = {}, {}, {}
+	local gotos, counted, optionals, quests, seen = {}, {}, {}, {}, {}
 	local list = entries(step, states)
 	-- A .todo never completes a step by itself, but beside another completable directive it is only a note: the step
 	-- finishes when those are satisfied (a step that is nothing but a .todo still waits for ">").
@@ -192,7 +186,11 @@ function Conditions:IsComplete(step, context, states)
 			completable = completable + 1
 			local questID = questOf(entry.directive)
 			if questID ~= nil and optional[questID] then
-				optionals[#optionals + 1] = ok
+				optionals[#optionals + 1] = { quest = questID, ok = ok }
+				if not seen[questID] then
+					seen[questID] = true
+					quests[#quests + 1] = questID
+				end
 			elseif entry.directive.name == "goto" then
 				gotos[#gotos + 1] = ok
 			else
@@ -203,7 +201,67 @@ function Conditions:IsComplete(step, context, states)
 	if completable == 1 and #gotos == 1 then
 		counted = gotos
 	end
-	local decisive = #counted > 0 and counted or optionals
+	return { detail = detail, counted = counted, optionals = optionals, quests = quests, stickies = stickies }
+end
+
+-- Whether the quest is in the quest log (the player took it) / flagged completed or turned in, by ns.Context.
+local function inLog(context, questID)
+	if type(context) ~= "table" then
+		return false
+	end
+	local _, found = call(context.QuestInLog, context, questID)
+	return found and true or false
+end
+
+local function turnedIn(context, questID)
+	if type(context) ~= "table" then
+		return false
+	end
+	local _, found = call(context.QuestCompleted, context, questID)
+	return found and true or false
+end
+
+-- Whether one of the quests is in the quest log.
+local function anyInLog(quests, context)
+	for _, questID in ipairs(quests) do
+		if inLog(context, questID) then
+			return true
+		end
+	end
+	return false
+end
+
+-- complete, detail. detail[i] is whether step.directives[i] is satisfied (nil for directives that cannot be);
+-- detail.manual is true when the step can only be completed by the player's ">".
+--
+-- Rules (GUIDE-FORMAT): every completable directive must be satisfied; a .goto counts only as the step's only
+-- completable directive (otherwise it just places the pin); directives about an .optional quest count only when
+-- nothing else does, and then only for the quests the player took: an *optional-only step* (see OptionalOnly) is
+-- complete at once while none of its quests is in the quest log, so a group quest the player does not take never holds
+-- the route up, and one the player did take is not skipped under their feet (its directives decide, as in any step);
+-- sticky directives never hold the step up, so a step with nothing but sticky ones is complete at once (its stickies
+-- stay active beside later steps); a step with nothing completable (notes, text) waits for ">".
+-- VERIFY(beta): the quest log is read when the engine first evaluates at PLAYER_LOGIN (FOREVER-API-NOTES "Open
+-- probes"); an empty log there would pass the optional-only step a character with its group quest is on.
+function Conditions:IsComplete(step, context, states)
+	if type(step) ~= "table" then
+		return false, {}
+	end
+	context = context or ns.Context
+	local found = survey(step, context, states)
+	local detail = found.detail
+	local decisive = found.counted
+	if #decisive == 0 and #found.optionals > 0 then
+		decisive = {}
+		for _, item in ipairs(found.optionals) do
+			if inLog(context, item.quest) then
+				decisive[#decisive + 1] = item.ok
+			end
+		end
+		if #decisive == 0 then
+			return true, detail
+		end
+	end
 	if #decisive > 0 then
 		for _, ok in ipairs(decisive) do
 			if not ok then
@@ -212,11 +270,46 @@ function Conditions:IsComplete(step, context, states)
 		end
 		return true, detail
 	end
-	if stickies > 0 then
+	if found.stickies > 0 then
 		return true, detail
 	end
 	detail.manual = true
 	return false, detail
+end
+
+-- Optional-only steps -------------------------------------------------------------------------------------------------
+-- A step whose completable directives all belong to `.optional` quests (a `.goto`, a `.todo` and the like beside them
+-- count for nothing) is an *optional-only step*: the planner writes each group quest of a normal route that way. It
+-- never holds the player up (IsComplete), the step card names its quest beside the steps before it, and the Journal
+-- tags it. nil for any other step; otherwise
+--   quests      the quests of its optional directives, in directive order, each once;
+--   available   those of them the player has neither in the quest log nor done: the ones still there for the taking;
+--   taken       one of them is in the quest log (the quests the player took decide the step, as in any step);
+--   fulfilled   every one of its optional directives is satisfied.
+function Conditions:OptionalOnly(step, context, states)
+	if type(step) ~= "table" or next(optionalQuests(step)) == nil then
+		return nil
+	end
+	context = context or ns.Context
+	local found = survey(step, context, states)
+	if #found.counted > 0 or #found.optionals == 0 then
+		return nil
+	end
+	local fulfilled, available = true, {}
+	for _, item in ipairs(found.optionals) do
+		fulfilled = fulfilled and item.ok
+	end
+	for _, questID in ipairs(found.quests) do
+		if not (inLog(context, questID) or turnedIn(context, questID)) then
+			available[#available + 1] = questID
+		end
+	end
+	return {
+		quests = found.quests,
+		available = available,
+		taken = anyInLog(found.quests, context),
+		fulfilled = fulfilled,
+	}
 end
 
 -- done, detail: whether every sticky directive of the step is satisfied (true for a step without any); detail[i] per
@@ -454,53 +547,92 @@ local function absorbNear(gotoPin, pins, gotoSet)
 end
 
 -- The step's pins, docs/ENGINE.md `target`s: its directives' targets (sticky ones marked sticky = true), without those
--- of satisfied directives (a .goto always keeps its pin). A directive with a `pin` kind that has no position (no data
--- pack, say) marks the step's first .goto pin with its kind and label instead; an NPC or object pin within a .goto's
--- radius merges into the .goto's; pins for the same NPC or object at the same spot merge. Every pin with a quest lists
--- its quests in `quests` (several after a merge). A doing step (see "Step kinds") draws none: its `.goto` and
--- `.complete` are not asked for pins at all (no other core directive of such a step has any; a sticky place directive
--- keeps its own).
+-- of satisfied directives. A directive with a `pin` kind that has no position (no data pack, say) marks the `.goto`
+-- that stands before it in the step (the first one when none does) with its kind and label instead, so a step that
+-- joins several NPCs of an area, each NPC's `.goto` followed by its directives, has one pin and one label for each of
+-- them; an NPC or object pin within a .goto's radius merges into the .goto's; pins for the same NPC or object at the
+-- same spot merge. Every pin with a quest lists its quests in `quests` (several after a merge). A `.goto` keeps its
+-- pin as long as the step is on screen, except in a joined step (two or more `.goto` lines): there a `.goto` whose
+-- directives, those with a `pin` kind behind it up to the next `.goto`, are all satisfied no longer draws: its NPC is
+-- done. A doing step (see "Step kinds") draws none: its `.goto` and `.complete` are not asked for pins at all (no
+-- other core directive of such a step has any; a sticky place directive keeps its own).
 function Conditions:Targets(step, context, states)
 	if type(step) ~= "table" then
 		return {}
 	end
 	context = context or ns.Context
 	local pins, gotoPins, gotoSet, claims = {}, {}, {}, {}
+	-- visits[n]: how many directives stand behind the n-th .goto with a pin kind (accept, turnin, ...), and how many of
+	-- them are not satisfied yet
+	local visits = {}
 	local list = entries(step, states)
 	local doing = isDoing(list)
 	for _, entry in ipairs(list) do
 		local def, directive = entry.def, entry.directive
 		local isGoto = directive.name == "goto"
 		local quiet = doing and (isGoto or directive.name == "complete")
-		if def and not quiet and not (isCompletable(def) and not isGoto and satisfied(entry, context)) then
-			local label = lineOf(entry, context)
-			local _, produced = call(def.targets, directive.args, context, entry.state)
-			local count = 0
-			for _, raw in ipairs(type(produced) == "table" and produced or {}) do
-				local pin = normalize(raw, entry, def, label)
-				if pin then
-					count = count + 1
-					pins[#pins + 1] = pin
-					if isGoto and not entry.sticky then
-						pin._generatedLabel = not entry.text or nil
-						gotoPins[#gotoPins + 1] = pin
-						gotoSet[pin] = true
+		if def and not quiet then
+			local done = isCompletable(def) and not isGoto and satisfied(entry, context)
+			local visit = math.max(#gotoPins, 1)
+			if def.pin and not isGoto and not entry.sticky then
+				local counts = visits[visit] or { named = 0, open = 0 }
+				visits[visit] = counts
+				counts.named = counts.named + 1
+				counts.open = counts.open + (done and 0 or 1)
+			end
+			if not done then
+				local label = lineOf(entry, context)
+				local _, produced = call(def.targets, directive.args, context, entry.state)
+				local count = 0
+				for _, raw in ipairs(type(produced) == "table" and produced or {}) do
+					local pin = normalize(raw, entry, def, label)
+					if pin then
+						count = count + 1
+						pins[#pins + 1] = pin
+						if isGoto and not entry.sticky then
+							pin._generatedLabel = not entry.text or nil
+							gotoPins[#gotoPins + 1] = pin
+							gotoSet[pin] = true
+						end
 					end
 				end
-			end
-			if count == 0 and def.pin and not entry.sticky then
-				local questID = questOf(directive)
-				claims[#claims + 1] = { kind = def.pin, label = label, questID = questID, quests = { questID } }
+				if count == 0 and def.pin and not entry.sticky then
+					local questID = questOf(directive)
+					claims[#claims + 1] =
+						{ kind = def.pin, label = label, questID = questID, quests = { questID }, visit = visit }
+				end
 			end
 		end
 	end
+	-- A joined step's .goto whose directives are all done draws nothing (decided before the NPC pins are merged into the
+	-- .goto pins, so that a finished .goto cannot take the pin of an NPC still to visit).
+	local finished = {}
+	if #gotoPins > 1 then
+		for n, gotoPin in ipairs(gotoPins) do
+			local counts = visits[n]
+			if counts and counts.named > 0 and counts.open == 0 then
+				finished[gotoPin] = true
+			end
+		end
+	end
+	if next(finished) then
+		local kept = {}
+		for _, pin in ipairs(pins) do
+			if not finished[pin] then
+				kept[#kept + 1] = pin
+			end
+		end
+		pins = kept
+	end
 	pins = mergeSameEntity(pins)
 	for _, gotoPin in ipairs(gotoPins) do
-		absorbNear(gotoPin, pins, gotoSet)
+		if not finished[gotoPin] then
+			absorbNear(gotoPin, pins, gotoSet)
+		end
 	end
-	if gotoPins[1] then
-		for _, claim in ipairs(claims) do
-			fold(gotoPins[1], claim)
+	for _, claim in ipairs(claims) do
+		if gotoPins[claim.visit] then
+			fold(gotoPins[claim.visit], claim)
 		end
 	end
 	local out = {}
@@ -516,8 +648,8 @@ end
 -- Display -------------------------------------------------------------------------------------------------------------
 
 -- lines, info: the step's display lines and, per line, { directive = index in its list, name = the directive's name,
--- sticky = true|nil, progress = true|nil (extra lines such as the class quest line), done = satisfied (completable
--- directives only) }.
+-- quest = the directive's quest (.accept, .turnin, .complete, ...) or nil, sticky = true|nil, progress = true|nil
+-- (extra lines such as the class quest line), done = satisfied (completable directives only) }.
 -- Order: the step's own lines, each followed by its progress lines, then the sticky ones. A ">>" override replaces a
 -- line's description; a .goto or .fish line without one shows only when the step has no other line (so a doing step,
 -- which has its quests, never shows its .goto: the player opens the map and looks where the quest log marks). A
@@ -537,7 +669,12 @@ function Conditions:Describe(step, context, states)
 		if line then
 			local item = {
 				text = line,
-				meta = { directive = entry.index, name = entry.directive.name, sticky = entry.sticky or nil },
+				meta = {
+					directive = entry.index,
+					name = entry.directive.name,
+					quest = questOf(entry.directive),
+					sticky = entry.sticky or nil,
+				},
 			}
 			if isCompletable(def) then
 				item.meta.done = satisfied(entry, context)

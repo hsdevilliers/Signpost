@@ -284,6 +284,90 @@ describe("Journal", function()
 			ns.Journal:Show()
 			assert.is_truthy(ns.Journal.frame.route.title:GetText():find("No guide", 1, true))
 		end)
+
+		-- A group quest of a normal route is an optional-only step for each stage (Engine/Conditions.lua OptionalOnly).
+		describe("group quests (optional-only steps)", function()
+			local GROUP = [[
+#chapter 1-6 Grove
+step
+  .goto 1411,30,30
+  .accept 9001
+step
+  .goto 1411,40,40
+  .accept 9500
+  .optional 9500
+step
+  .goto 1411,50,50
+  .complete 9500
+  .optional 9500
+step
+  .goto 1411,40,40
+  .turnin 9500
+  .optional 9500
+step
+  .goto 1411,30,30
+  .turnin 9001
+]]
+
+			local function startGrove(setup)
+				local ns, world, mock = start(setup)
+				assert.is_true(ns.Chapters:Register("grove", GROUP))
+				assert.is_true(ns.Guides:Register({
+					id = "test-group",
+					name = "Group",
+					faction = "*",
+					races = { "*" },
+					classes = { "*" },
+					levels = { 1, 10 },
+					text = "#include grove\n",
+				}))
+				assert.is_true(ns.Guides:Select("test-group"))
+				ns.Progress:Start() -- (the registry's choice did not change, so it announced nothing)
+				assert.are.equal("test-group", ns.Progress:Guide().id)
+				world.advance(1.1)
+				return ns, world, mock
+			end
+
+			it("tags the steps of a group quest in the route list", function()
+				local ns = startGrove()
+				ns.Journal:Show()
+				local steps = texts(ns.Journal.frame.route.steps)
+				assert.are.equal(5, #steps)
+				for i, text in ipairs(steps) do
+					assert.are.equal(i >= 2 and i <= 4, text:find("(group quest)", 1, true) ~= nil, text)
+				end
+				assert.is_truthy(steps[2]:find('Accept "Quest #9500"', 1, true))
+			end)
+
+			it("shows a step the route passed without the quest done as skipped, not as done", function()
+				local ns, world, mock = startGrove()
+				ns.Journal:Show()
+				world.log = { contextMock.quest(9001, { objectives = { contextMock.objective("Boar slain", 0, 3) } }) }
+				mock.fire("QUEST_ACCEPTED", 9001)
+				world.advance(1.1)
+				assert.are.equal("grove:5", ns.Progress:Current().id)
+				ns.Journal:Refresh()
+				local steps = texts(ns.Journal.frame.route.steps)
+				assert.is_truthy(steps[1]:find("[x]", 1, true)) -- 9001 is in the log
+				for i = 2, 4 do
+					assert.is_truthy(steps[i]:find("[-]", 1, true), steps[i]) -- the group quest was left
+					assert.is_nil(steps[i]:find("[x]", 1, true), steps[i])
+				end
+				assert.is_truthy(steps[5]:find(">", 1, true)) -- current
+			end)
+
+			it("shows them as done when the quest was done", function()
+				local ns = startGrove(function(world)
+					world.completed = { 9001, 9500 } -- the route is walked past them at once: the group quest is done too
+				end)
+				ns.Journal:Show()
+				local steps = texts(ns.Journal.frame.route.steps)
+				for i = 2, 4 do
+					assert.is_truthy(steps[i]:find("[x]", 1, true), steps[i])
+					assert.is_nil(steps[i]:find("[-]", 1, true), steps[i])
+				end
+			end)
+		end)
 	end)
 
 	describe("the guide picker", function()

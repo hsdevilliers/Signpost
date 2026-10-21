@@ -50,15 +50,31 @@ local function currentChapterIndex()
 	end
 end
 
-local function describe(step)
-	local p = progress()
-	if p and p.Describe then
-		local ok, text = ns.SafeCall(p.Describe, p, step)
-		if ok and type(text) == "string" then
-			return text
+-- What ns.Conditions:OptionalOnly says of a step made only of group (optional) quests, else nil.
+local function optionalOnly(step)
+	local conditions = ns.Conditions
+	if conditions and conditions.OptionalOnly then
+		local ok, found = ns.SafeCall(conditions.OptionalOnly, conditions, step, ns.Context)
+		if ok and type(found) == "table" then
+			return found
 		end
 	end
-	return tostring(step.id)
+end
+
+local function describe(step)
+	local p = progress()
+	local text = tostring(step.id)
+	if p and p.Describe then
+		local ok, described = ns.SafeCall(p.Describe, p, step)
+		if ok and type(described) == "string" then
+			text = described
+		end
+	end
+	-- a group quest says so first: a long line is cut at the row's edge
+	if optionalOnly(step) then
+		text = "|cff909090" .. L["(group quest)"] .. "|r " .. text
+	end
+	return text
 end
 
 -- Scroll lists ----------------------------------------------------------------------------------------------------
@@ -142,7 +158,9 @@ local function stepMark(step, current)
 	if step.index == current then
 		return MARK.current
 	elseif p and p:IsDone(step.id) then
-		return MARK.done
+		-- a group quest's step the route passed without the quest done: the player left it, they did not do it
+		local group = optionalOnly(step)
+		return (group and not group.fulfilled) and MARK.skipped or MARK.done
 	elseif p and p:IsSkipped(step.id) then
 		return MARK.skipped
 	end

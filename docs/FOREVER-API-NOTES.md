@@ -278,6 +278,10 @@ Quests and spells (Engine/Context.lua, Engine/Directives.lua, Engine/Progress.lu
 - [ ] `C_Item.GetItemNameByID` exists (`C_Item.GetItemInfo` does).
 - [ ] At login on a character with turned-in quests: does auto-skip happen at once (STEP_CHANGED "load") or only at the first
   `CONTEXT_CHANGED("quests")` ("auto")? Ties to the `GetAllCompletedQuestIDs` probe above.
+- [ ] At login on a character with a **group quest in the quest log** whose step is current: is the quest log read (`GetNumQuestLogEntries`,
+  `GetInfo`) when Progress first evaluates? An optional-only step (Engine/Conditions.lua `IsComplete`) is passed while its quest is not
+  in the log, so an empty log at `PLAYER_LOGIN` would pass the step under the player (the other steps just wait). (Accept a group quest,
+  `/reload`, read the step in `/signpost step`.)
 
 Professions (Core/Player.lua, Engine/Professions.lua, Engine/Directives.lua, Core/Learn.lua)
 - [ ] `GetProfessionInfo` keeps the retail return order (skill line 7th); the first two `GetProfessions` values are the
