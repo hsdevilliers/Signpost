@@ -95,7 +95,7 @@ Guides/, both TOCs and tools/drafts.json must be committed (else `--force`).
 2. `python tools/guide_lint.py --strict` (0 errors, 0 warnings); `python tools/guide_sim.py --check` (no findings); `& .\tools\check.ps1`.
 3. Post-checks from the repository root, PowerShell: `Select-String -Path Guides\Chapters\tauren-druid-*.lua -Pattern '<p>'` with <p> =
    `^\s*\.accept (6523|6544|6641|6482|4770|4904|6562|6563|92422|92706|97003|96241|96259|96260|96261|98251|98252|65601|99108)\b`: none (this review's skips);
-   `^\s*\.accept (850|879|906|1013|1150|1491|5147|6621|6921)\b`: none (A1's skips, once merged);
+   `^\s*\.accept (850|879|906|1013|1150|1491|5147|6621|6921)\b`: none (A1's skips, once merged; generation 2 has 8 lines);
    `^\s*\.accept (3094|5926|5922|5930|5932|6002|6126|6127|6128|6129|6130|26|28|30|31|98340|98405|98342|98739|98362)\b`: 20 lines (the class quests);
    `^\s*\.accept (745|1104|6442)\b`: 3 lines once E1's same-area fix has worked (generation 2 has 745 only); `\.todo`: about 72; `^\s*\.level`: about 13.
 4. The user's rule: `python gaps.py --root <worktree> --guide horde-tauren-druid --all` (scratch script of this review, method above) prints the gaps and exits 1 when there are any:
