@@ -63,6 +63,11 @@ class ShippedGuidesTest(unittest.TestCase):
         for entry in self.planned:
             self.assertTrue(accepted(entry["guide"]), f"{entry['guide']} accepts no quest in its chapters")
 
+    def test_the_rules_skip_something_for_each_planned_guide(self):
+        # guards the test below the other way: rules that were read as empty would let it pass without checking anything
+        for entry in self.planned:
+            self.assertTrue(skipped(self.rules, bool(entry.get("hardcore"))), f"no rule skips a quest for {entry['guide']}")
+
     def test_a_planned_guide_accepts_no_quest_the_rules_skip(self):
         problems = []
         for entry in self.planned:
