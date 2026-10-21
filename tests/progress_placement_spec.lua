@@ -421,25 +421,25 @@ describe("a placement that waits for the quest history", function()
 		local ns, world, mock = start({ level = 4, advance = 0.5 })
 		assert.are.equal("valley:1", current(ns))
 		world.advance(6) -- the wait is over
-		assert.are.equal("valley:5", current(ns)) -- where the guide expects a level 4
+		assert.are.equal("valley:4", current(ns)) -- where the guide expects a level 4: by experience, not a straight line
 		assert.are.equal(
 			1,
 			count(
 				mock,
-				"Your place: step 5/13 (Valley). None of this guide's quests are done yet, so this is a guess from your level (4)."
+				"Your place: step 4/13 (Valley). None of this guide's quests are done yet, so this is a guess from your level (4)."
 			)
 		)
 		assert.are.equal(1, count(mock, "Not sure about this one"))
 		assert.are.equal("level", record(ns).placed.mode)
 		-- the quests before it are not done as far as anyone knows: skipped
-		assert.are.same({ "valley:1", "valley:2", "valley:3", "valley:4" }, keys(record(ns).skipped))
+		assert.are.same({ "valley:1", "valley:2", "valley:3" }, keys(record(ns).skipped))
 		assert.are.same({}, keys(record(ns).done))
 	end)
 
 	it("places again, once, when the history turns up after the wait", function()
 		local ns, world, mock, log = start({ level = 4, advance = 0.5 })
 		world.advance(6)
-		assert.are.equal("valley:5", current(ns))
+		assert.are.equal("valley:4", current(ns))
 		historyArrives(world, mock, { 101, 102, 103 })
 		assert.are.equal("plains:1", current(ns))
 		assert.are.equal(1, count(mock, "Your quest history has loaded: placing you again."))
@@ -481,7 +481,7 @@ describe("a placement that waits for the quest history", function()
 			slash("next")
 			assert.are.equal("valley:3", current(ns))
 			world.advance(6)
-			assert.are.equal("valley:3", current(ns)) -- not where the level says, valley:5
+			assert.are.equal("valley:3", current(ns)) -- not where the level says, valley:4
 			assert.are.same({ "valley:1", "valley:2" }, keys(record(ns).done))
 			givenUp(ns, world, mock, log)
 		end)
@@ -594,11 +594,11 @@ describe("a placement that waits for the quest history", function()
 
 		it("and so is the second look, even when the player came back to the step it left", function()
 			local ns, world, mock, log = start({ level = 4, advance = 0.5 })
-			world.advance(6) -- placed by the level alone, at valley:5, to be looked at again when the history comes
-			assert.are.equal("valley:5", current(ns))
+			world.advance(6) -- placed by the level alone, at valley:4, to be looked at again when the history comes
+			assert.are.equal("valley:4", current(ns))
 			slash("back")
 			slash("next")
-			assert.are.equal("valley:5", current(ns)) -- the same step again, by the player's hand
+			assert.are.equal("valley:4", current(ns)) -- the same step again, by the player's hand
 			historyArrives(world, mock, { 101, 102, 103 })
 			assert.are.equal(1, #log.placed)
 			assert.are.equal(0, count(mock, "placing you again"))
@@ -612,7 +612,7 @@ describe("a placement that waits for the quest history", function()
 				{ primary = {}, secondary = {}, declined = {}, learned = {}, unknown = {} }
 			)
 			world.advance(6)
-			assert.are.equal("valley:5", current(ns))
+			assert.are.equal("valley:4", current(ns))
 			assert.are.equal(1, #log.placed)
 			assert.are.equal(1, count(mock, "Your place"))
 		end)
@@ -620,8 +620,8 @@ describe("a placement that waits for the quest history", function()
 
 	it("does not place it again when the engine itself moved the pointer on before the history came", function()
 		local ns, world, mock, log = start({ level = 4, advance = 0.5 })
-		world.advance(6) -- placed by the level, at valley:5, to be looked at again when the history comes
-		assert.are.equal("valley:5", current(ns))
+		world.advance(6) -- placed by the level, at valley:4, to be looked at again when the history comes
+		assert.are.equal("valley:4", current(ns))
 		-- quest 102 is handed in, which the engine passes at once; the client's list is still empty
 		mock.fire("QUEST_TURNED_IN", 102, 0, 0)
 		world.advance(1.2)
@@ -640,7 +640,7 @@ describe("a placement that waits for the quest history", function()
 		)
 		assert.are.equal("valley:1", current(ns))
 		world.advance(2.6) -- 6 s after login: the first wait is over
-		assert.are.equal("valley:5", current(ns))
+		assert.are.equal("valley:4", current(ns))
 	end)
 
 	it("does not wait at level 2 or below", function()

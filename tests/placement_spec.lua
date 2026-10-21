@@ -196,10 +196,67 @@ describe("Placement:Find", function()
 		local TWO =
 			{ { levels = { 1, 10 }, steps = questline(1, 10) }, { levels = { 10, 20 }, steps = questline(11, 20) } }
 
-		it("interpolates a chapter's levels over its steps", function()
-			local lv, top = Placement:Levels(guide({ { levels = { 1, 5 }, steps = { "go", "go", "go", "go" } } }))
+		local FOUR = { { levels = { 1, 5 }, steps = { "go", "go", "go", "go" } } }
+
+		it("interpolates a chapter's levels over its steps, straight in experience", function()
+			local lv, top = Placement:Levels(guide(FOUR))
+			assert.are.equal(1, lv[1])
+			assert.are.equal(5, lv[5])
+			assert.are.equal(5, top)
+			-- half the experience from level 1 to level 5 (4800 in Classic's table, 2400) is level 3.79, not 3
+			assert.is_true(math.abs(lv[3] - 3.786) < 0.01)
+			for i = 2, 5 do
+				assert.is_true(lv[i] > lv[i - 1])
+			end
+		end)
+
+		it("can draw a straight line through a chapter's levels instead", function()
+			local lv, top = Placement:Levels(guide(FOUR), "linear")
 			assert.are.same({ 1, 2, 3, 4, 5 }, lv)
 			assert.are.equal(5, top)
+		end)
+
+		it("puts a long early chapter's levels where the experience puts them", function()
+			-- levels 1 to 10 over 30 steps: the first levels come fast, so a third of the way through is level 6, not 4
+			local g = guide({ { levels = { 1, 10 }, steps = questline(1, 10) } })
+			local lv = Placement:Levels(g)
+			local straight = Placement:Levels(g, "linear")
+			assert.is_true(math.abs(straight[11] - 4) < 1e-9)
+			assert.is_true(lv[11] > 6 and lv[11] < 7)
+			assert.are.equal(10, lv[31])
+		end)
+
+		it("says how many levels the chapter of each step spans", function()
+			local _, _, span = Placement:Levels(guide({
+				{ levels = { 1, 10 }, steps = { "go", "go" } },
+				{ levels = { 10, 10 }, steps = { "go" } },
+				{ levels = { 15, 20 }, dungeon = true, steps = { "go" } },
+				{ steps = { "go" } },
+			}))
+			assert.are.same({ 9, 9, 0, 0, 0, 0 }, span)
+		end)
+
+		describe("the experience", function()
+			it("is the inverse of the level", function()
+				for _, level in ipairs({ 1, 1.5, 2, 7.25, 30, 59.9 }) do
+					assert.is_true(math.abs(Placement:LevelAt(Placement:ExperienceAt(level)) - level) < 1e-6, level)
+				end
+			end)
+
+			it("stops at the first level and at the top one", function()
+				assert.are.equal(0, Placement:ExperienceAt(0.5))
+				assert.are.equal(1, Placement:LevelAt(-10))
+				assert.are.equal(Placement:ExperienceAt(60), Placement:ExperienceAt(75))
+				assert.are.equal(60, Placement:LevelAt(1e9))
+			end)
+
+			it("asks for more with each level", function()
+				for level = 1, 58 do
+					local now = Placement:ExperienceAt(level + 1) - Placement:ExperienceAt(level)
+					local next = Placement:ExperienceAt(level + 2) - Placement:ExperienceAt(level + 1)
+					assert.is_true(next > now, level)
+				end
+			end)
 		end)
 
 		it("never falls below a .level gate, nor below an earlier step", function()
@@ -263,8 +320,68 @@ describe("Placement:Find", function()
 				snap({ level = 9, done = { 1, 2, 3 } })
 			)
 			assert.are.equal("history", result.mode)
-			assert.is_true(result.index >= 25)
-			assert.is_true(result.skipped >= 15)
+			-- a level 9 is two thirds of the way through levels 1 to 10 by experience (step 21 of 30), not eight ninths
+			assert.is_true(result.index >= 19 and result.index <= 23)
+			assert.is_true(result.expected + Placement.BIAS >= 9)
+			assert.is_true(result.skipped >= 8)
+		end)
+
+		describe("the tolerance", function()
+			-- 120 steps over 14 levels, like the island of a guide: a chapter whose line cannot be trusted to a level
+			local LONG = { { levels = { 1, 15 }, steps = questline(1, 40) } }
+
+			it("lets a clean history outweigh a level that is a little ahead of it", function()
+				local g = guide(LONG)
+				-- 22 quests done in a row: the pointer belongs at step 67, where the guide expects level 12.4 (12.9 with
+				-- the half level) and the character has 13
+				local clean = snap({ level = 13, done = range(1, 22) })
+				assert.are.equal(67, Placement:Find(g, clean).index)
+				-- without the tolerance the level pulls the pointer nine steps on
+				assert.is_true(Placement:Find(g, clean, { tolBase = 0, tolSpan = 0 }).index >= 74)
+			end)
+
+			it("gives a long chapter more of it than a short one", function()
+				local g = guide(LONG)
+				local clean = snap({ level = 13, done = range(1, 22) })
+				assert.is_true(Placement:Find(g, clean, { tolSpan = 0 }).index > 67)
+			end)
+
+			it("gives none to a history that is half gaps: the level decides", function()
+				local g = guide(LONG)
+				local odd = {}
+				for q = 1, 20, 2 do
+					odd[#odd + 1] = q
+				end
+				local thin = snap({ level = 13, done = odd }) -- every second quest of the first twenty
+				local with = Placement:Find(g, thin)
+				assert.are.equal(Placement:Find(g, thin, { tolBase = 0, tolSpan = 0 }).index, with.index)
+				assert.is_true(with.index >= 74)
+				-- the same tolerance without the gate would have kept the pointer behind, at step 62
+				assert.is_true(Placement:Find(g, thin, { gateLow = 0, gateHigh = 0 }).index <= 64)
+			end)
+
+			it("holds the pointer at the end of a history of most quests done", function()
+				local g = guide(LONG)
+				local most = {}
+				for q = 1, 20 do
+					if q % 4 ~= 0 then
+						most[#most + 1] = q
+					end
+				end
+				-- three of every four quests of the first twenty: quest 20 is the first not done, at step 58
+				local snapshot = snap({ level = 13, done = most })
+				assert.are.equal(58, Placement:Find(g, snapshot).index)
+				assert.is_true(Placement:Find(g, snapshot, { gateLow = 0, gateHigh = 0 }).index > 58)
+				assert.is_true(Placement:Find(g, snapshot, { tolBase = 0, tolSpan = 0 }).index >= 74)
+			end)
+
+			it("is not given to a character with no history: the level is all there is", function()
+				local g = guide(LONG)
+				assert.are.equal(
+					Placement:Find(g, snap({ level = 13 }), { tolBase = 0, tolSpan = 0 }).index,
+					Placement:Find(g, snap({ level = 13 })).index
+				)
+			end)
 		end)
 
 		it("goes by the history alone when the guide says nothing about levels", function()
@@ -335,6 +452,34 @@ describe("Placement against the shipped guides", function()
 		replicates = 1,
 		scenarios = scenarios("exact", "skip20", "early", "level1", "nolog", "mixed", "lag", "scatter", "levelonly"),
 	})
+	-- The same characters, placed by guides whose chapter headers are a level too wide at each end (every `#chapter 5-8`
+	-- reads `4-9`): what a coarser planner would have written. A clean follower must not be dragged off by that.
+	local WIDENED = { lo = -1, hi = 1 }
+	local widened = Sim.run({
+		ns = ns,
+		guides = shipped,
+		truth = "warp",
+		seed = 11,
+		stride = 5,
+		replicates = 1,
+		widen = WIDENED,
+		scenarios = scenarios("exact", "skip20", "early", "mixed"),
+	})
+	-- Three or more levels off with all the noise together happens, rarely: the character's level is a level off, the
+	-- guide's line is a level off inside a long chapter, and the quests it skipped come in runs. Measured over ten seeds
+	-- and every step of every guide (3 draws each, about 9,000 runs per guide): 0.010 percent for the Tauren guide, 0.012
+	-- for the Troll's and none for the Skyborne's (tools/placement_report.py). A draw the size of the others here (about
+	-- 60 runs) cannot show a rate that low: one run in 60 is 1.6 percent. So this one draws every step twice.
+	local tail = Sim.run({
+		ns = ns,
+		guides = shipped,
+		truth = "warp",
+		seed = 11,
+		stride = 1,
+		replicates = 2,
+		scenarios = scenarios("mixed"),
+	})
+	local MIXED_TAIL = 0.003 -- thirty times the measured rate
 
 	it("covers every shipped guide", function()
 		local count = 0
@@ -371,7 +516,23 @@ describe("Placement against the shipped guides", function()
 			it("is within a handful of quests with all the noise together", function()
 				assert.is_true(stats("mixed").quests.median <= 6)
 				assert.is_true(stats("mixed").quests.p90 <= 20)
-				assert.are.equal(0, stats("mixed").catastrophic)
+			end)
+
+			it("is almost never three levels off with all the noise together", function()
+				assert.is_true(tail[entry.id].mixed.catastrophic <= MIXED_TAIL)
+			end)
+
+			it("is not led astray by chapter headers a level too wide at each end", function()
+				local function seen(name)
+					return widened[entry.id .. "/w" .. WIDENED.lo .. "," .. WIDENED.hi][name]
+				end
+				assert.is_true(seen("exact").quests.p90 <= 2)
+				assert.is_true(seen("exact").steps.max <= 6)
+				assert.is_true(seen("skip20").quests.median <= 2)
+				assert.is_true(seen("skip20").quests.p90 <= 8)
+				assert.is_true(seen("early").quests.p90 <= 10)
+				assert.is_true(seen("mixed").quests.median <= 6)
+				assert.is_true(seen("mixed").quests.p90 <= 20)
 			end)
 
 			it("is never three levels off, with no history at all", function()

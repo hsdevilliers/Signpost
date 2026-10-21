@@ -182,16 +182,28 @@ end
 
 -- Truth levels -------------------------------------------------------------------------------------------------------
 
--- The level the character really has when it starts step i, i = 1 .. n + 1, by three models:
+-- How far the "warp" stress takes the truth from the model's line in the middle of a chapter: WARP_BASE + WARP_SPAN *
+-- the chapter's span, in levels. Measured against the simulator's levels (docs/ENGINE.md), the experience line is off
+-- by 0.5 levels at the 90th percentile in the short chapters (once its constant half level is taken off) and by 1.1 in
+-- the long early ones (Mulgore, Durotar, the island), the worst single steps 2.0; the straight line it replaced was 1.7
+-- levels low on average in those and up to 4.1.
+Sim.WARP_BASE = 0.45
+Sim.WARP_SPAN = 0.07
+
+-- The level the character really has when it starts step i, i = 1 .. n + 1, by four models:
 --   "model"  the guide's own expected levels (ns.Placement:Levels): the placement is graded by its own yardstick;
---   "warp"   the same chapter by chapter, but each chapter's levels are reached on a curve (fast in some chapters, slow
--- in
---            others), so the straight line the placement draws between a chapter's levels is wrong by up to a level;
+--   "warp"   the stress the spec uses: the same line, but off by a smooth bump in the middle of each chapter,
+--            alternately ahead and behind (even chapters ahead), as large as the line's own error against the
+--            simulator's levels is at its 90th percentile: WARP_BASE + WARP_SPAN * (the chapter's levels). The
+--            chapters' ends stay where the headers say;
+--   "warp-linear"  the older stress: each chapter's levels reached on a curve (fast in some chapters, slow in
+--            others), which is wrong by up to 17 percent of the chapter's span and, in the odd chapters, in the
+--            direction the real levels never run (behind a straight line);
 --   "sim"    the levels tools/guide_sim.py walks (quest experience from the private pack): a table
 --            { [guide id] = { start = level, steps = { [step id] = level after the step } } } from a Lua file.
-function Sim.truth(ns, entry, kind, simLevels)
+function Sim.truth(ns, entry, kind, simLevels, curve)
 	local guide, n = entry.guide, #entry.guide.steps
-	local lv = ns.Placement:Levels(guide)
+	local lv = ns.Placement:Levels(guide, curve)
 	local levels = {}
 	if kind == "sim" then
 		local sim = simLevels and simLevels[entry.id]
@@ -214,7 +226,7 @@ function Sim.truth(ns, entry, kind, simLevels)
 		end
 		return levels
 	end
-	-- warp: chapter by chapter
+	-- warp and warp-linear: chapter by chapter
 	local count, before, chapterOf, current = {}, {}, {}, nil
 	for i, step in ipairs(guide.steps) do
 		current = step.chapter or current
@@ -227,8 +239,22 @@ function Sim.truth(ns, entry, kind, simLevels)
 		local info = guide.chapters[chapter]
 		if info and not info.dungeon and info.levels then
 			local low, high = info.levels[1], info.levels[2] or info.levels[1]
-			local gamma = chapter % 2 == 0 and 0.6 or 1.6
-			local raw = low + (high - low) * ((before[chapter] or 0) / count[chapter]) ^ gamma
+			local fraction = (before[chapter] or 0) / count[chapter]
+			local raw
+			if kind == "warp-linear" then
+				local gamma = chapter % 2 == 0 and 0.6 or 1.6
+				raw = low + (high - low) * fraction ^ gamma
+			else
+				local line
+				if curve == "linear" then
+					line = low + (high - low) * fraction
+				else
+					local start = ns.Placement:ExperienceAt(low)
+					line = ns.Placement:LevelAt(start + (ns.Placement:ExperienceAt(high) - start) * fraction)
+				end
+				local amplitude = Sim.WARP_BASE + Sim.WARP_SPAN * (high - low)
+				raw = line + (chapter % 2 == 0 and 1 or -1) * amplitude * math.sin(math.pi * fraction)
+			end
 			value = math.max(value, raw)
 		end
 		value = math.max(value, gate)
@@ -364,12 +390,49 @@ function Sim.summary(values, within)
 	}
 end
 
+-- What the placement is told ------------------------------------------------------------------------------------------
+
+-- The guide as ns.Placement sees it: a view that reads through to the entry and adds the levels the guide expects
+-- (lv, top, span: Placement:Levels with the curve `curve`, nil for the default). With widen = { lo = , hi = } every
+-- chapter's levels are wider, lo' = max(1, lo + widen.lo) and hi' = hi + widen.hi (a header `#chapter 3-6` becomes
+-- `2-8` for { lo = -1, hi = 2 }): the guide as a coarser or sloppier planner might have written it. The steps are the
+-- same, and so are the characters (their truth stays the original guide's): only what ns.Placement is told about the
+-- levels changes, which is how a regenerated guide with other headers would look to it. A widened view is named
+-- "<id>/w<lo>,<hi>".
+function Sim.view(ns, entry, widen, curve)
+	local guide, id = entry.guide, entry.id
+	if widen then
+		local chapters = {}
+		for c, chapter in ipairs(guide.chapters) do
+			local copy = {}
+			for key, value in pairs(chapter) do
+				copy[key] = value
+			end
+			local levels = chapter.levels
+			if type(levels) == "table" and not chapter.dungeon then
+				copy.levels = { math.max(1, levels[1] + widen.lo), (levels[2] or levels[1]) + widen.hi }
+			end
+			chapters[c] = copy
+		end
+		local widened = {}
+		for key, value in pairs(guide) do
+			widened[key] = value
+		end
+		widened.chapters = chapters
+		guide, id = widened, entry.id .. "/w" .. widen.lo .. "," .. widen.hi
+	end
+	local view = setmetatable({ guide = guide, id = id }, { __index = entry })
+	view.lv, view.top, view.span = ns.Placement:Levels(guide, curve)
+	return view
+end
+
 -- Runs ----------------------------------------------------------------------------------------------------------------
 
--- The characters to place: opts.ns, guides (the list from Sim.load), truth ("warp", "model" or "sim"), simLevels, seed,
--- stride (every stride-th step is a true position t, and the last), replicates (noise draws per t), scenarios (default
--- Sim.SCENARIOS), only (a list of guide ids), cut (a function(entry, t) -> false to leave a position out). Returns a
--- list of { entry, scenario, t, levels (the true level at each step), snapshot, labels, stats }; the labels are worked
+-- The characters to place: opts.ns, guides (the list from Sim.load), truth ("warp", "model", "warp-linear" or "sim"),
+-- simLevels, seed, stride (every stride-th step is a true position t, and the last), replicates (noise draws per t),
+-- scenarios (default Sim.SCENARIOS), only (a list of guide ids), curve (of the levels: Placement:Levels), widen
+-- ({ lo, hi }: Sim.view), cut (a function(entry, t) -> false to leave a position out). Returns a list of { entry (the
+-- guide's view), scenario, t, levels (the true level at each step), snapshot, labels, stats }; the labels are worked
 -- out once, so the constants can be tried over and over (Sim.evaluate).
 function Sim.population(opts)
 	local ns = opts.ns
@@ -382,8 +445,9 @@ function Sim.population(opts)
 		end
 		if wanted then
 			local n = #entry.guide.steps
-			entry.lv, entry.top = ns.Placement:Levels(entry.guide)
-			local levels = Sim.truth(ns, entry, opts.truth or "warp", opts.simLevels)
+			local levels = Sim.truth(ns, entry, opts.truth or "warp", opts.simLevels, opts.curve)
+			-- the characters are those of the guide as written; what the placement is told about it may be widened
+			local seen = Sim.view(ns, entry, opts.widen, opts.curve)
 			for _, scenario in ipairs(scenarios) do
 				local rng = Sim.rng((opts.seed or 1) * 100003 + Sim.hash(scenario.name))
 				local ts = {}
@@ -395,9 +459,9 @@ function Sim.population(opts)
 					for _ = 1, opts.replicates or 3 do
 						if not opts.cut or opts.cut(entry, t) ~= false then
 							local snapshot = Sim.player(entry, levels, t, scenario, rng)
-							local labels, stats = ns.Placement:Labels(entry.guide, snapshot)
+							local labels, stats = ns.Placement:Labels(seen.guide, snapshot)
 							population[#population + 1] = {
-								entry = entry,
+								entry = seen,
 								scenario = scenario,
 								t = t,
 								levels = levels,
@@ -422,7 +486,7 @@ function Sim.evaluate(ns, population, find)
 	local results, collected = {}, {}
 	for _, item in ipairs(population) do
 		local entry, scenario, t = item.entry, item.scenario, item.t
-		local result = ns.Placement:Fit(item.labels, item.stats, entry.lv, entry.top, item.snapshot, find)
+		local result = ns.Placement:Fit(item.labels, item.stats, entry.lv, entry.top, entry.span, item.snapshot, find)
 		-- where the player is put: the pointer's step, or just past the last one when all of the guide is behind them
 		local where = result.mode == "end" and result.split or result.index
 		local run = {
