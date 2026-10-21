@@ -84,16 +84,7 @@
           ]
         }
       ],
-      "rewrites": [
-        {
-          "match": "\\.todo \"(?:travel from [A-Za-z' ]+ to Moonglade: the travel graph has no route yet|(?:Walk|Get) from [A-Za-z' ]+ to Moonglade: [^\"]*)\"",
-          "with": ".todo \"Go to Moonglade: cast Teleport: Moonglade (VERIFY(beta): where a druid learns it; docs/CLASS-QUESTS.md), else the way is not in the data\""
-        },
-        {
-          "match": "\\.todo \"(?:travel from Moonglade to ([A-Za-z' ]+): the travel graph has no route yet|(?:Walk|Get) from Moonglade to ([A-Za-z' ]+): [^\"]*)\"",
-          "with": ".todo \"Return from Moonglade to \\1\\2 (VERIFY(beta): hearthstone or flight path; the way back is not in the data)\""
-        }
-      ],
+      "rewrites": [],
       "hardcore": true,
       "planned": "the thorough alt 1 route for Tauren Druid (HARDCORE): tools/route_planner.py tauren --preset all --install --quiet (docs/PLANNER.md)"
     },
@@ -203,16 +194,7 @@
           ]
         }
       ],
-      "rewrites": [
-        {
-          "match": "\\.todo \"(?:travel from [A-Za-z' ]+ to Moonglade: the travel graph has no route yet|(?:Walk|Get) from [A-Za-z' ]+ to Moonglade: [^\"]*)\"",
-          "with": ".todo \"Go to Moonglade: cast Teleport: Moonglade (VERIFY(beta): where a druid learns it; docs/CLASS-QUESTS.md), else the way is not in the data\""
-        },
-        {
-          "match": "\\.todo \"(?:travel from Moonglade to ([A-Za-z' ]+): the travel graph has no route yet|(?:Walk|Get) from Moonglade to ([A-Za-z' ]+): [^\"]*)\"",
-          "with": ".todo \"Return from Moonglade to \\1\\2 (VERIFY(beta): hearthstone or flight path; the way back is not in the data)\""
-        }
-      ],
+      "rewrites": [],
       "hardcore": true,
       "planned": "the beam route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)"
     }

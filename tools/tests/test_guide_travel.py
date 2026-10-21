@@ -17,6 +17,7 @@ from signpost_tools import guidefile, pricing
 from signpost_tools.guidefile import Coord
 from tests.guide_fixtures import (
     BORDERS_LUA,
+    HUNTER_LUA,
     MAPS,
     NPCS,
     QUESTS,
@@ -351,50 +352,463 @@ class DefaultPackTest(unittest.TestCase):
         self.assertEqual(import_savedvars.DEFAULT_PACK, expected or import_savedvars.devconfig.REPO_ROOT.parent / "Signpost_Data")
 
 
-class MoongladeRewriteTest(unittest.TestCase):
-    """tools/drafts.json turns the generator's placeholders for the trips to and from Moonglade into text that says how a
-    druid goes (tools/rebuild_drafts.py applies it to a drafted guide). It has to match the generator's own words."""
+# A zone the druids of a guide have their own way to (Classes/DRUID.lua, travelHints; the fixture's map 60 stands for Moonglade): east of
+# Eastland, with a cave inside it (61) and a flight master of the travel table's own (the client's taxi map does not list it).
+MOON = 60
+MOON_MAPS = {
+    **MAPS,
+    MOON: {"n": "Moonglade", "t": 3, "parent": 100, "world": [1, 1000, -1000, -1000, -2000]},
+    61: {"n": "Moonglade Cave", "t": 5, "parent": MOON, "world": [1, 100, -1100, 0, -1200]},
+}
+MOON_TRAVEL = {**TRAVEL, "flightMasters": {7: {"node": "Moonhaven, Moonglade", "p": [MOON, 50, 50], "side": "Horde"}}}
+PASS = {"name": "Eastland/Moonglade pass", "from": [20, 99, 50], "to": [MOON, 1, 50]}  # a border with its points known
+PASS_UNPLACED = {"name": "Eastland/Moonglade pass", "from": [20], "to": [MOON]}  # the zones touch; where is not known
 
-    MAPS = {**MAPS, 60: {"n": "Moonglade", "t": 3, "parent": 100, "world": [1, 100, 100, 0, 0]}}
+HINT_TO = "cast Teleport: Moonglade if you have it (VERIFY(beta): where a druid learns it), else the way is not in the data"
+HINT_BACK = "use your hearthstone or a flight path if you have one (VERIFY(beta): the way back is not in the data)"
+HINT_UNSAFE = "from Classic memory the road overland runs through Felwood or Winterspring, zones for levels 48 and up"
+DRUID_HINT_LUA = """local ADDON_NAME, ns = ...
+ns.Classes:Register("DRUID", {
+	trainerSpells = {},
+	classQuests = {},
+	travelHints = {
+		[%d] = {
+			to = {
+				"cast Teleport: Moonglade if you have it (VERIFY(beta): where a druid learns it),",
+				"else the way is not in the data",
+			},
+			back = "use your hearthstone or a flight path if you have one (VERIFY(beta): the way back is not in the data)",
+			unsafe = {
+				"from Classic memory the road overland runs through Felwood or Winterspring,",
+				"zones for levels 48 and up",
+			},
+		},
+	},
+})
+"""
+# The steps the generator writes for a trip to Moonglade and for the way back: the class's way, the warning, and the same `.zone`
+# as the plain placeholder (the step is done when the player arrives).
+GO_STEP = [
+    f'.todo "Go to Moonglade: {HINT_TO}. This step is done when you arrive in Moonglade."',
+    f".note Do not walk it: {HINT_UNSAFE}.",
+    f".zone {MOON} >> Go to Moonglade",
+]
+BACK_STEP = [
+    f'.todo "Return from Moonglade to Westland: {HINT_BACK}. This step is done when you arrive in Westland."',
+    f".note Do not walk it: {HINT_UNSAFE}.",
+    ".zone 10 >> Go to Westland",
+]
 
-    @staticmethod
-    def rewrites():
-        manifest = json.loads((guide_travel.REPO_ROOT / "tools" / "drafts.json").read_text(encoding="utf-8"))
-        return {entry["guide"]: entry["rewrites"] for entry in manifest["guides"] if entry.get("rewrites")}
 
-    def placeholder(self, here, there):
-        pack = guide_travel.Pack(guide_travel.Path("."), {}, {"maps": self.MAPS})
-        return guide_travel.placeholder_lines(World(pack, [], "Horde"), here, there)[0]
+def moon_hints():
+    return {MOON: guide_travel.TravelHint(MOON, HINT_TO, HINT_BACK, HINT_UNSAFE)}
 
-    @staticmethod
-    def apply(text, rules):
-        for rule in rules:
-            text = re.sub(rule["match"], rule["with"], text)
-        return text
 
-    def test_the_generators_trips_to_and_from_moonglade_are_rewritten(self):
-        rules = self.rewrites()
-        self.assertEqual(sorted(rules), ["horde-tauren-druid", "horde-windshaper-druid"])
-        for guide, guide_rules in rules.items():
-            for here, name in ((10, "Westland"), (40, "Isle")):  # the same continent: walk; another one: get
-                trip = self.placeholder(here, 60)
-                self.assertRegex(trip, r'^\.todo "(Walk|Get) from ' + name + " to Moonglade: ")
-                self.assertTrue(
-                    self.apply(trip, guide_rules).startswith('.todo "Go to Moonglade: cast Teleport: Moonglade'), guide
-                )
-                back = self.apply(self.placeholder(60, here), guide_rules)
-                self.assertTrue(back.startswith(f'.todo "Return from Moonglade to {name} (VERIFY(beta): hearthstone'), back)
-            other = self.placeholder(10, 20)  # a trip that has nothing to do with Moonglade is left alone
-            self.assertEqual(self.apply(other, guide_rules), other)
+def moon_world(extra=(), travel=MOON_TRAVEL, faction="Horde"):
+    pack = guide_travel.Pack(
+        guide_travel.Path("."), {"schema": 1}, {"maps": MOON_MAPS, "quests": QUESTS, "npcs": NPCS, "travel": travel}
+    )
+    calls, _ = guidefile.find_register_calls(BORDERS_LUA, "Travel", "RegisterBorders")
+    entries = [*calls[0].args[0], *extra]
+    return World(pack, [("Borders.lua", number, entry) for number, entry in enumerate(entries, 1)], faction)
 
-    def test_chapters_written_with_the_old_wording_are_still_rewritten(self):
-        old_to = '.todo "travel from Thunder Bluff to Moonglade: the travel graph has no route yet"'
-        old_back = '.todo "travel from Moonglade to Thunder Bluff: the travel graph has no route yet"'
-        for guide, guide_rules in self.rewrites().items():
-            self.assertTrue(self.apply(old_to, guide_rules).startswith('.todo "Go to Moonglade:'), guide)
-            self.assertTrue(
-                self.apply(old_back, guide_rules).startswith('.todo "Return from Moonglade to Thunder Bluff (VERIFY'), guide
+
+class TravelHintTest(unittest.TestCase):
+    """A class module's travelHints: the words the generator writes for a trip a class's guide must not walk (a druid's trip to
+    and from Moonglade, from Classic memory a road through zones for levels 48 and up) in place of "find your own way"."""
+
+    def trip(self, world, start, goal, known=(), hints=None, bind=None, ready=False):
+        plan = guide_travel.plan_travel(world, Place(start, None, "start"), Place(goal, None, "goal"), list(known), bind, ready)
+        return plan, guide_travel.steps_for(world, plan, start, goal, hints)
+
+    def test_a_trip_with_no_route_to_or_from_the_zone_says_the_classes_way_and_not_to_walk(self):
+        graph = moon_world()
+        for start, goal, step in ((10, MOON, GO_STEP), (MOON, 10, BACK_STEP)):
+            plan, proposal = self.trip(graph, start, goal, hints=moon_hints())
+            self.assertIsNone(plan)  # the graph has no route: that is the case the hint is for
+            self.assertEqual(proposal.steps, [step])
+            self.assertEqual((proposal.plan, proposal.hint), (None, moon_hints()[MOON]))
+
+    def test_the_step_is_still_done_on_arrival_carries_no_coordinate_and_parses(self):
+        _, proposal = self.trip(moon_world(), 10, MOON, hints=moon_hints())
+        text = guide_travel.render_steps(proposal.steps)
+        self.assertEqual(coordinates_in(text), set())
+        self.assertNotIn(".goto", text)  # a `.goto` in the zone would place the step there for the tracks' @zone anchors
+        source = guidefile.Source("chapter", "x", "x", text, "x.lua", 1)
+        guidefile.parse_source(source, guidefile.registry())
+        self.assertEqual(source.problems, [])
+        directives = [d for step in source.steps() for d in step.directives]
+        self.assertEqual([d.name for d in directives], ["todo", "note", "zone"])
+        self.assertTrue(directives[0].args["quoted"])
+        self.assertEqual(directives[2].args["map"], MOON)  # what completes the step: the same as the plain placeholder's
+        plain = guide_travel.placeholder_lines(moon_world(), 10, MOON)
+        self.assertEqual(plain[-1], GO_STEP[-1])
+        self.assertEqual(plain[0].split(": ")[0], '.todo "Walk from Westland to Moonglade')  # what it replaces
+
+    def test_without_the_hint_nothing_changes(self):
+        graph = moon_world()
+        for start, goal in ((10, MOON), (MOON, 10), (10, 20), (10, 40), (20, 30)):
+            plan, proposal = self.trip(graph, start, goal)
+            _, hinted = self.trip(graph, start, goal, hints={})
+            self.assertEqual(proposal.steps, hinted.steps, (start, goal))
+            self.assertEqual(
+                proposal.steps, guide_travel.no_route_steps(graph, start, goal) if plan is None else guide_travel.plan_steps(graph, plan)
             )
+            self.assertIsNone(proposal.hint)
+        self.assertIn("find your own way", self.trip(graph, 10, MOON)[1].steps[0][0])
+
+    def test_a_trip_that_has_nothing_to_do_with_the_zone_is_left_alone(self):
+        graph = moon_world()
+        for start, goal in ((10, 20), (20, 30), (10, 40), (10, 50)):
+            _, with_hint = self.trip(graph, start, goal, hints=moon_hints())
+            _, without = self.trip(graph, start, goal)
+            self.assertEqual(with_hint.steps, without.steps, (start, goal))
+            self.assertIsNone(with_hint.hint)
+
+    def test_a_walk_over_the_border_is_never_proposed_even_where_the_data_has_the_points(self):
+        for border in (PASS, PASS_UNPLACED):
+            graph = moon_world([border])
+            plan, _ = self.trip(graph, 10, MOON)
+            self.assertIn("cross-todo" if border is PASS_UNPLACED else "cross", [leg.kind for leg in plan.legs])
+            walked = guide_travel.plan_steps(graph, plan)
+            self.assertTrue(walked, border)  # without the hint the generator proposes the way
+            _, proposal = self.trip(graph, 10, MOON, hints=moon_hints())
+            self.assertEqual(proposal.steps, [GO_STEP], border)
+            _, back = self.trip(graph, MOON, 10, hints=moon_hints())
+            self.assertEqual(back.steps, [BACK_STEP], border)
+            self.assertNotIn(".path", guide_travel.render_steps(proposal.steps + back.steps))
+
+    @staticmethod
+    def leg(kind, a, b, ref=None):
+        """A leg of a hand-built plan: the shape is the point here, not what the graph would choose."""
+        if kind != "cross":
+            return guide_travel.Leg(kind, Place(a, None, "node", "", ref), Place(b, None, "node", "", ref), 60.0, ref)
+        crossing = guide_travel.Crossing("test border", Coord(a, 99, 50), Coord(b, 1, 50), a, b, "test")
+        return guide_travel.Leg(kind, Place(a, crossing.a, "crossing"), Place(b, crossing.b, "crossing"), 60.0, crossing)
+
+    def test_a_flight_that_ends_in_the_walk_is_replaced_too(self):
+        graph = moon_world([PASS_UNPLACED])
+        towne = graph.nodes_named("Towne")[0]
+        # fly to Towne, then the way over the border into Moonglade on foot (whatever the graph would choose, this is the shape)
+        for last in ("cross", "cross-todo"):
+            ref = None if last == "cross" else guide_travel.Crossing("test border", None, None, 20, MOON, "test")
+            legs = [self.leg("fly", 10, 30, towne), self.leg("cross", 30, 20), self.leg(last, 20, MOON, ref)]
+            plan = guide_travel.Plan(legs, 180.0)
+            self.assertTrue(guide_travel.overland(plan, MOON))
+            proposal = guide_travel.steps_for(graph, plan, 10, MOON, moon_hints())
+            self.assertEqual((proposal.steps, proposal.plan), ([GO_STEP], None))
+            without = guide_travel.steps_for(graph, plan, 10, MOON)
+            self.assertIs(without.plan, plan)  # for a class with no hint, the plan stands
+            self.assertIn(".fly Towne", guide_travel.render_steps(without.steps))
+
+    def test_a_flight_into_the_zone_stands_and_so_does_a_flight_out_of_it(self):
+        graph = moon_world([PASS])
+        known = ["Westhold", "Moonhaven"]
+        plan, going = self.trip(graph, 10, MOON, known, moon_hints())
+        self.assertEqual([leg.kind for leg in plan.legs if leg.kind != "walk"], ["fly"])
+        self.assertIs(going.plan, plan)
+        self.assertIsNone(going.hint)
+        self.assertEqual(going.steps[0][-1], ".fly Moonhaven")
+        self.assertEqual(going.steps, guide_travel.plan_steps(graph, plan))
+        _, back = self.trip(graph, MOON, 10, known, moon_hints())
+        self.assertEqual(back.steps, [[".goto 60,50.0,50.0 >> Go to the flight master", ".fly Westhold"]])
+        self.assertIsNone(back.hint)
+        for proposal in (going, back):
+            self.assertNotIn("Teleport", guide_travel.render_steps(proposal.steps))
+            self.assertNotIn("Do not walk it", guide_travel.render_steps(proposal.steps))
+
+    def test_a_walk_elsewhere_before_the_flight_is_no_reason_to_replace_it(self):
+        graph = moon_world([PASS])
+        moonhaven = graph.nodes_named("Moonhaven")[0]
+        # the Westland/Eastland bridge on foot, then a flight from Eastland into Moonglade: the way in is the flight
+        plan = guide_travel.Plan([self.leg("cross", 10, 20), self.leg("fly", 20, MOON, moonhaven)], 120.0)
+        self.assertFalse(guide_travel.overland(plan, MOON))
+        self.assertTrue(guide_travel.overland(plan, 20))
+        proposal = guide_travel.steps_for(graph, plan, 10, MOON, moon_hints())
+        self.assertIs(proposal.plan, plan)
+        self.assertEqual(proposal.steps, guide_travel.plan_steps(graph, plan))
+        self.assertIn(".fly Moonhaven", guide_travel.render_steps(proposal.steps))
+        self.assertIsNone(proposal.hint)
+
+    def test_the_hearthstone_into_or_out_of_the_zone_stands(self):
+        graph = moon_world([PASS])
+        inn = Place(10, Coord(10, 30, 30), "inn", "Westhold Inn")
+        _, home = self.trip(graph, MOON, 10, hints=moon_hints(), bind=inn, ready=True)
+        self.assertEqual(home.steps, [[".home >> Hearth to Westhold Inn"]])
+        self.assertIsNone(home.hint)
+        stay = Place(MOON, Coord(MOON, 40, 40), "inn", "Moonglade Inn")
+        _, there = self.trip(graph, 10, MOON, hints=moon_hints(), bind=stay, ready=True)
+        self.assertEqual(there.steps, [[".home >> Hearth to Moonglade Inn"]])
+        # the hearthstone is on cooldown: the way back is the class's words again
+        _, cooling = self.trip(graph, MOON, 10, hints=moon_hints(), bind=inn, ready=False)
+        self.assertEqual(cooling.steps, [BACK_STEP])
+
+    def test_a_hint_keyed_by_a_map_inside_the_zone_is_for_the_zone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Signpost"
+            write_files(root, {"Classes/DRUID.lua": DRUID_HINT_LUA % 61})
+            project = guidefile.load_project(root)
+        hints = guide_travel.class_hints(project, "DRUID", moon_world())
+        self.assertEqual(list(hints), [MOON])
+        self.assertEqual(hints[MOON].to, HINT_TO)  # the list of lines read as one text
+        self.assertEqual(hints[MOON].back, HINT_BACK)
+        self.assertEqual(hints[MOON].unsafe, HINT_UNSAFE)
+        self.assertEqual(hints[MOON].zone, MOON)
+
+    def test_the_class_decides(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Signpost"
+            write_files(root, {"Classes/DRUID.lua": DRUID_HINT_LUA % MOON, "Classes/HUNTER.lua": HUNTER_LUA})
+            project = guidefile.load_project(root)
+        graph = moon_world()
+        self.assertEqual(list(guide_travel.class_hints(project, "DRUID", graph)), [MOON])
+        for cls in ("HUNTER", "SHAMAN", "OTHER", "", None):  # a class with no hints, none at all, or no class module
+            self.assertEqual(guide_travel.class_hints(project, cls, graph), {}, cls)
+        self.assertIsNone(project.classes["HUNTER"].travel_hints)
+        self.assertEqual([p for p in project.problems if p.code == "class-module"], [])
+
+    def test_a_hint_with_a_word_missing_is_a_warning_and_is_left_out(self):
+        broken = DRUID_HINT_LUA.replace('\t\t\tback = "use your hearthstone or a flight path if you have one (VERIFY(beta): the way back is not in the data)",\n', "")
+        broken = broken.replace("\t\t\tunsafe = {", "\t\t\twhy = \"x\",\n\t\t\tunsafe = {")
+        broken = broken.replace("\ttravelHints = {", '\ttravelHints = {\n\t\t["Moonglade"] = { to = "x" },\n\t\t[70] = "words",')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Signpost"
+            write_files(root, {"Classes/DRUID.lua": broken % MOON})
+            project = guidefile.load_project(root)
+        messages = [p.message for p in project.problems if p.code == "class-module"]
+        self.assertEqual(len(messages), 4, messages)
+        self.assertTrue(any("back is missing" in m for m in messages))
+        self.assertTrue(any("why is not a known word" in m for m in messages))
+        self.assertTrue(any("'Moonglade'" in m for m in messages))
+        self.assertTrue(any("travelHints[70]" in m for m in messages))
+        self.assertEqual(guide_travel.class_hints(project, "DRUID", moon_world()), {})
+        self.assertTrue(all(p.severity == "warning" for p in project.problems if p.code == "class-module"))
+
+    def test_an_empty_or_misplaced_table_is_a_problem_only_when_it_is_wrong(self):
+        self.assertEqual(guidefile.travel_hint_problems(None), [])
+        self.assertEqual(guidefile.travel_hint_problems({}), [])
+        self.assertEqual(len(guidefile.travel_hint_problems([{"to": "x", "back": "y", "unsafe": "z"}])), 1)
+        self.assertEqual(guidefile.travel_hint_problems({60: {"to": "a", "back": ["b", "c"], "unsafe": " d "}}), [])
+        self.assertEqual(guidefile.wrapped(["a b,", " c ", "", 5, "d"]), "a b, c d")
+        self.assertEqual(guidefile.wrapped(None), "")
+
+    def test_the_cost_line_says_no_walk_was_proposed(self):
+        graph = moon_world()
+        _, proposal = self.trip(graph, 10, MOON, hints=moon_hints())
+        self.assertEqual(guide_travel.describe_cost(proposal.plan, proposal.hint), "no walk proposed (the class module's own words stand in)")
+        self.assertEqual(guide_travel.describe_cost(None), "no route")
+
+    def test_text_a_class_module_writes_cannot_break_the_step(self):
+        hint = guide_travel.TravelHint(MOON, 'say "hi" -- now >> go', "back.", 'a "road" -- of >> doom.')
+        lines = guide_travel.hint_lines(moon_world(), hint, 10, MOON)
+        self.assertEqual(lines[0], ".todo \"Go to Moonglade: say 'hi' - now > go. This step is done when you arrive in Moonglade.\"")
+        self.assertEqual(lines[1], ".note Do not walk it: a 'road' - of > doom.")
+        source = guidefile.Source("chapter", "x", "x", guide_travel.render_steps([lines]), "x.lua", 1)
+        guidefile.parse_source(source, guidefile.registry())
+        self.assertEqual(source.problems, [])
+
+
+class FlightPathForHintedTripTest(unittest.TestCase):
+    """The flight path to learn first: a walk the class's guide must not make is no alternative to a flight."""
+
+    def setUp(self):
+        self.graph = moon_world([PASS])
+        self.moonhaven = self.graph.nodes_named("Moonhaven")[0]
+        self.towne = self.graph.nodes_named("Towne")[0]
+
+    def transition(self, known, start=30):
+        fps = [guide_travel.KnownFP(name, 30, 30, None) for name in known]
+        return guide_travel.Transition(1, None, None, start, MOON, None, None, fps, None, False)
+
+    def lessons(self, *nodes):
+        return [guide_travel.Lesson(node, 0, None) for node in nodes]
+
+    def test_the_walk_is_the_alternative_without_a_hint_and_none_with_one(self):
+        transition, lesson = self.transition(["Towne"]), self.lessons(self.moonhaven)
+        with mock.patch.object(guide_travel, "LEARN_GAIN", 100000.0):  # a flight must save a day to be worth it...
+            self.assertEqual(guide_travel.flights_to_learn(self.graph, transition, lesson, 0), [])
+            # ...unless the walk is not an alternative at all
+            self.assertEqual(guide_travel.flights_to_learn(self.graph, transition, lesson, 0, moon_hints()), lesson)
+
+    def test_a_flight_that_still_ends_in_the_walk_is_no_lesson(self):
+        transition, lesson = self.transition(["Westhold"], start=10), self.lessons(self.towne)
+        leg = TravelHintTest.leg
+        now = guide_travel.Plan([leg("cross", 10, 20), leg("cross", 20, MOON)], 300.0)
+        # Towne's flight path would save the walk to Towne, and then the way into Moonglade is on foot (the graph here is too small
+        # to choose it, so the two plans are given)
+        better = guide_travel.Plan([leg("fly", 10, 30, self.towne), leg("cross", 30, 20), leg("cross", 20, MOON)], 200.0)
+        with mock.patch.object(guide_travel, "LEARN_GAIN", 0.0):
+            with mock.patch.object(guide_travel, "plan_travel", side_effect=[now, better]):
+                self.assertEqual(guide_travel.flights_to_learn(self.graph, transition, lesson, 0), lesson)
+            with mock.patch.object(guide_travel, "plan_travel", side_effect=[now, better]):
+                self.assertEqual(guide_travel.flights_to_learn(self.graph, transition, lesson, 0, moon_hints()), [])
+
+    def test_a_trip_that_is_not_the_hinted_ones_is_priced_as_before(self):
+        fps = [guide_travel.KnownFP("Westhold", 10, 10, None)]
+        transition = guide_travel.Transition(1, None, None, 10, 20, None, None, fps, None, False)
+        lesson = self.lessons(self.towne)
+        with mock.patch.object(guide_travel, "LEARN_GAIN", 0.0):
+            self.assertEqual(
+                guide_travel.flights_to_learn(self.graph, transition, lesson, 0, moon_hints()),
+                guide_travel.flights_to_learn(self.graph, transition, lesson, 0),
+            )
+
+
+class TravelHintProjectTest(TempProject):
+    """A druid's guide and a hunter's guide walk the same route to Moonglade and back: only the druid's gets the class's words."""
+
+    ROUTE = "#chapter 1-5 Moon\nstep\n  .goto 10,50,50\nstep\n  .goto 60,50,50\nstep\n  .goto 10,40,40\n"
+
+    def setUp(self):
+        super().setUp()
+        self.files(
+            {
+                "Guides/Druid.lua": guide_lua("#include moon-1-5\n", gid="druid-guide", classes=("DRUID",)),
+                "Guides/Hunter.lua": guide_lua("#include moon-1-5\n", gid="hunter-guide", classes=("HUNTER",)),
+                "Guides/Chapters/moon-1-5.lua": chapter_lua("moon-1-5", self.ROUTE),
+                "Guides/Travel/Borders.lua": BORDERS_LUA,
+                "Classes/DRUID.lua": DRUID_HINT_LUA % MOON,
+                "Classes/HUNTER.lua": HUNTER_LUA,
+            }
+        )
+        write_pack(self.pack_dir, tables={"maps": MOON_MAPS, "quests": QUESTS, "npcs": NPCS, "travel": MOON_TRAVEL})
+
+    def run_main(self, *args):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            guide_travel.main(["--root", str(self.root), "--pack", str(self.pack_dir), *args])
+        return out.getvalue()
+
+    def blocks(self, out):
+        return [text.rstrip("\n") for _, _, text in rebuild_drafts.PROPOSAL.findall(out)]
+
+    def test_the_druids_guide_gets_the_classes_words_and_the_hunters_does_not(self):
+        druid = self.run_main("--guide", "druid-guide")
+        self.assertIn("2 uncovered zone change(s)", druid)
+        self.assertEqual(druid.count("no walk proposed"), 2)
+        self.assertEqual(self.blocks(druid), [guide_travel.render_steps([GO_STEP]), guide_travel.render_steps([BACK_STEP])])
+        hunter = self.run_main("--guide", "hunter-guide")
+        self.assertIn("2 uncovered zone change(s)", hunter)
+        self.assertNotIn("Teleport", hunter)
+        self.assertNotIn("Do not walk it", hunter)
+        self.assertNotIn("no walk proposed", hunter)
+        self.assertIn("Walk from Westland to Moonglade: the guide has no waypoints for this yet", hunter)
+        self.assertIn("Walk from Moonglade to Westland: the guide has no waypoints for this yet", hunter)
+
+    def test_the_steps_go_in_cover_the_zone_changes_and_nothing_is_proposed_again(self):
+        for _ in range(4):
+            found = rebuild_drafts.PROPOSAL.findall(self.run_main("--guide", "druid-guide"))
+            if not found:
+                break
+            rebuild_drafts.insert_proposals([(name, int(after), text) for name, after, text in found], self.root)
+        text = (self.root / "Guides/Chapters/moon-1-5.lua").read_text(encoding="utf-8")
+        self.assertEqual(text.count("Do not walk it"), 2)
+        self.assertIn(f"  .zone {MOON} >> Go to Moonglade", text)
+        self.assertIn("  .zone 10 >> Go to Westland", text)
+        self.assertIn("0 uncovered zone change(s)", self.run_main("--guide", "druid-guide"))
+        project = guidefile.load_project(self.root)
+        self.assertEqual([p for p in project.problems if p.severity == "error"], [])
+
+    def test_a_flight_the_route_has_learned_is_used_instead_of_the_words(self):
+        self.files(
+            {
+                "Guides/Chapters/moon-1-5.lua": chapter_lua(
+                    "moon-1-5",
+                    "#chapter 1-5 Moon\nstep\n  .goto 10,50,50\n  .fp 10,Westhold\n"
+                    f"step\n  .goto {MOON},50,50\n  .fp {MOON},Moonhaven\n"
+                    "step\n  .goto 10,40,40\nstep\n  .fly Moonhaven\nstep\n  .goto 60,55,55\n",
+                ),
+            }
+        )
+        out = self.run_main("--guide", "druid-guide")
+        self.assertEqual(out.count("no walk proposed"), 1)  # the first trip into Moonglade: no flight path yet
+        first, back = self.blocks(out)
+        self.assertEqual(first, guide_travel.render_steps([GO_STEP]))
+        self.assertIn(".fly Westhold", back)  # the way back flies, now that both flight paths are known: no words, no warning
+        self.assertNotIn("Do not walk it", back)
+
+    def test_the_cli_takes_the_class_for_one_trip(self):
+        trip = ["--from", "10,50,50", "--to", f"{MOON},50,50", "--faction", "Horde"]
+        druid = self.run_main(*trip, "--class", "DRUID")
+        self.assertIn(f"-- Westland (10) -> Moonglade ({MOON}): no walk proposed", druid)
+        self.assertIn(guide_travel.render_steps([GO_STEP]), druid)
+        for args in (trip, [*trip, "--class", "HUNTER"]):
+            plain = self.run_main(*args)
+            self.assertIn("find your own way", plain)
+            self.assertNotIn("Teleport", plain)
+
+
+class RepoTravelHintTest(unittest.TestCase):
+    """The repository's own class modules: the druid's words for Moonglade, and nothing for the hunter."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.project = guidefile.load_project(guide_travel.REPO_ROOT)
+
+    def test_the_druid_has_words_for_moonglade_and_the_hunter_has_none(self):
+        hints = self.project.classes["DRUID"].travel_hints
+        self.assertEqual(list(hints), [1450])  # Moonglade's uiMapID in the pack's maps
+        to, back, unsafe = (guidefile.wrapped(hints[1450][word]) for word in guidefile.TRAVEL_HINT_WORDS)
+        self.assertIn("cast Teleport: Moonglade if you have it", to)  # the old wording of the drafted chapters...
+        self.assertIn("VERIFY(beta): where a druid learns it", to)
+        self.assertIn("else the way is not in the data", to)
+        self.assertIn("hearthstone or a flight path", back)  # ...and the way back
+        self.assertIn("the way back is not in the data", back)
+        self.assertIn("Classic memory", unsafe)  # and that the road is not safe, as far as Classic remembers it
+        self.assertIn("Felwood or Winterspring", unsafe)
+        self.assertIn("not safe at your level", unsafe)
+        self.assertEqual([p for p in self.project.problems if p.code == "class-module"], [])
+        for token, module in self.project.classes.items():
+            if token != "DRUID":
+                self.assertIsNone(module.travel_hints, token)
+
+    def test_the_manifest_no_longer_rewrites_the_generators_moonglade_words(self):
+        # the words are the generator's now (Classes/DRUID.lua travelHints): two places would drift
+        manifest = json.loads((guide_travel.REPO_ROOT / "tools" / "drafts.json").read_text(encoding="utf-8"))
+        for entry in manifest["guides"]:
+            for rewrite in entry.get("rewrites", []):
+                self.assertNotIn("Moonglade", rewrite["match"] + rewrite["with"], entry["guide"])
+
+    def test_the_trolls_hunter_guide_gets_none_of_it(self):
+        guide = self.project.guides["horde-troll-hunter"]
+        variants = guidefile.variants(self.project, guide)
+        self.assertEqual({variant.cls for variant in variants}, {"HUNTER"})
+        pack_dir = guide_travel.default_pack_dir(guide_travel.REPO_ROOT)
+        pack = guide_travel.load_pack(pack_dir) if pack_dir else guide_travel.Pack()
+        graph = World(pack, self.project.borders, "Horde")
+        for variant in variants:
+            self.assertEqual(guide_travel.class_hints(self.project, variant.cls, graph), {})
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            args = ["--guide", "horde-troll-hunter"] + (["--pack", str(pack_dir)] if pack_dir else ["--no-pack"])
+            guide_travel.main(args)
+        for word in ("Teleport", "Do not walk it", "no walk proposed", "Moonglade"):
+            self.assertNotIn(word, out.getvalue())
+        chapters = "".join(
+            path.read_text(encoding="utf-8") for path in (guide_travel.REPO_ROOT / "Guides" / "Chapters").glob("troll-hunter-*.lua")
+        )
+        for word in ("Teleport", "Do not walk it", "Moonglade"):
+            self.assertNotIn(word, chapters)
+
+    def test_moonglade_is_map_1450_in_the_data_pack(self):
+        pack_dir = guide_travel.default_pack_dir(guide_travel.REPO_ROOT)
+        if pack_dir is None:
+            self.skipTest("no data pack: the map IDs are the pack's")
+        graph = World(guide_travel.load_pack(pack_dir), self.project.borders, "Horde")
+        self.assertEqual((graph.geo.name(1450), graph.geo.kind(1450), graph.zone(1450)), ("Moonglade", 3, 1450))
+        hints = guide_travel.class_hints(self.project, "DRUID", graph)
+        self.assertEqual(list(hints), [1450])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            for cls in ("DRUID", "HUNTER"):
+                guide_travel.main(
+                    ["--pack", str(pack_dir), "--from", "1456,50,50", "--to", "1450,50,50", "--faction", "Horde", "--class", cls]
+                )
+        druid, hunter = out.getvalue().split("-- Thunder Bluff", 2)[1:]
+        self.assertIn("Go to Moonglade: cast Teleport: Moonglade if you have it", druid)
+        self.assertIn(".zone 1450 >> Go to Moonglade", druid)
+        self.assertIn("Walk from Thunder Bluff to Moonglade: the guide has no waypoints", hunter)
+        self.assertNotIn("Teleport", hunter)
 
 
 # A ride as Guides/Travel/Borders.lua writes it: the zones only (the island Isle, map 40, is another world than Westland, 10).
