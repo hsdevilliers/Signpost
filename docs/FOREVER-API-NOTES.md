@@ -261,15 +261,17 @@ How a Horde Windshaper leaves Zephras Isle. The Horde sources agree with each ot
 - [ ] The **Journal window** (`UI/Journal.lua`, `/signpost`) in the real client: `WowStyle1DropdownTemplate` as a `DropdownButton` with `SetupMenu` and
   `CreateRadio` (the menu API), `SearchBoxTemplate`, three `PanelTabButtonTemplate` tabs below the frame (`PanelTemplates_SetNumTabs/SetTab`),
   `UICheckButtonTemplate` rows, plain scroll lists, the LibDBIcon minimap button and the AddOn Compartment click. Does it lay out and work?
-- [ ] **Druid forms in Forever** (sources disagree; no route assumes either reading, the Tauren route walks to Moonglade and back): is
+- [ ] **Druid forms in Forever** (sources disagree; no route assumes either reading; the guides' Moonglade steps say "cast Teleport: Moonglade
+  if you have it, else the way is not in the data" and tell a druid not to walk, `travelHints` in `Classes/DRUID.lua`): is
   **Teleport: Moonglade** a level-10 trainer spell as in Classic, or a reward of the Bear Form chain (one Forever guide lists it as a
   reward)? How does a druid get back from Moonglade (hearthstone, a flight path, the spell)? Is **Cat Form** (level 20) a new quest chain
   ("The Great Cat Spirit", three relics in the Stormrage Barrow Dens: ForeverChanges, beta) or a trainer spell (another guide)? Does the
   Windshaper Skyborne druid have its own chain ("The Great Windborne Cat Spirit")? Record the quest IDs with `Core/Learn.lua`
   (docs/CLASS-QUESTS.md).
 - [ ] **Teleport: Moonglade** (VERIFY(beta)): does a Forever druid get it at all, at what level, from the class trainer or by what quest,
-  and what does it cost (cast time, reagents, cooldown)? Nothing in the guides or the Route Planner assumes it: the Tauren HARDCORE route
-  walks to Moonglade (22 to 25 minutes each way in the planner's price; the chapter notes only mention the spell, tagged VERIFY(beta)). A
+  and what does it cost (cast time, reagents, cooldown)? Nothing in the guides or the Route Planner assumes it: the planner prices the Tauren
+  HARDCORE route's trips to Moonglade as a walk (22 to 25 minutes each way), and the guide's steps for them name the spell as a way if the
+  druid has it, tagged VERIFY(beta), and say not to walk (from Classic memory the road overland is for levels 48 and up). A
   scratch run of the planner with every trip to or from Moonglade priced at 2 minutes (two runs, with the rules of the day) took 1 to 2.5
   hours (3 to 8%) off 29 to 30 hours of play, which is inside the search's own noise, and about 8 hours off the class-quest charge: the
   spell would mostly let the class chains be done when they open. To answer: a druid at level 10 opens the class trainer and looks for

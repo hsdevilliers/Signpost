@@ -28,3 +28,10 @@ Cat Form is a mandatory class quest and the relic fight is the dangerous part of
 - The travel data has the Moonglade links; the planner routes the relic objectives (an area it visits for the class quests anyway), so the steps carry
   the positions; the old rewrites are removed or applied.
 - Verified in play: how a Windshaper gets to Moonglade and back (docs/FOREVER-API-NOTES.md, open probe "Druid forms in Forever").
+
+## Notes
+
+- Batch 1 (WP-F, branch feat/travel-data): the dead Moonglade `rewrites` of the Skyborne entry in tools/drafts.json are removed; the generator writes
+  the Moonglade words itself for every druid guide, planned or drafted (`Classes/DRUID.lua`, `travelHints`). The Skyborne guide's Moonglade legs now
+  read "cast Teleport: Moonglade if you have it ... else the way is not in the data" with a note not to walk it. The links in the travel data, and the
+  relic positions, are still open.

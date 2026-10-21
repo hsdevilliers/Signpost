@@ -590,6 +590,7 @@ class TravelHintTest(unittest.TestCase):
         self.assertEqual(len(guidefile.travel_hint_problems([{"to": "x", "back": "y", "unsafe": "z"}])), 1)
         self.assertEqual(guidefile.travel_hint_problems({60: {"to": "a", "back": ["b", "c"], "unsafe": " d "}}), [])
         self.assertEqual(guidefile.wrapped(["a b,", " c ", "", 5, "d"]), "a b, c d")
+        self.assertEqual(guidefile.wrapped("  a b "), "a b")
         self.assertEqual(guidefile.wrapped(None), "")
 
     def test_the_cost_line_says_no_walk_was_proposed(self):
@@ -606,6 +607,22 @@ class TravelHintTest(unittest.TestCase):
         source = guidefile.Source("chapter", "x", "x", guide_travel.render_steps([lines]), "x.lua", 1)
         guidefile.parse_source(source, guidefile.registry())
         self.assertEqual(source.problems, [])
+        back = guide_travel.hint_lines(moon_world(), hint, MOON, 10)  # the way back reads its own words, with one full stop
+        self.assertEqual(back[0], '.todo "Return from Moonglade to Westland: back. This step is done when you arrive in Westland."')
+
+    def test_a_trip_between_two_hinted_zones_goes_by_the_one_it_goes_to(self):
+        north = guide_travel.TravelHint(50, "fly north", "fly south", "the cold")
+        hints = {**moon_hints(), 50: north}
+        graph = moon_world()
+        self.assertIs(guide_travel.travel_hint(hints, MOON, 50), north)
+        self.assertIs(guide_travel.travel_hint(hints, 50, MOON), hints[MOON])
+        self.assertIs(guide_travel.travel_hint(hints, 10, 50), north)
+        self.assertIs(guide_travel.travel_hint(hints, 50, 10), north)
+        self.assertIsNone(guide_travel.travel_hint(hints, 10, 20))
+        self.assertIsNone(guide_travel.travel_hint({}, 10, MOON))
+        self.assertIsNone(guide_travel.travel_hint(None, 10, MOON))
+        _, proposal = self.trip(graph, MOON, 50, hints=hints)
+        self.assertTrue(proposal.steps[0][0].startswith('.todo "Go to Northland: fly north.'), proposal.steps)
 
 
 class FlightPathForHintedTripTest(unittest.TestCase):
@@ -726,6 +743,36 @@ class TravelHintProjectTest(TempProject):
         self.assertEqual(first, guide_travel.render_steps([GO_STEP]))
         self.assertIn(".fly Westhold", back)  # the way back flies, now that both flight paths are known: no words, no warning
         self.assertNotIn("Do not walk it", back)
+
+    def test_the_flight_path_of_the_zone_is_learned_where_the_walk_is_no_alternative(self):
+        # With a pass over the border the walk back is an alternative, and a flight must save a day (the patched LEARN_GAIN) to be
+        # worth a flight path: not for a hunter. A druid's guide must not walk it, so the flight is the way and the route learns the
+        # flight path where it passes it.
+        pass_lua = '\t{ name = "Eastland/Moonglade pass", from = { 20, 99, 50 }, to = { 60, 1, 50 } },\n})\n'
+        route = f"#chapter 1-5 Moon\nstep\n  .goto 10,50,50\n  .fp 10,Westhold\nstep\n  .goto {MOON},50,50\nstep\n  .goto 10,40,40\n"
+        self.files(
+            {
+                "Guides/Travel/Borders.lua": BORDERS_LUA.replace("})\n", pass_lua),
+                "Guides/Chapters/moon-1-5.lua": chapter_lua("moon-1-5", route),
+            }
+        )
+        with mock.patch.object(guide_travel, "LEARN_GAIN", 100000.0):
+            hunter = self.run_main("--guide", "hunter-guide")
+            self.assertNotIn("waits for the flight path", hunter)
+            self.assertIn("  .path 60,1.0,50.0 ; 20,99.0,50.0", hunter)  # a hunter's way back is the walk over the pass
+            druid = self.run_main("--guide", "druid-guide")
+            self.assertIn("waits for the flight path(s) to learn first: Moonhaven, Moonglade", druid)
+            self.assertIn("  .goto 60,50.0,50.0 >> Go to the flight master\n  .fp 60,Moonhaven", druid)
+            for _ in range(6):  # the passes the planner and rebuild_drafts repeat
+                found = rebuild_drafts.PROPOSAL.findall(self.run_main("--guide", "druid-guide"))
+                if not found:
+                    break
+                rebuild_drafts.insert_proposals([(name, int(after), text) for name, after, text in found], self.root)
+            text = (self.root / "Guides/Chapters/moon-1-5.lua").read_text(encoding="utf-8")
+            self.assertEqual(text.count("Do not walk it"), 1)  # the way in has no flight path to take; the way back flies
+            self.assertLess(text.index("Do not walk it"), text.index(".fp 60,Moonhaven"))
+            self.assertLess(text.index(".fp 60,Moonhaven"), text.index(".fly Westhold"))
+            self.assertIn("0 uncovered zone change(s)", self.run_main("--guide", "druid-guide"))
 
     def test_the_cli_takes_the_class_for_one_trip(self):
         trip = ["--from", "10,50,50", "--to", f"{MOON},50,50", "--faction", "Horde"]

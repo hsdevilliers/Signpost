@@ -28,3 +28,8 @@ The answer is in docs/FOREVER-API-NOTES.md (the open probe moves to Verified wit
 ## Notes
 
 - Raised by the review of the Tauren Druid planner route (batch 1, WP-A2), on the lead's instruction of 2026-10-21: no route assumes the spell until this is answered.
+- Since batch 1 (WP-F) the guides' Moonglade steps are the generator's, from `Classes/DRUID.lua` (`travelHints`, key 1450): "cast Teleport: Moonglade
+  if you have it (VERIFY(beta): where a druid learns it), else the way is not in the data", the way back "use your hearthstone or a flight path if you
+  have one (VERIFY(beta): the way back is not in the data)", and a `.note` that the road overland is not to be walked (from Classic memory: through
+  Felwood or Winterspring, levels 48 and up). When this question is answered, edit those three words there, regenerate the planned druid guides, and
+  drop the VERIFY text. What a druid does who has no way at all is its own question (what-does-a-druid-without-teleport-moonglade-do-about-the).

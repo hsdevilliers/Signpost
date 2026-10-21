@@ -164,6 +164,19 @@ airship off Zephras Isle) is a real step of three lines, still with no coordinat
 has confirmed>. This step is done when you arrive in <zone>."`. `.zeppelin`/`.boat` need both docks' positions, so they take the step over once
 a ride is recorded (the pack's record replaces the entry and keeps its name and wait), and until then the `.todo` marks the gap.
 
+A class that has a way of its own to a zone, and a road to it that is not one to walk, says so in its module (`travelHints` in `Classes/<CLASS>.lua`,
+keyed by the zone's uiMapID: today the druid's Moonglade, 1450), and the generator then writes the class's words for every trip to or from that
+zone in a guide of that class, in place of the plain placeholder: `.todo "Go to Moonglade: cast Teleport: Moonglade if you have it (VERIFY(beta):
+where a druid learns it), else the way is not in the data. This step is done when you arrive in Moonglade."`, `.note Do not walk it: from Classic
+memory (not confirmed in Forever) the road overland runs through Felwood or Winterspring, zones for levels 48 and up, so it is not safe at your
+level.` and the same `.zone <Y> >> Go to Y` as the plain placeholder, so the step is done on arrival and nothing about its completion changes. The
+way back reads `Return from Moonglade to X: use your hearthstone or a flight path if you have one (VERIFY(beta): the way back is not in the
+data).` The words replace any plan that walks over a border into or out of the zone, whether the border's points are known or not (no `.path`
+toward a zone the class must not walk to); a plan that flies, sails or hearths in or out stands, so once the route has taught the flight path
+(an `.fp` step where it passes the flight master) the later trips fly, and the generator proposes that `.fp` step even where walking would be
+nearly as quick, because walking is no alternative. A guide of another class never reads these words (`--class` on the command line picks the class
+for a single `--from`/`--to` trip).
+
 Class directives come from class modules (`Classes/<CLASS>.lua`): e.g. `.tame <npcID>`, `.ammo ...`. Using one in a
 chapter without a `.class` gate is a lint error.
 

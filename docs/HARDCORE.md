@@ -64,8 +64,12 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
   pricing and noting them, is a question for the user (backlog). The Barrens draft shows the gap: unflagged named targets (Verog, Hezrul, Kuz and Nak) pass the elite rule.
 - **Moonglade and Bear Form timing (design call).** Every Tauren druid class chain (Bear Form at 10, Lessons Anew at 14, Aquatic Form at
   16) runs through Moonglade (Dendrite Starblaze, Tajarri), and the travel graph has no route there. Since 2026-10-21 the Tauren route is
-  the Route Planner's: it walks to Moonglade and back (22 to 25 minutes each way in its price, a `.todo` travel step each time in the
-  guide) and no step assumes **Teleport: Moonglade**; the chapter notes only mention it, tagged VERIFY(beta). What the sources say:
+  the Route Planner's, and it prices a walk to Moonglade and back (22 to 25 minutes each way). The guide does **not** send a HARDCORE druid
+  on that walk: from Classic memory the road overland runs through Felwood or Winterspring, zones for levels 48 and up. Every trip to or from
+  Moonglade is a `.todo` step in the druid's words (`travelHints` in `Classes/DRUID.lua`, written by the travel generator): "cast Teleport:
+  Moonglade if you have it (VERIFY(beta): where a druid learns it), else the way is not in the data", "Do not walk it: ... not safe at your
+  level", and for the way back "use your hearthstone or a flight path if you have one". No step assumes the spell, and a real flight or
+  hearth that the guide has taught stands. What a druid without the spell does is open (backlog). What the sources say:
   Classic druids have that spell from level 10 (10 s cast, no reagents); Forever guides list it as a reward of the Bear Form chain; where
   Forever druids learn it is unverified (VERIFY(beta)), and so is the way back (hearthstone, a flight path, or the spell). Open: confirm
   both in game (backlog: the question on Teleport: Moonglade), and batch the Lessons Anew and Aquatic Form legs into fewer round trips

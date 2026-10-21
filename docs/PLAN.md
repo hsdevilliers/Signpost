@@ -208,7 +208,10 @@ A class module is a table registered via `ns.Classes:Register("HUNTER", {...})` 
 - `directives` — class-only DSL directives registered into the **directive registry** (`ns.Directives:Register("tame", { parse=fn, isSatisfied=fn, targets=fn, describe=fn })`); the core only ships the generic directives from §5. `.tame`, `.ammo` live in the hunter module;
 - `classTab` — a builder `fn(parentFrame)` for the journal's third tab; the tab title is the localized class name, the portrait is `GetClassAtlas(classFile)`. If a class module has no `classTab`, the tab is hidden;
 - `automation` — optional hooks (e.g. hunter: vendor restock of ammo/pet food during `.buy` steps; warrior/paladin: none);
-- `onLevelUp(level)` — optional reminders (e.g. "new pet skills available").
+- `onLevelUp(level)` — optional reminders (e.g. "new pet skills available");
+- `travelHints` — `{ [uiMapID] = { to=…, back=…, unsafe=… } }`, plain words for the travel generator (`tools/guide_travel.py`; the addon never reads them): in a guide of
+  this class, a trip to or from that zone that would be a walk over a border becomes a step that says the class's own way (`to`, `back`: the druid's Teleport:
+  Moonglade) and, in a `.note`, why the road is not to be walked (`unsafe`); a flight path or the hearthstone that the data holds stands as it is (§3.6).
 
 **Data pack**: `classes/<CLASSFILE>.lua` instead of a hunter-only file; `tools/wowhead_class.py --class HUNTER` is generic.
 `Professions.lua` covers every profession; which ones a character follows is its profession plan (§3.8).
