@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 4 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the beam route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -6,56 +6,67 @@ local ADDON_NAME, ns = ...
 ns.Chapters:Register(
 	"windshaper-druid-22-the-barrens",
 	[[
-#chapter 29-29 The Barrens
+#chapter 28-28 The Barrens
 step
-  .goto 1413,48.97,86.31
-  .accept 857 -- The Tear of the Moons
+  .goto 1413,50.73,56.83
+  .complete 878,2 -- Tribes at War
 step
-  .goto 1413,49.13,84.25
-  .complete 857 -- The Tear of the Moons
+  .goto 1413,53.32,53.19
+  .complete 878,3 -- Tribes at War
 step
-  .goto 1413,48.97,86.31
-  .turnin 857 -- The Tear of the Moons
-step
+  .goto 1413,45.1,57.68
+  .accept 1153 -- A New Ore Sample
   .goto 1413,44.86,59.14
-  .accept 1130 -- Melor Sends Word
+  .accept 874 -- Mahren Skyseer
+  .goto 1413,44.55,59.26
+  .turnin 878 -- Tribes at War
+  .accept 5052 -- Blood Shards of Agamaggan
 step
-  .todo "travel from The Barrens to Thunder Bluff: the travel graph has no route yet"
-  .zone 1456 >> Go to Thunder Bluff
+  .goto 1413,42.87,55.25
+  .complete 5052 -- Blood Shards of Agamaggan
 step
-  .goto 1456,61.54,80.92
-  .turnin 1130 -- Melor Sends Word
+  .goto 1413,44.55,59.26
+  .turnin 5052 -- Blood Shards of Agamaggan
 step
-  .todo "travel from Thunder Bluff to Stonetalon Mountains: the travel graph has no route yet"
-  .zone 1442 >> Go to Stonetalon Mountains
+  .todo "border The Barrens/Thousand Needles: no crossing coordinates yet (record them in game or in Borders.lua)"
+  .zone 1441 >> Go into Thousand Needles
 step
-  .goto 1442,58.99,62.6
-  .turnin 1095 -- Further Instructions
-  .accept 1096 -- Gerenzo Wrenchwhistle
+  .goto 1441,12.41,14.01
+  .complete 1153 -- A New Ore Sample
 step
-  .goto 1442,64.49,40.25
-  .complete 1096 -- Gerenzo Wrenchwhistle
-step
-  .goto 1442,58.99,62.6
-  .turnin 1096 -- Gerenzo Wrenchwhistle
-step
-  .todo "border The Barrens/Stonetalon Mountains: no crossing coordinates yet (record them in game or in Borders.lua)"
+  .todo "border The Barrens/Thousand Needles: no crossing coordinates yet (record them in game or in Borders.lua)"
   .zone 1413 >> Go into The Barrens
 step
-  .todo "border The Barrens/Ashenvale: no crossing coordinates yet (record them in game or in Borders.lua)"
-  .zone 1440 >> Go into Ashenvale
+  .goto 1413,45.1,57.68
+  .turnin 1153 -- A New Ore Sample
 step
-  .goto 1440,70.01,71.16
-  .accept 6504 -- The Lost Pages
-  .todo "The Lost Pages: objective 1 has no position in the pack"
-  .complete 6504,1 -- The Lost Pages
-  .todo "The Lost Pages: objective 2 has no position in the pack"
-  .complete 6504,2 -- The Lost Pages
-  .todo "The Lost Pages: objective 3 has no position in the pack"
-  .complete 6504,3 -- The Lost Pages
-  .turnin 6504 -- The Lost Pages
+  .goto 1413,62.37,37.62
+  .accept 1221 -- Blueleaf Tubers
+  .todo "Blueleaf Tubers: objective 1 has no position in the pack"
+  .complete 1221,1 -- Blueleaf Tubers
 step
-  .goto 1440,73.06,61.48
-  .accept 6441 -- Satyr Horns
+  .goto 1413,62.98,37.22
+  .accept 1095 -- Further Instructions
+step
+  .goto 1413,62.32,37.62
+  .complete 1221,2 -- Blueleaf Tubers
+  .complete 1221,3 -- Blueleaf Tubers
+  .complete 1221,4 -- Blueleaf Tubers
+step
+  .goto 1413,62.37,37.62
+  .turnin 1221 -- Blueleaf Tubers
+step
+  .goto 1413,65.84,43.86
+  .turnin 874 -- Mahren Skyseer
+  .accept 873 -- Isha Awak
+step
+  .goto 1413,63.53,53.85
+  .complete 873 -- Isha Awak
+step
+  .goto 1413,65.84,43.86
+  .turnin 873 -- Isha Awak
+step
+  .todo "border The Barrens/Stonetalon Mountains: no crossing coordinates yet (record them in game or in Borders.lua)"
+  .zone 1442 >> Go into Stonetalon Mountains
 ]]
 )

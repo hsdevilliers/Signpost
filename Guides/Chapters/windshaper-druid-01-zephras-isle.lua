@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 4 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the beam route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -6,7 +6,7 @@ local ADDON_NAME, ns = ...
 ns.Chapters:Register(
 	"windshaper-druid-01-zephras-isle",
 	[[
-#chapter 1-12 Zephras Isle
+#chapter 1-11 Zephras Isle
 step
   .goto 2521,42.82,23.37
   .accept 92460 -- Coming of Age
@@ -69,10 +69,13 @@ step
   .accept 92472 -- The Next Step
   .accept 96638 -- The Adventurer
 step
+  .goto 2521,41.66,44.8
+  .turnin 96638 -- The Adventurer
   .goto 2521,43.51,44.77
   .accept 92595 -- The Windshapers
   .complete 92595,1 -- The Windshapers
   .turnin 92595 -- The Windshapers
+  .accept 94411 -- Meddlesome Mages
   .goto 2521,45.67,45.5
   .turnin 92472 -- The Next Step
   .accept 92514 -- Welcome to Shen'dar Village
@@ -89,8 +92,6 @@ step
   .accept 93319 -- Pilfered Windstones
   .goto 2521,44.68,44.53
   .accept 92515 -- The Problem With Prideclaws
-  .goto 2521,41.66,44.8
-  .turnin 96638 -- The Adventurer
 step
   .goto 2521,39.49,43.34
   .complete 92553 -- Restocking the Larders
@@ -101,9 +102,13 @@ step
   .goto 2521,44.68,44.53
   .turnin 92515 -- The Problem With Prideclaws
 step
-  .goto 2521,50.55,34.29
-  .complete 92517 -- The Criminal Element
+  .goto 2521,45.95,39.53
+  .complete 94411 -- Meddlesome Mages
+  .complete 92517,1 -- The Criminal Element
   .complete 93319 -- Pilfered Windstones
+step
+  .goto 2521,50.62,34.27
+  .complete 92517,2 -- The Criminal Element
 step
   .goto 2521,44.46,44.96
   .turnin 93319 -- Pilfered Windstones
@@ -111,13 +116,25 @@ step
   .turnin 92517 -- The Criminal Element
   .level 5
   .accept 93036 -- Infiltrating the Cult
+  .goto 2521,43.51,44.77
+  .turnin 94411 -- Meddlesome Mages
+  .goto 2521,43.38,45.82
+  .accept 93318 -- WANTED: Vulgara the Insatiable
   .goto 2521,44.88,45.53
   .turnin 93036 -- Infiltrating the Cult
   .accept 92529 -- Falaath Village
 step
+  .goto 2521,42.66,52.8
+  .complete 93318 -- WANTED: Vulgara the Insatiable
+step
+  .goto 2521,45.24,45.18
+  .turnin 93318 -- WANTED: Vulgara the Insatiable
+step
   .goto 2521,46.89,56.23
   .turnin 92529 -- Falaath Village
 step
+  .goto 2521,60.55,73.06
+  .accept 93317 -- Crab Season
   .goto 2521,62.08,73.17
   .accept 92679 -- Blood Tithe
   .complete 92679,2 -- Blood Tithe
@@ -126,7 +143,6 @@ step
   .complete 92679,1 -- Blood Tithe
   .turnin 92679 -- Blood Tithe
   .accept 92682 -- Make Yourself Useful
-  .accept 92683 -- Flutterfly Dust
   .accept 92684 -- Ornery Ornery Galestriders
   .goto 2521,48.65,78.42
   .accept 92698 -- What Is My Purpose?
@@ -138,35 +154,19 @@ step
   .turnin 92682 -- Make Yourself Useful
   .turnin 92698 -- What Is My Purpose?
 step
-  .level 9 -- reach it first: kill or grind on the way
-step
-  .goto 2521,49.76,79.06
+  .goto 2521,50.21,82.72
   .complete 92684 -- Ornery Ornery Galestriders
-  .complete 92683 -- Flutterfly Dust
 step
   .goto 2521,46.7,81.95
-  .turnin 92683 -- Flutterfly Dust
   .turnin 92684 -- Ornery Ornery Galestriders
-  .accept 92685 -- The Hills Have Eyes
 step
-  .goto 2521,46.31,77.37
-  .complete 92685 -- The Hills Have Eyes
+  .goto 2521,52.55,74.91
+  .complete 93317 -- Crab Season
 step
-  .goto 2521,46.7,81.95
-  .turnin 92685 -- The Hills Have Eyes
-  .accept 92693 -- Standing Our Ground
-  .complete 92693,1 -- Standing Our Ground
-step
-  .goto 2521,47.72,78.02
-  .complete 92693,2 -- Standing Our Ground
-step
-  .goto 2521,46.7,81.95
-  .turnin 92693 -- Standing Our Ground
-  .accept 92703 -- Deliver the News
-step
-  .goto 2521,62.08,73.17
-  .turnin 92703 -- Deliver the News
+  .goto 2521,60.55,73.06
+  .turnin 93317 -- Crab Season
   .goto 2521,63.99,75.08
+  .level 8
   .accept 94484 -- Unnerving Silence
   .level 10
   .accept 94006 .class DRUID -- The Great Ursera Spirit
@@ -174,6 +174,7 @@ step
   .goto 2521,69.81,61.71
   .turnin 94006 .class DRUID -- The Great Ursera Spirit
   .accept 94638 .class DRUID -- Strength and Mercy
+  .note VERIFY(beta): the Bear Form trial; the data only says to kill Ur'endra (near 54,65). Go in at full health with your buffs up and leave if it goes badly: the Tauren Bear Form test (Lunaclaw) kills careless players.
 step
   .goto 2521,56.81,61.11
   .accept 98512 -- Al'Aketh Assassins

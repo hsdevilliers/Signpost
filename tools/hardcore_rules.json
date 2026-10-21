@@ -294,6 +294,182 @@
       "confidence": "medium"
     },
     {
+      "id": 1491,
+      "name": "Smart Drinks",
+      "action": "skip",
+      "reason": "HARDCORE: Wailing Caverns quest: the Wailing Essence drops from elite ectoplasms",
+      "source": "the data pack: the quest's zone is the Wailing Caverns (map 279, the zone of Deviate Hides and Leaders of the Fang) and four of the item's five known sources are elite; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 1013,
+      "name": "The Book of Ur",
+      "action": "skip",
+      "reason": "HARDCORE: dungeon quest (Shadowfang Keep): the book lies inside the dungeon",
+      "source": "the data pack: the quest's zone is Shadowfang Keep (map 310, the zone of Arugal Must Die) and the book is an object the pack places nowhere; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 6921,
+      "name": "Amongst the Ruins",
+      "action": "skip",
+      "reason": "HARDCORE: dungeon quest (Blackfathom Deeps): the Fathom Core lies inside the dungeon",
+      "source": "the data pack: the quest's zone is Blackfathom Deeps (map 221, the zone of Trouble in the Deeps) and the Fathom Stone is an object the pack places nowhere; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 879,
+      "name": "Betrayal from Within",
+      "action": "skip",
+      "reason": "HARDCORE: kills the named Kuz, Nak and Lok Orcbane, targets the data does not flag as elite",
+      "source": "docs/HARDCORE.md (the review of the Barrens draft listed Kuz and Nak with Verog and Hezrul; only those two were put on this list); first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 850,
+      "name": "Kolkar Leaders",
+      "action": "skip",
+      "reason": "HARDCORE: kills the named Kolkar leader Barak Kodobane, a target the data does not flag as elite",
+      "source": "the same reasoning as Verog the Dervish and Hezrul Bloodmark above (named Kolkar targets); first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 6621,
+      "name": "King of the Foulweald",
+      "action": "skip",
+      "reason": "HARDCORE: kills Chief Murgut, a named furbolg chief the data places nowhere and does not flag as elite",
+      "source": "the data pack (NPC 12918 has no position); own knowledge of the game (Classic), from memory; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 5147,
+      "name": "Wanted - Arnak Grimtotem",
+      "action": "skip",
+      "reason": "HARDCORE: bounty on Arnak Grimtotem, a named Grimtotem in his camp, a target the data does not flag as elite",
+      "source": "the same reasoning as the other named targets on this list; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 94638,
+      "name": "Strength and Mercy",
+      "action": "note",
+      "text": "VERIFY(beta): the Bear Form trial; the data only says to kill Ur'endra (near 54,65). Go in at full health with your buffs up and leave if it goes badly: the Tauren Bear Form test (Lunaclaw) kills careless players.",
+      "source": "the data pack (objective: kill NPC 258443 Ur'endra); docs/HARDCORE.md for the Tauren test; not seen in game",
+      "confidence": "low"
+    },
+    {
+      "id": 94913,
+      "name": "Moonglade",
+      "action": "note",
+      "text": "Moonglade is a long way from here. VERIFY(beta): cast Teleport: Moonglade (Classic's druid trainer teaches it at level 10; where Forever teaches it is unconfirmed). The way back is the hearthstone or a flight master (the client lists Horde flight nodes at Moonglade).",
+      "source": "the earlier drafted Skyborne Druid chapters (the Moonglade .todo steps the planner's install does not keep); docs/HARDCORE.md; the client's flight nodes in the data pack's maps",
+      "confidence": "low"
+    },
+    {
+      "id": 98404,
+      "name": "The Great Windborne Cat Spirit",
+      "action": "note",
+      "text": "VERIFY(beta): the three relics lie in the Stormrage Barrow Dens, east Moonglade (the data puts Fang near 72,66, Claw near 75,67 and Silent Shadow near 74,65). Fan guides say the spirits there attack on sight and the relics are party loot; a statue at the door gives a stealth blessing. Go in at full health and leave if hurt.",
+      "source": "docs/CLASS-QUESTS.md (worstguidesever.com and foreverchanges.pro, beta descriptions); the relics' positions are in the data pack",
+      "confidence": "low"
+    },
+    {
+      "id": 86576,
+      "name": "Bloodfury Trinkets",
+      "action": "note",
+      "text": "Elites roam among these harpies: Bloodfury Ripper (elite, near 31,62) and Sister Riven (rare elite, near 30,69). Kill only the ordinary harpies and keep away from those two.",
+      "source": "the data pack (NPC ranks and positions: 12579 and 5930)",
+      "confidence": "high"
+    },
+    {
+      "id": 869,
+      "name": "Raptor Thieves",
+      "action": "note",
+      "text": "Takk the Leaper, a rare elite raptor (near 59.6,8.3), is one of the creatures that drop the heads: take them from the ordinary raptors and keep away from him.",
+      "source": "the data pack (item Raptor Head's drop sources; NPC 5842 Takk the Leaper has the rank rare elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 865,
+      "name": "Raptor Horns",
+      "action": "note",
+      "text": "Takk the Leaper, a rare elite raptor (near 59.6,8.3), drops the horns too: take them from the ordinary raptors and keep away from him.",
+      "source": "the data pack (item Intact Raptor Horn's drop sources; NPC 5842 Takk the Leaper has the rank rare elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 845,
+      "name": "The Zhevra",
+      "action": "note",
+      "text": "Swiftmane, a rare elite zhevra (near 61.2,34.5), drops the hooves too: take them from the ordinary zhevras and keep away from him.",
+      "source": "the data pack (item Zhevra Hooves' drop sources; NPC 5831 Swiftmane has the rank rare elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 855,
+      "name": "Centaur Bracers",
+      "action": "note",
+      "text": "Rocklance (rare elite, near 56.5,41.7) and Warlord Krom'zar (elite) are among the Kolkar that drop the bracers: kill ordinary Kolkar one at a time and leave those two alone.",
+      "source": "the data pack (item Centaur Bracers' drop sources; NPC 5841 Rocklance has the rank rare elite, NPC 9456 Warlord Krom'zar elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 1104,
+      "name": "Salt Flat Venom",
+      "action": "note",
+      "text": "Vile Sting, a rare elite scorpid (near 70.6,72.9), drops the venom too: take it from the ordinary scorpids and keep away from him.",
+      "source": "the data pack (item Salty Scorpid Venom's drop sources; NPC 5937 Vile Sting has the rank rare elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 6441,
+      "name": "Satyr Horns",
+      "action": "note",
+      "text": "The horns drop from the satyrs of the camps, among them the named Prince Raze (near 81.6,48.5) and Geltharis (near 78,42.4), whom the data does not rank: take the ordinary satyrs one at a time and leave the named ones if a fight looks bad.",
+      "source": "the data pack (item Satyr Horns' drop sources and their positions); the named satyrs carry no rank in the data",
+      "confidence": "low"
+    },
+    {
+      "id": 1150,
+      "name": "Test of Endurance",
+      "action": "skip",
+      "reason": "HARDCORE: kills the named Grenka Bloodscreech, a target with no position and no elite flag in the data",
+      "source": "the data pack (NPC 4490 has no position and no rank); the same reasoning as the other named targets on this list; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 435,
+      "name": "Escorting Erland",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Deathstalker Erland is attacked on the way); the data has no objective for it, so the planner took it for a delivery",
+      "source": "own knowledge of the game (Classic), from memory; the pack's record has no objective and the backlog item on escorts names it; found by the pool scan of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 5726,
+      "name": "Hidden Enemies",
+      "action": "skip",
+      "reason": "HARDCORE: the Lieutenant's Insignia drops from the Burning Blade at Skull Rock (near 53,9); the chain goes on into Ragefire Chasm to kill two elites (5728)",
+      "source": "the data pack: the item's sources are the Burning Blade Fanatic and Apprentice at 53,9, the same place as quest 827 Skull Rock's, with Gazz'uz at 52,10; docs/HARDCORE.md names Skull Rock; found by the pool scan of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 1486,
+      "name": "Deviate Hides",
+      "action": "skip",
+      "reason": "HARDCORE: Wailing Caverns quest: the hides drop from elite Deviate creatures (Coiler, Stinglash, Creeper)",
+      "source": "the data pack: the quest's zone is the Wailing Caverns (map 279) and the first three sources of the item are elite; found by the pool scan of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 480,
+      "name": "The Weaver",
+      "action": "note",
+      "text": "Archmage Ataeric (near 63,64) is the named boss of Ambermill Keep, where the Dalaran wizards of the earlier quests stand together, and the data does not rank him: do this one at full health with the keep's wizards pulled one at a time, or leave it.",
+      "source": "the data pack (the item's source and the positions of the Dalaran creatures around 60-64,62-65); the named boss carries no rank in the data",
+      "confidence": "low"
+    },
+    {
       "id": 5930,
       "name": "Great Bear Spirit",
       "action": "note",

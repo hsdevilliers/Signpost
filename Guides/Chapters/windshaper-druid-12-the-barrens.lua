@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 4 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the beam route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -8,66 +8,42 @@ ns.Chapters:Register(
 	[[
 #chapter 22-23 The Barrens
 step
-  .goto 1413,51.95,31.58
-  .turnin 899 -- Consumed by Hatred
-  .turnin 4921 -- Lost in Battle
-  .turnin 95774 -- Her Name Is Olgra
+  .goto 1413,35.19,27.76
+  .turnin 6523 -- Protect Kaya
+  .goto 1413,35.26,27.88
+  .accept 1062 -- Goblin Invaders
 step
-  .goto 1413,57.62,27.24
-  .complete 97003 -- Chol'aruk the Ravener
+  .goto 1413,39.18,15.68
+  .complete 875 -- Harpy Lieutenants
 step
-  .goto 1413,52.65,29.06
-  .turnin 97003 -- Chol'aruk the Ravener
+  .goto 1413,49.05,11.17
+  .turnin 3922 -- Nugget Slugs
 step
+  .goto 1413,51.62,30.9
+  .turnin 875 -- Harpy Lieutenants
+  .accept 876 -- Serena Bloodfeather
+step
+  .goto 1413,62.37,37.62
+  .turnin 865 -- Raptor Horns
   .goto 1413,62.98,37.22
   .turnin 1094 -- Further Instructions
-  .goto 1413,63.35,38.45
-  .turnin 896 -- Miner's Fortune
 step
-  .goto 1413,44.86,59.14
-  .accept 913 -- Cry of the Thunderhawk
-  .accept 6382 -- The Ashenvale Hunt
-  .goto 1413,44.62,59.27
-  .accept 97250 -- Wrongly Blamed, Justly Corrected
-  .goto 1413,44.55,59.26
-  .accept 878 -- Tribes at War
+  .todo "travel from The Barrens to Silverpine Forest: the travel graph has no route yet"
+  .zone 1421 >> Go to Silverpine Forest
 step
-  .goto 1413,44.77,63.05
-  .complete 913 -- Cry of the Thunderhawk
+  .goto 1421,58.12,69.77
+  .accept 95883 -- The Tortured Soul
+  .accept 95885 -- The Offering of Blood
 step
-  .goto 1413,44.86,59.14
-  .turnin 913 -- Cry of the Thunderhawk
+  .goto 1421,58.06,69.89
+  .complete 95883 -- The Tortured Soul
+  .complete 95885 -- The Offering of Blood
 step
-  .goto 1413,42.87,55.25
-  .complete 878,1 -- Tribes at War
+  .goto 1421,58.12,69.77
+  .turnin 95883 -- The Tortured Soul
+  .turnin 95885 -- The Offering of Blood
 step
-  .goto 1413,43.27,48.0
-  .complete 878,3 -- Tribes at War
-step
-  .goto 1413,44.78,51.51
-  .complete 878,2 -- Tribes at War
-step
-  .goto 1413,44.55,59.26
-  .turnin 878 -- Tribes at War
-  .accept 5052 -- Blood Shards of Agamaggan
-step
-  .goto 1413,42.87,55.25
-  .complete 5052 -- Blood Shards of Agamaggan
-step
-  .goto 1413,48.77,77.21
-  .complete 97250 -- Wrongly Blamed, Justly Corrected
-step
-  .goto 1413,46.37,73.79
-  .accept 79192 -- Stepping Stones
-step
-  .goto 1413,44.62,59.27
-  .turnin 97250 -- Wrongly Blamed, Justly Corrected
-  .goto 1413,44.55,59.26
-  .turnin 5052 -- Blood Shards of Agamaggan
-  .goto 1413,45.1,57.68
-  .accept 893 -- Weapons of Choice
-step
-  .todo "border The Barrens/Stonetalon Mountains: no crossing coordinates yet (record them in game or in Borders.lua)"
-  .zone 1442 >> Go into Stonetalon Mountains
+  .todo "travel from Silverpine Forest to Undercity: the travel graph has no route yet"
+  .zone 1458 >> Go to Undercity
 ]]
 )
