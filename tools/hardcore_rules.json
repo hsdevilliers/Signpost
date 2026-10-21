@@ -250,6 +250,38 @@
       "confidence": "low"
     },
     {
+      "id": 435,
+      "name": "Escorting Erland",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Deathstalker Erland is attacked on the way); the data has no objective for it, so the planner took it for a delivery",
+      "source": "own knowledge of the game (Classic), from memory; the pack's record has no objective and the backlog item on escorts names it; found by the pool scan of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 5726,
+      "name": "Hidden Enemies",
+      "action": "skip",
+      "reason": "HARDCORE: the Lieutenant's Insignia drops from the Burning Blade at Skull Rock (near 53,9); the chain goes on into Ragefire Chasm to kill two elites (5728)",
+      "source": "the data pack: the item's sources are the Burning Blade Fanatic and Apprentice at 53,9, the same place as quest 827 Skull Rock's, with Gazz'uz at 52,10; docs/HARDCORE.md names Skull Rock; found by the pool scan of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 1486,
+      "name": "Deviate Hides",
+      "action": "skip",
+      "reason": "HARDCORE: Wailing Caverns quest: the hides drop from elite Deviate creatures (Coiler, Stinglash, Creeper)",
+      "source": "the data pack: the quest's zone is the Wailing Caverns (map 279) and the first three sources of the item are elite; found by the pool scan of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 480,
+      "name": "The Weaver",
+      "action": "note",
+      "text": "Archmage Ataeric (near 63,64) is the named boss of Ambermill Keep, where the Dalaran wizards of the earlier quests stand together, and the data does not rank him: do this one at full health with the keep's wizards pulled one at a time, or leave it.",
+      "source": "the data pack (the item's source and the positions of the Dalaran creatures around 60-64,62-65); the named boss carries no rank in the data",
+      "confidence": "low"
+    },
+    {
       "id": 5930,
       "name": "Great Bear Spirit",
       "action": "note",
