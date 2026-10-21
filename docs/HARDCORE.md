@@ -41,7 +41,12 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
    `.note` on it (docs/PLANNER.md), and the list still skips the ones known to kill.
 1. **Skip list** (`tools/hardcore_rules.json`): each rule has a quest ID (from the data pack), an action (`skip` becomes
    `#skipquest <id> >> <reason>`, `note` becomes a `.note` after the `.accept`), a source and a confidence. `tools/guide_draft.py
-   --hardcore` applies it. Corrected from play: the contributors' deaths and notes are the best source we will get.
+   --hardcore` applies it. Corrected from play: the contributors' deaths and notes are the best source we will get. Scope (2026-10-21): a skip
+   whose reason starts with HARDCORE (escorts, elite or unknown-rank targets, dungeon quests) holds for HARDCORE guides only; any other skip
+   holds for every guide, so it is for what nobody should do (a battleground quest) or it carries `class_quest_of` (a class token or a list):
+   the quest belongs to that class although the data has no class mask for it (Forever's new quests have none), and the rule skips it for the
+   guides of every other class and leaves it to that class's own. A rule's source says where the belief comes from (memory of Classic, a
+   review, a death) and whether it was seen in game; it does not quote the data pack.
 2. **Class quests stay mandatory** (the lint enforces it): a dangerous one is routed late and carries a note, or is skipped with a
    written reason, never silently dropped.
 3. **Group (elite) quests are optional** (PLAN §2) and in hardcore are skipped unless the player chooses otherwise.
@@ -58,12 +63,13 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
   for them exists. Escorts and events are flagged (`scripted`), and whether a HARDCORE route should drop every one the data flags, instead of
   pricing and noting them, is a question for the user (backlog). The Barrens draft shows the gap: unflagged named targets (Verog, Hezrul, Kuz and Nak) pass the elite rule.
 - **Moonglade and Bear Form timing (design call).** Every Tauren druid class chain (Bear Form at 10, Lessons Anew at 14, Aquatic Form at
-  16) runs through Moonglade (Dendrite Starblaze, Tajarri), and the travel graph has no route there. The guide has the Bear Form chain
-  right after Mulgore and the other two after the Barrens, each with a `.todo` to cast **Teleport: Moonglade**. What the sources say:
+  16) runs through Moonglade (Dendrite Starblaze, Tajarri), and the travel graph has no route there. Since 2026-10-21 the Tauren route is
+  the Route Planner's: it walks to Moonglade and back (22 to 25 minutes each way in its price, a `.todo` travel step each time in the
+  guide) and no step assumes **Teleport: Moonglade**; the chapter notes only mention it, tagged VERIFY(beta). What the sources say:
   Classic druids have that spell from level 10 (10 s cast, no reagents); Forever guides list it as a reward of the Bear Form chain; where
   Forever druids learn it is unverified (VERIFY(beta)), and so is the way back (hearthstone, a flight path, or the spell). Open: confirm
-  both in game, and batch the Lessons Anew and Aquatic Form legs into fewer round trips (the chain links alternate between Thunder Bluff
-  and Moonglade, so a trip per link is what the data gives).
+  both in game (backlog: the question on Teleport: Moonglade), and batch the Lessons Anew and Aquatic Form legs into fewer round trips
+  (the chain links alternate between Thunder Bluff and Moonglade, so a trip per link is what the data gives).
 - **`.todo` never completes a step** (found by the review): a step with `.todo` and another directive (the travel steps, an objective
   step) stays current after the other directive is satisfied, until the player skips it. That is what GUIDE-FORMAT says (`.todo` is never
   satisfied), but it makes the planner's `.todo` + `.zone` steps and the drafted `.todo` + `.complete` steps need a manual skip.

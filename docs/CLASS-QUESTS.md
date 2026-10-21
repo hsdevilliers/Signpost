@@ -42,7 +42,10 @@ The Codex says 10 hunter quests are new in Forever without listing them; Forever
 
 A level 20-30 band of class **weapon quests** is described for several classes (buyboost.com: a druid two-handed mace "Heavehammer" at 24
 from the Wetlands Titan relic route, Horde "Earthen Echo"; Quilboar Blaster for hunters; a rogue dagger route from 24). The user saw a level 24
-rogue group quest for poisons. None of these has a verified description or IDs; they are the first things to capture from play.
+rogue group quest for poisons. None of these has a verified description or IDs; they are the first things to capture from play. The data has
+a quest of the druid one's name, 98823 Earthen Echo (Bashana Runetotem in Thunder Bluff to Muln Earthfury in Mulgore, level 31 from 24), that may
+be it; nobody has seen it offered to a druid, so it is not a class chain in `Classes/DRUID.lua` and no guide routes or skips it (backlog: the
+question on 98823).
 
 ## What the guides do about it
 

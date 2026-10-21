@@ -161,6 +161,19 @@ class EndToEndTest(RouteCase):
         self.assertEqual(engine.Settings().ferry_seconds, 420.0)  # pricing.PRICES.ferry
         self.assertIn("Both price travel with the same numbers (signpost_tools/pricing.py", " ".join(text.split()))  # the fidelity line
 
+    def test_a_rule_about_another_classes_quest_skips_it_for_the_other_classes_guides_only(self):
+        rules = self.root / "tools" / "hardcore_rules.json"
+        rules.parent.mkdir(exist_ok=True)
+        line = "#skipquest 203 >> probably another class's quest"
+        for owner, skipped in (("WARLOCK", True), ("HUNTER", False)):  # the Troll Hunter's guide is a normal one
+            rule = {"id": 203, "action": "skip", "reason": "probably another class's quest", "class_quest_of": owner}
+            rules.write_text(json.dumps({"rules": [rule]}), encoding="utf-8")
+            with tempfile.TemporaryDirectory() as out_dir:
+                code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0")
+                self.assertEqual(code, 0, text)
+                plan = (Path(out_dir) / "greedy" / "Guides" / "Plan.lua").read_text(encoding="utf-8")
+            self.assertEqual(line in plan, skipped, owner)
+
     def test_hardcore_is_taken_from_the_guide_and_can_be_overridden(self):
         code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0")
         self.assertIn("[HARDCORE route]", text)

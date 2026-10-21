@@ -268,7 +268,7 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
     except (OSError, ValueError):
         rules = []
     for rule in rules:
-        if isinstance(rule, dict) and isinstance(rule.get("id"), int):
+        if isinstance(rule, dict) and isinstance(rule.get("id"), int) and guide_draft.rule_applies(rule, cls):
             reason = str(rule.get("reason") or "HARDCORE: not routed")
             # a skip whose reason is not about HARDCORE (a battleground quest is not leveling content) holds for every route
             if rule.get("action") == "skip" and (hardcore or not reason.startswith("HARDCORE")):

@@ -1,5 +1,5 @@
 {
-  "about": "Hardcore route rules for tools/guide_draft.py --hardcore (docs/HARDCORE.md). Quest IDs are from the data pack; every rule names where it comes from and how sure that source is. A skip becomes '#skipquest <id> >> <reason>'; a note becomes a '.note' after the quest's '.accept'. Corrected from play (the contributors' deaths) over time. The Route Planner also prices and notes every escort or event the data flags (the pack's `scripted` field) without a rule here: a quest listed here is skipped on top of that. skip_zones: every quest of such a zone is left out of every route (a battleground is not leveling content): the Route Planner reads it; the drafter drafts zones by name and never meets them.",
+  "about": "Hardcore route rules for tools/guide_draft.py --hardcore (docs/HARDCORE.md). Quest IDs are from the data pack; every rule names where it comes from and how sure that source is. A skip becomes '#skipquest <id> >> <reason>'; a note becomes a '.note' after the quest's '.accept'. Corrected from play (the contributors' deaths) over time. The Route Planner also prices and notes every escort or event the data flags (the pack's `scripted` field) without a rule here: a quest listed here is skipped on top of that. skip_zones: every quest of such a zone is left out of every route (a battleground is not leveling content): the Route Planner reads it; the drafter drafts zones by name and never meets them. A rule may carry class_quest_of (a class token such as WARLOCK, or a list): the quest belongs to that class although the data has no class mask for it (Forever's new quests have none), so the rule skips it for the guides of every other class and leaves it alone for that class's own (guide_draft.rule_applies). A skip whose reason starts with HARDCORE holds only for HARDCORE guides; any other skip holds for every guide, so write one only for a quest nobody should do (a battleground quest) or give it class_quest_of.",
   "rules": [
     {
       "id": 827,
@@ -48,6 +48,194 @@
       "reason": "battleground (PvP) quest, not leveling content",
       "source": "own knowledge of the game: the quest is for the Warsong Gulch battleground",
       "confidence": "high"
+    },
+    {
+      "id": 98251,
+      "name": "Never Coming Back",
+      "action": "skip",
+      "class_quest_of": "WARLOCK",
+      "reason": "probably a Warlock class quest (Va'xug Firefure in Ashenvale also gives A Void Path, which ends at the Eye of Kilrogg): the game should not offer it to other classes (unverified)",
+      "source": "first review of the Tauren Druid route, 2026-10-21: the giver also gives 98252 A Void Path, which ends at the Eye of Kilrogg, a Warlock spell in Classic (from memory); not seen in game",
+      "confidence": "medium"
+    },
+    {
+      "id": 98252,
+      "name": "A Void Path",
+      "action": "skip",
+      "class_quest_of": "WARLOCK",
+      "reason": "probably a Warlock class quest (it ends at the Eye of Kilrogg, the Warlock spell of that name in Classic): the game should not offer it to other classes (unverified)",
+      "source": "first review of the Tauren Druid route, 2026-10-21: the Eye of Kilrogg is a Warlock spell in Classic (from memory) and the quest starts with the same giver as 98251, Va'xug Firefure; not seen in game",
+      "confidence": "medium"
+    },
+    {
+      "id": 65601,
+      "name": "Love Hurts",
+      "action": "skip",
+      "class_quest_of": "WARLOCK",
+      "reason": "probably a Warlock class quest (it starts with Cazul in Orgrimmar, who gave the Orc Warlock's quests in Classic): the game should not offer it to other classes (unverified)",
+      "source": "first review of the Tauren Druid route, 2026-10-21: Cazul gave Warlock quests in Orgrimmar in Classic (from memory), and 65593 Hearts of the Lovers and 65597 The Binding, the same family of Forever quests, start with Warlock trainers of Undercity (Godrick Farsan, Carendin Halgar); not seen in game",
+      "confidence": "medium"
+    },
+    {
+      "id": 99108,
+      "name": "Sparring Match",
+      "action": "skip",
+      "class_quest_of": "WARRIOR",
+      "reason": "probably a Warrior class quest (it starts with Krang Stonehoof, the Tauren Warrior trainer of Bloodhoof Village): the game should not offer it to other classes (unverified)",
+      "source": "first review of the Tauren Druid route, 2026-10-21: Krang Stonehoof is the Tauren Warrior trainer in Classic (from memory) and the quest is a fight with a Novice Warrior; not seen in game",
+      "confidence": "low"
+    },
+    {
+      "id": 6523,
+      "name": "Protect Kaya",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Kaya Flathoof, Stonetalon Mountains)",
+      "source": "own memory of the Classic quest (an escort with ambushes on the way); first review of the Tauren Druid route, 2026-10-21; not seen in game",
+      "confidence": "medium"
+    },
+    {
+      "id": 6544,
+      "name": "Torek's Assault",
+      "action": "skip",
+      "reason": "HARDCORE: probably an escort (Torek's assault on Silverwing Outpost, Ashenvale)",
+      "source": "own memory of the Classic quest, unsure; first review of the Tauren Druid route, 2026-10-21; not seen in game",
+      "confidence": "low"
+    },
+    {
+      "id": 6641,
+      "name": "Vorsha the Lasher",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Muglash walks to Vorsha through Ashenvale and enemies attack on the way)",
+      "source": "own memory of the Classic quest; first review of the Tauren Druid route, 2026-10-21; not seen in game; the backlog item on escorts and events names it",
+      "confidence": "high"
+    },
+    {
+      "id": 6482,
+      "name": "Freedom to Ruul",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Ruul Snowhoof, Ashenvale)",
+      "source": "own memory of the Classic quest; first review of the Tauren Druid route, 2026-10-21; not seen in game",
+      "confidence": "medium"
+    },
+    {
+      "id": 4770,
+      "name": "Homeward Bound",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Pao'ka Swiftmountain, Thousand Needles)",
+      "source": "own memory of the Classic quest; first review of the Tauren Druid route, 2026-10-21; not seen in game",
+      "confidence": "medium"
+    },
+    {
+      "id": 4904,
+      "name": "Free at Last",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Lakota Windsong, Thousand Needles)",
+      "source": "own memory of the Classic quest; first review of the Tauren Druid route, 2026-10-21; not seen in game",
+      "confidence": "medium"
+    },
+    {
+      "id": 6562,
+      "name": "Trouble in the Deeps",
+      "action": "skip",
+      "reason": "HARDCORE: leads only to The Essence of Aku'Mai, a Blackfathom Deeps dungeon quest",
+      "source": "own memory of the Classic quests (the Sapphires of Aku'Mai lie inside Blackfathom Deeps) and the quest's zone in the data, the dungeon; first review of the Tauren Druid route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 6563,
+      "name": "The Essence of Aku'Mai",
+      "action": "skip",
+      "reason": "HARDCORE: dungeon quest (the Sapphires of Aku'Mai lie inside Blackfathom Deeps)",
+      "source": "own memory of the Classic quest and the quest's zone in the data, the dungeon; first review of the Tauren Druid route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 92422,
+      "name": "The Wrath of Rath'mael",
+      "action": "skip",
+      "reason": "HARDCORE: kills Rath'mael, a named creature new in Forever (Tirisfal Glades); whether it is elite is not known",
+      "source": "first review of the Tauren Druid route, 2026-10-21: a Forever quest that kills a named creature, and we do not know the elite status of Forever's new creatures",
+      "confidence": "low"
+    },
+    {
+      "id": 92706,
+      "name": "WANTED: Bruuz",
+      "action": "skip",
+      "reason": "HARDCORE: bounty on Bruuz, a named creature new in Forever (The Barrens); whether it is elite is not known",
+      "source": "first review of the Tauren Druid route, 2026-10-21: a Forever quest that hunts a named creature, and we do not know the elite status of Forever's new creatures",
+      "confidence": "low"
+    },
+    {
+      "id": 97003,
+      "name": "Chol'aruk the Ravener",
+      "action": "skip",
+      "reason": "HARDCORE: kills Chol'aruk the Ravener, a named creature new in Forever (The Barrens); whether it is elite is not known",
+      "source": "first review of the Tauren Druid route, 2026-10-21: a Forever quest that kills a named creature, and we do not know the elite status of Forever's new creatures",
+      "confidence": "low"
+    },
+    {
+      "id": 96261,
+      "name": "The Broodmother",
+      "action": "skip",
+      "reason": "HARDCORE: kills Broodmother Valraxx, the named boss of the new Gloomrise nest in northern Mulgore (a level 31 quest); whether she is elite is not known",
+      "source": "first review of the Tauren Druid route, 2026-10-21: a new Forever quest that kills a named boss, and we do not know the elite status of Forever's new creatures",
+      "confidence": "low"
+    },
+    {
+      "id": 96259,
+      "name": "Defending the Dead",
+      "action": "skip",
+      "reason": "HARDCORE: kills Gloomrise creatures in the new Gloomrise nest in northern Mulgore (a level 30 quest); whether they are elite is not known",
+      "source": "first review of the Tauren Druid route, 2026-10-21: a new Forever quest in a nest with a named boss, and we do not know the elite status of Forever's new creatures",
+      "confidence": "low"
+    },
+    {
+      "id": 96260,
+      "name": "Stronger than Steel",
+      "action": "skip",
+      "reason": "HARDCORE: needs silk from Gloomrise spinners in the new Gloomrise nest in northern Mulgore (a level 30 quest); whether they are elite is not known",
+      "source": "first review of the Tauren Druid route, 2026-10-21: a new Forever quest in a nest with a named boss, and we do not know the elite status of Forever's new creatures",
+      "confidence": "low"
+    },
+    {
+      "id": 96241,
+      "name": "Talkin' bout Toxins, Mon",
+      "action": "skip",
+      "reason": "HARDCORE: collects toxin samples at the entrance of the new Gloomrise nest in northern Mulgore (a level 30 quest); whether the creatures there are elite is not known",
+      "source": "first review of the Tauren Druid route, 2026-10-21: a new Forever quest in a nest with a named boss, and we do not know the elite status of Forever's new creatures",
+      "confidence": "low"
+    },
+    {
+      "id": 5922,
+      "name": "Moonglade",
+      "action": "note",
+      "text": "Moonglade is a long walk from here. VERIFY(beta): Classic's druid learns Teleport: Moonglade at level 10, and this guide does not assume that Forever does; the way back (hearthstone, or a flight master at Nighthaven) is unconfirmed too.",
+      "source": "the earlier drafted Tauren Druid chapters (their Moonglade steps); docs/FOREVER-API-NOTES.md, the open probe on Teleport: Moonglade",
+      "confidence": "low"
+    },
+    {
+      "id": 6126,
+      "name": "Lessons Anew",
+      "action": "note",
+      "text": "Moonglade again: this chain goes back and forth between Thunder Bluff, Moonglade and the Crossroads. VERIFY(beta): the way there and back is unconfirmed (see the note on the first Moonglade quest).",
+      "source": "the earlier drafted Tauren Druid chapters; the chain's NPCs",
+      "confidence": "low"
+    },
+    {
+      "id": 98340,
+      "name": "The Great Cat Spirit",
+      "action": "note",
+      "text": "Moonglade is a long walk from here. VERIFY(beta): the way there and back is unconfirmed (hearthstone, a flight master at Nighthaven, or Teleport: Moonglade if Forever gives it to druids).",
+      "source": "the earlier drafted Tauren Druid chapters",
+      "confidence": "low"
+    },
+    {
+      "id": 98342,
+      "name": "The Great Cat Spirit",
+      "action": "note",
+      "text": "VERIFY(beta): the three relics lie in the Stormrage Barrow Dens (south-east Moonglade). Fan guides say the spirits there attack on sight and the relics are party loot: go in at full health (a statue at the door gives a stealth blessing) and leave if hurt.",
+      "source": "docs/CLASS-QUESTS.md (fan guides' beta descriptions: worstguidesever.com and foreverchanges.pro)",
+      "confidence": "low"
     },
     {
       "id": 6002,
