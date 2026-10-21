@@ -1,12 +1,14 @@
 ---
 title: /signpost reset only resets the step frame, not the guide's progress
 kind: finding
-status: open
+status: done
 priority: low
 area: ui
 source: claude
 raised: 2026-10-20
 raised_in: the first look at the Troll Hunter guide, 2026-10-20
+closed: 2026-10-21
+resolution: batch 1 (WP-B, branch feat/find-my-place): /signpost reset progress forgets this character's record of the guide and places it again (typed twice within 30 seconds; the first time it says what it will do); /signpost help lists it beside /signpost reset, which stays the step frame's. Core/Slash.lua takes two-word commands.
 ---
 
 ## What

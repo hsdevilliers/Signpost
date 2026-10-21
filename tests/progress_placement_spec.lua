@@ -1,5 +1,5 @@
--- Placing a character in a guide (Engine/Progress.lua "Placement" over Engine/Placement.lua): the first time a guide runs
--- for a character with no progress in it, when the quest history is late, when the saved step is gone, on demand
+-- Placing a character in a guide (Engine/Progress.lua "Placement" over Engine/Placement.lua): the first time a guide
+-- runs for a character with no progress in it, when the quest history is late, when the saved step is gone, on demand
 -- (/signpost place) and after /signpost reset progress. The real engine, parser and context on the scripted client of
 -- tests/mocks/context.lua; the guide and its quest IDs are made up.
 local addon = dofile("tests/helpers/addon.lua")
@@ -61,12 +61,13 @@ local GUIDE = {
 local sessions = {}
 
 after_each(function()
-	for _, session in ipairs(sessions) do
+	local finished = sessions
+	sessions = {}
+	contextMock.uninstall()
+	for _, session in ipairs(finished) do
 		assert.are.same({}, session.ns.db.errors)
 		assert.are.same({}, session.mock.errors)
 	end
-	sessions = {}
-	contextMock.uninstall()
 end)
 
 -- One play session. opts: level, completed (quest IDs), log (quest log entries), saved (SignpostCharDB from an earlier
@@ -243,6 +244,23 @@ describe("a character new to a guide", function()
 		assert.are.equal("gate:3", current(ns))
 		assert.are.equal("gate:2", ns.char.progress["gate-place"].placed.step)
 		assert.are.equal(1, count(mock, "Your place: step 3/4 (Gate)."))
+	end)
+
+	it("loads the guide even when the placement itself fails", function()
+		local ns, _, mock, log = start({
+			level = 4,
+			completed = { 101, 102 },
+			setup = function(n)
+				n.Progress.ApplyPlacement = function()
+					error("broken placement")
+				end
+			end,
+		})
+		assert.is_truthy(ns.Progress:Current()) -- the engine runs
+		assert.are.equal(1, #log.steps)
+		assert.is_truthy(ns.db.errors[1].msg:find("broken placement", 1, true)) -- and the error is on record
+		wipe(ns.db.errors) -- seen; the after_each check is for unexpected errors
+		wipe(mock.errors)
 	end)
 
 	it("never marks the step it puts the pointer on", function()

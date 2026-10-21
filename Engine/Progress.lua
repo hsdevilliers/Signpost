@@ -29,9 +29,9 @@ local RESET_CONFIRM = 30
 -- SignpostCharDB.progress[guideId]. `current`, `skipped` and `done` are the docs/ENGINE.md contract; the rest belongs
 -- to this module: sticky[stepId][key] is true while that sticky directive is active and false once it was satisfied
 -- (or dismissed), states[stepId] holds the directive state of the current step and of steps with active stickies,
--- offered[first step id of a dungeon chapter] records the one-time skip offer, and placed = { step, index, reason, mode,
--- time } says that a placement ran (see "Placement"): a record with it, or with any done or skipped step, is not new to
--- the guide. A directive's key is its source line, which stays the same when the guide is parsed again.
+-- offered[first step id of a dungeon chapter] records the one-time skip offer, and placed = { step, index, reason,
+-- mode, time } says that a placement ran (see "Placement"): a record with it, or with any done or skipped step, is not
+-- new to the guide. A directive's key is its source line, which stays the same when the guide is parsed again.
 local RECORD_DEFAULTS = { skipped = {}, done = {}, sticky = {}, states = {}, offered = {} }
 
 ns.SavedVars:RegisterDefaults("char", "progress", {})
@@ -586,7 +586,7 @@ end
 function Progress:OnContextChanged(what)
 	if what == "quests" then
 		self.questEvent = true
-		self:CheckPlacement()
+		ns.SafeCall(self.CheckPlacement, self) -- a failure here must not stop the evaluation
 	end
 	self:Evaluate()
 end
@@ -809,11 +809,11 @@ function Progress:UndoDecline()
 	return true
 end
 
--- Placement (docs/ENGINE.md "Engine/Placement.lua") ---------------------------------------------------------------------
--- Where in the guide the character is, from its level and the quests it has done or has in its log: ns.Placement works it
--- out, this puts the pointer and the marks there. It runs by itself the first time a guide runs for a character with no
--- progress in it, when the saved step is not in the guide any more, and once more when the quest history turns up late;
--- the player runs it with the Journal's "Find my place" and /signpost place.
+-- Placement (docs/ENGINE.md "Engine/Placement.lua") -------------------------------------------------------------------
+-- Where in the guide the character is, from its level and the quests it has done or has in its log: ns.Placement
+-- works it out, this puts the pointer and the marks there. It runs by itself the first time a guide runs for a
+-- character with no progress in it, when the saved step is not in the guide any more, and once more when the quest
+-- history turns up late; the player runs it with the Journal's "Find my place" and /signpost place.
 
 -- fn(questID) -> boolean from a Context query; a stand-in without that query knows nothing.
 local function asker(context, name)
@@ -846,16 +846,16 @@ local function liveSnapshot()
 	}
 end
 
--- Whether the quest history can be read: the completed-quest list has loaded and holds something, or the quest log does.
--- An empty list is a character with nothing done or a list the client has not filled yet, so above the first levels a
--- first placement waits a few seconds for it.
+-- Whether the quest history can be read: the completed-quest list has loaded and holds something, or the quest log
+-- does. An empty list is a character with nothing done or a list the client has not filled yet, so above the first
+-- levels a first placement waits a few seconds for it.
 -- VERIFY(beta): when C_QuestLog.GetAllCompletedQuestIDs is filled (docs/FOREVER-API-NOTES.md, Open probes).
 local function historyReady(level)
-	local context = ns.Context
-	if type(context) ~= "table" or type(context.QuestLog) ~= "function" then
+	local context, placement = ns.Context, ns.Placement
+	if type(context) ~= "table" or type(context.QuestLog) ~= "function" or not placement then
 		return true -- a stand-in without a history: there is nothing to wait for
 	end
-	if (level or 0) <= ns.Placement.NO_EVIDENCE_LEVEL then
+	if (level or 0) <= placement.NO_EVIDENCE_LEVEL then
 		return true
 	end
 	local ok, log = ns.SafeCall(context.QuestLog, context) -- this also loads the completed-quest list
@@ -921,7 +921,7 @@ function Progress:Announce(result, reason)
 	if result.mode == "none" then
 		if reason == "manual" or reason == "lost" then
 			say(
-				L["Your place: step 1. None of this guide's quests are done and you are level %d, so there is nothing to go on yet."],
+				L["Your place: step 1. None of this guide's quests are done and you are level %d: nothing to go on yet."],
 				result.level or 1
 			)
 		end
@@ -948,7 +948,8 @@ function Progress:Announce(result, reason)
 		)
 	elseif result.level then
 		say(
-			L["Your place: step %d/%d (%s). %d of this guide's %d quests are done, %d are in your quest log, and you are level %d."],
+			L["Your place: step %d/%d (%s). %d of this guide's %d quests are done, %d are in your quest log, "]
+				.. L["and you are level %d."],
 			index,
 			n,
 			self:ChapterName(index),
@@ -979,12 +980,12 @@ function Progress:Announce(result, reason)
 	say(hint)
 end
 
--- Places the character: the pointer on the step its level and quests say, the marks before it set (ApplyPlacement), one
--- record.placed so that it never happens by itself again, GUIDE_PLACED(result, reason), the evaluation (the engine passes
--- what is done already) and then Settle. opts.reason is "first" (a character new to the guide), "lost" (its saved step
--- is not in the guide), "refine" (the quest history came late) or "manual" (the player asked; the default: `<` right
--- afterwards takes it back); opts.evaluate = false leaves the evaluation, and Settle, to the caller (SetGuide);
--- opts.quiet prints nothing. Returns the result, or nil without a guide.
+-- Places the character: the pointer on the step its level and quests say, the marks before it set (ApplyPlacement),
+-- one record.placed so that it never happens by itself again, GUIDE_PLACED(result, reason), the evaluation (the
+-- engine passes what is done already) and then Settle. opts.reason is "first" (a character new to the guide), "lost"
+-- (its saved step is not in the guide), "refine" (the quest history came late) or "manual" (the player asked; the
+-- default: `<` right afterwards takes it back); opts.evaluate = false leaves the evaluation, and Settle, to the caller
+-- (SetGuide); opts.quiet prints nothing. Returns the result, or nil without a guide.
 function Progress:Place(opts)
 	opts = opts or {}
 	local guide, record, placement = self.guide, self.record, ns.Placement
@@ -1213,7 +1214,7 @@ function Progress:SetGuide(guide)
 	-- A character new to this guide, or whose saved place is not in it, starts where its level and quests say. The same
 	-- guide parsed again (a profession plan change) never does.
 	if self.index and (fresh or lost) then
-		self:BeginPlacement(lost and "lost" or "first")
+		ns.SafeCall(self.BeginPlacement, self, lost and "lost" or "first") -- the guide loads whatever happens here
 	end
 	self.stickyDirty = true
 	self:Echo(
@@ -1228,7 +1229,7 @@ function Progress:SetGuide(guide)
 	-- and the first CONTEXT_CHANGED("quests") does it, as an "auto" step change.
 	if self.guide == guide then
 		self:EvaluateNow("load")
-		self:Settle()
+		ns.SafeCall(self.Settle, self)
 	end
 end
 
@@ -1408,26 +1409,23 @@ ns.Slash:Register("place", function()
 end, L["move to the step your level and your quests say you are at (the Journal's Find my place); < takes it back"])
 
 -- Typed twice, RESET_CONFIRM seconds apart at most: it throws the character's place in the guide away.
-ns.Slash:Register(
-	"reset progress",
-	function()
-		if not needGuide() then
-			return
-		end
-		local guide, now = Progress.guide, GetTime()
-		local name = tostring(guide.name or guide.id)
-		local asked = Progress.resetAsked
-		if not (asked and asked.id == guide.id and now - asked.time <= RESET_CONFIRM) then
-			Progress.resetAsked = { id = guide.id, time = now }
-			ns.Util.Print(
-				L["This forgets your progress in %s (every step marked done or skipped, and your place) and places you again from your quest history. To do it, type /signpost reset progress again within %d seconds."],
-				name,
-				RESET_CONFIRM
-			)
-			return
-		end
-		ns.Util.Print(L["Your progress in %s was cleared."], name)
-		Progress:Reset()
-	end,
-	L["forget this guide's progress for this character and place it again (type it twice to confirm; 'reset' alone is the step frame's)"]
-)
+ns.Slash:Register("reset progress", function()
+	if not needGuide() then
+		return
+	end
+	local guide, now = Progress.guide, GetTime()
+	local name = tostring(guide.name or guide.id)
+	local asked = Progress.resetAsked
+	if not (asked and asked.id == guide.id and now - asked.time <= RESET_CONFIRM) then
+		Progress.resetAsked = { id = guide.id, time = now }
+		ns.Util.Print(
+			L["This forgets your progress in %s (every step marked done or skipped, and your place) and places you again "]
+				.. L["from your quest history. To do it, type /signpost reset progress again within %d seconds."],
+			name,
+			RESET_CONFIRM
+		)
+		return
+	end
+	ns.Util.Print(L["Your progress in %s was cleared."], name)
+	Progress:Reset()
+end, L["forget this guide's progress and place the character again (type it twice; 'reset' alone is the step frame's)"])

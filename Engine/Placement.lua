@@ -5,8 +5,8 @@
 --
 -- Every step gets a label from its quest directives (.accept, .turnin, .complete): "done" when it has some and the
 -- character satisfies all of them, "open" when it has some and not all, "neutral" when it has none (a trip, a
--- training, a .level gate, a .todo, a profession step: no evidence either way). The split k is the step the pointer goes
--- on: every step before it is behind the character. It is the k that minimises
+-- training, a .level gate, a .todo, a profession step: no evidence either way). The split k is the step the pointer
+-- goes on: every step before it is behind the character. It is the k that minimises
 --
 --     OPEN_WEIGHT * (open steps before k) + DONE_WEIGHT * (done steps at or after k) + LEVEL_WEIGHT * (levels between
 --     the character's level and the level the guide expects at step k)
@@ -19,12 +19,13 @@ local ADDON_NAME, ns = ...
 local Placement = {}
 ns.Placement = Placement
 
--- Constants, chosen by the simulation over the shipped guides (tests/helpers/placement_sim.lua, tools/placement_report.lua;
--- docs/ENGINE.md has the numbers).
--- What a step the character has not done costs when it lies before the pointer ("skipped"): a player skips quests all the
--- time, and in runs, so it is cheap...
+-- Constants, chosen by the simulation over the shipped guides (tests/helpers/placement_sim.lua and
+-- tools/placement_report.lua; docs/ENGINE.md has the numbers).
+-- What a step the character has not done costs when it lies before the pointer ("skipped"): a player skips quests
+-- all the time, and in runs, so it is cheap...
 Placement.OPEN_WEIGHT = 0.25
--- ...and a step the character has done, lying at or after the pointer ("ahead"), costs more: it says the pointer is late.
+-- ...and a step the character has done, lying at or after the pointer ("ahead"), costs more: it says the pointer is
+-- late.
 Placement.DONE_WEIGHT = 1
 -- What one level between the character and the guide costs, in wrong steps: enough that a character far from its level
 -- is not put there on the strength of a few quests, little enough that a clean history wins over a level that is a
@@ -46,7 +47,7 @@ local EPSILON = 1e-9
 local EMPTY = {}
 local QUEST_DIRECTIVES = { accept = true, turnin = true, complete = true }
 
--- Labels ----------------------------------------------------------------------------------------------------------------
+-- Labels --------------------------------------------------------------------------------------------------------------
 
 -- fn(questID) from snapshot[name], answered once per quest.
 local function asker(snapshot, name)
@@ -130,7 +131,7 @@ function Placement:Labels(guide, snapshot)
 	return labels, stats
 end
 
--- Expected levels -------------------------------------------------------------------------------------------------------
+-- Expected levels -----------------------------------------------------------------------------------------------------
 
 -- The highest `.level N` of a step, or nil.
 local function gateOf(step)
@@ -211,7 +212,7 @@ function Placement:Levels(guide)
 	return lv, top
 end
 
--- Find ------------------------------------------------------------------------------------------------------------------
+-- Find ----------------------------------------------------------------------------------------------------------------
 
 -- How far `value` lies outside the span from `low` to `high`.
 local function distance(value, low, high)
@@ -356,9 +357,9 @@ function Placement:Fit(labels, stats, lv, top, snapshot, opts)
 	}
 end
 
--- Where the character is in `guide` (a parsed guide: steps, chapters, def), from snapshot = { level = , done = fn(questID),
--- active = fn(questID), ready = fn(questID) (optional: in the log with every objective done) }. Returns nil for a guide
--- without steps, else
+-- Where the character is in `guide` (a parsed guide: steps, chapters, def), from snapshot = { level = ,
+-- done = fn(questID), active = fn(questID), ready = fn(questID) (optional: in the log with every objective done) }.
+-- Returns nil for a guide without steps, else
 --   index       the step the pointer goes on, 1 .. #steps: the split, past the steps that are done already
 --   split       the step at which everything before is behind the character, 1 .. #steps + 1 (#steps + 1: it is done
 --               with the guide; the pointer then goes on the last step)

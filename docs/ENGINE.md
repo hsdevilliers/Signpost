@@ -35,7 +35,8 @@ architecture is PLAN §4.
 | `PROFESSION_PLAN_CHANGED` | Engine/Professions | plan (synchronously, from `Decline`/`Restore` too) |
 | `CONTEXT_CHANGED` | Engine/Context; Engine/Directives (`"casts"`) | what: `"quests"`, `"spells"`, `"skills"`, `"bags"`, `"level"`, `"zone"`, `"position"`, `"taxi"` (also known flight nodes), `"bind"`, `"casts"` (a `.craft` cast counted) |
 | `GUIDE_LOADED` | Engine/Progress | guide |
-| `STEP_CHANGED` | Engine/Progress | step, index, reason (`"load"`, `"auto"`, `"manual"`) |
+| `STEP_CHANGED` | Engine/Progress | step, index, reason (`"load"`, `"auto"`, `"manual"`, `"place"`) |
+| `GUIDE_PLACED` | Engine/Progress | the result of `ns.Placement:Find`, reason (`"first"`, `"lost"`, `"refine"`, `"manual"`); before the evaluation that follows it |
 | `STICKY_CHANGED` | Engine/Progress | the steps with active sticky directives (`ns.Progress:Sticky()`), after STEP_CHANGED |
 | `DUNGEON_SKIP_OFFER` | Engine/Progress | chapterIndex, chapter (once per dungeon chapter, 5+ levels above it) |
 | `TRANSPORT_STATE` | Engine/Travel | stepId, state (`.fly`, `.boat`, `.zeppelin`; on changes, not for the initial `"waiting"`) |
@@ -268,6 +269,94 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
   phase, announced, away, dockAt, dockInstance, dockWorld, boardedAt }`, home `{ since, done }`); `GetTime()` stamps
   saved before a computer restart are dropped. Reads `travel.inns[npcID].n` (an inn's bind-location name) when present.
 
+### Engine/Placement.lua — `ns.Placement`
+
+Where in a guide a character is, from what it has already done (user, 2026-10-21: a level 32 character "decides to start using the
+add-on", and the guide should "slot in at the appropriate level and place"). A pure function over a parsed guide and a snapshot of the
+player; it reads no game state, so the specs and the simulation drive it directly. `ns.Progress` runs it (see "Placement" under
+`Engine/Progress.lua`).
+
+- `:Find(guide, snapshot, opts?)` → result, or nil for a guide without steps. `snapshot = { level, done(questID), active(questID),
+  ready(questID)? }`: `done` is flagged completed (or turned in), `active` in the quest log, `ready` in the log with every objective
+  done; a missing function knows nothing. `opts` overrides the constants (`openWeight`, `doneWeight`, `levelWeight`, `bias`) for the
+  simulation. The result: `index` (the step the pointer goes on, 1 .. #steps), `split` (1 .. #steps + 1: everything before it is behind
+  the character), `mode`, `confidence`, `sharpness`, `level`, `expected` (the guide's expected level at the split), `top` (the guide's
+  top level), `done`, `active`, `total` (distinct quests of the guide), `skipped` (steps before the pointer that are not done), `ahead`
+  (steps at or after it that are done) and `labels` (one per step).
+- `:Labels(guide, snapshot)` → labels, stats; `:Levels(guide)` → lv, top; `:Fit(labels, stats, lv, top, snapshot, opts)` → result: the
+  parts of `:Find`, apart so that the simulation works out the labels once and tries many constants.
+
+**Labels.** A step is *done* when it has quest directives (`.accept`, `.turnin`, `.complete`) and the snapshot satisfies all of them by
+the rules `ns.Conditions` uses (`.accept`: in the log or done; `.turnin`: done; `.complete`: done, or ready to hand in), *open* when it
+has some and not all, *neutral* when it has none (a trip, a training, `.level`, `.todo`, a profession step: no evidence either way). A
+quest the step marks `.optional` counts only when nothing else in the step does, and then only as evidence of progress.
+
+**Expected levels.** `lv[i]`, i = 1 .. #steps + 1: each chapter's `levels` interpolated over its steps (its first level at its first
+step, its last at the step after its last), never below an earlier step's, a `.level N` gate seen so far, or the top level of a chapter
+already left. A dungeon chapter's levels say where it is on offer, not where the route is, so they add nothing. `false` where the guide
+says nothing; `top` is the higher of `lv[#steps + 1]` and the guide's declared top level.
+
+**The fit.** The split k minimises `OPEN_WEIGHT × (open steps before k) + DONE_WEIGHT × (done steps at or after k) + LEVEL_WEIGHT ×
+distance(lv[k] + BIAS, [level, level + 1))` (prefix sums, O(n); ties go to the earliest k, so a trip between the last quest done and the
+next one open is the step shown). It is a changepoint fit, robust to a few skipped quests and quests done early: a step skipped costs
+`OPEN_WEIGHT`, a step done early `DONE_WEIGHT`, a level the guide does not expect `LEVEL_WEIGHT` per level. The pointer, `index`, is
+the split moved past the steps that are done already (the engine would pass them at once, and the chat line names the step the player
+sees). The *mode* says what the placement went by: `none` (no quest of the guide done or in the log and the level 2 or below, unknown, or
+the guide says nothing about levels: the first step), `history` (some quest done or in the log), `level` (none, but a level above 2: a
+guess from the level alone, and the quest steps before the pointer are marked skipped) and `end` (the split is #steps + 1: the character
+has done the guide or is above its top level; the pointer goes on the last step). The *confidence* comes from the boundary: of the last 6
+steps with a quest before the split the share that are done, and of the first 6 after it the share that are open, averaged
+(`sharpness`): `high` from 0.85, `medium` from 0.7, else `low`; `level` is always `low`, `none` always `high`.
+
+| Constant | Value | |
+|---|---|---|
+| `OPEN_WEIGHT` | 0.25 | a step not done before the pointer; players skip quests, in runs, and 0.5 or more drags the pointer back over them. 0 when nothing is done at all (every quest step is open then only for want of evidence) |
+| `DONE_WEIGHT` | 1 | a step done at or after the pointer: it says the pointer is late |
+| `LEVEL_WEIGHT` | 6 | one level between the character and the guide's expected level: a level far from the history's is not put there on the strength of a few quests, and a clean history wins over a level off by one |
+| `BIAS` | 0.5 | a chapter's levels are whole levels, so the straight line runs about half a level under the level a character has at that step (found against the simulator's levels) |
+| `NO_EVIDENCE_LEVEL` | 2 | up to this level a character with nothing done is at the first step |
+| `SHARP_WINDOW`, `SHARP_HIGH`, `SHARP_MEDIUM` | 6, 0.85, 0.7 | the confidence |
+
+**How the constants were chosen, and how well it works.** By simulation over the shipped guides, not by taste:
+`tests/helpers/placement_sim.lua` parses each guide with the real parser, builds a character who followed it to step *t* (the quests of
+the steps before *t* handed in, those accepted before and handed in after in the log, the level the guide has at *t*), spoils it the way
+real play does (10 to 30 percent of the quests skipped, also in runs of six; four quests done early; the level off by one or two; the
+quest log empty; no history at all; and characters who did not follow the guide: half its quests done in no order, or who stopped
+following it part of the way), places it with `:Fit` and measures the error in steps, in quest steps (a trip between two quests cannot be
+told from either) and in levels. The true level at each step comes from three models: the guide's own levels, the same with each
+chapter's pace distorted (the default: it makes the straight line wrong inside a chapter), and the levels `tools/guide_sim.py` walks
+(quest experience from the data pack: the model that found `BIAS`). `tools/placement_report.lua` prints the tables, compares sets of
+constants (`--set`) and searches them (`--tune`); `python tools/placement_report.py` runs it all in one command and prints the tables
+below, which `tests/placement_spec.lua` holds to bounds with fixed seeds. Tried and not kept: a band around the character's level from its
+experience fraction, a dead band on the level term, and limiting the split to a window around the level; none helped on all guides.
+Re-run the tool and paste its tables here after a guide is regenerated.
+
+Quest steps from the true place, median / 90th percentile (warp truth, seed 1, 2026-10-21, `OPEN_WEIGHT 0.25, DONE_WEIGHT 1, LEVEL_WEIGHT 6`,
+guides as of this commit; the two druid guides were being regenerated at the time):
+
+| The character | Tauren Druid (HARDCORE) | Troll Hunter | Skyborne Druid (HARDCORE) |
+|---|---|---|---|
+| followed the guide to the step, nothing else | 0 / 0 | 0 / 0 | 0 / 0 |
+| also skipped a fifth of the guide's quests | 0 / 3 | 0 / 2 | 0 / 2 |
+| skipped 30 percent, in runs of about six | 0 / 7 | 0 / 4 | 0 / 6 |
+| also did four quests that come later | 0 / 3 | 0 / 4 | 0 / 4 |
+| its level is off by up to two | 0 / 7 | 0 / 11 | 0 / 13 |
+| its quest log is empty | 1 / 4 | 1 / 3 | 1 / 3 |
+| skipped a fifth in runs, did some early, level off by one, log half the time empty | 2 / 8 | 2 / 9 | 2 / 11 |
+| stopped following the guide at 40 percent of the way and levelled elsewhere | 9 / 23 | 5 / 20 | 9 / 24 |
+| did half the quests of the guide that its level allows, in no order | 8 / 23 | 9 / 27 | 10 / 27 |
+| no quest history at all, only the level (level off by one) | 10 / 26 | 7 / 23 | 10 / 24 |
+
+Runs ending three or more levels from the true level: none, except 0.4, 0.2 and 0.2 percent for the character who did half the quests in no
+order. Against the levels the simulator walks (the same table, `--truth sim`): Troll Hunter 0 / 1 for the exact follower, 2 / 9 with all the
+noise, 7 / 23 with no history; the Tauren guide, whose chapter levels are on average 1.6 levels (up to 4.6) below the simulator's, 0 / 8,
+3 / 14 and 7 / 17, and 4.3 percent of its no-history runs three or more levels off. In words: with a real history the pointer is within a
+handful of quest steps (the median is 0 to 2, the 90th percentile 2 to 13 depending on the noise); with none it is in the character's level or the next one (the
+90th percentile is about two levels), which is 7 to 10 quest steps at the median in these guides; it puts a character in a chapter three
+levels from its own only when the guide's own chapter levels are wrong. Limits: the level line is a straight line between a chapter's
+levels; the player's position is not used (a possible addition for the no-history case); a quest the character abandoned looks like a
+quest never taken.
+
 ### Engine/Progress.lua — `ns.Progress` (and the engine's start-up)
 
 - Start-up at `PLAYER_LOGIN` (after `ns.Player` refreshed) and on `GUIDE_SELECTED`: `ns.Guides:Selected()` →
@@ -289,9 +378,40 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
   to skip at 5+ levels above it (`DUNGEON_SKIP_OFFER`). Also `:IsDone(stepId)`, `:IsSkipped(stepId)`, `:Describe(step)`.
 - Saves `SignpostCharDB.progress[guideId] = { current = stepId, skipped = { [stepId] = true }, done = { [stepId] = true },
   sticky = { [stepId] = { [directive line] = active } }, states = { [stepId] = { started, d = { [line] = state } } },
-  offered = { [first step id of a dungeon chapter] = true } }` (states: the current step and steps with active stickies).
-- Fires `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED`, `DUNGEON_SKIP_OFFER`. Registers `/signpost next|back|skip
-  [chapter]|step [n|id]`. With `SignpostDB.debug.chat` it prints every step change (the Phase 2 acceptance walk).
+  offered = { [first step id of a dungeon chapter] = true }, placed = { step, index, reason, mode, time } }` (states: the current
+  step and steps with active stickies; `placed`: a placement ran, see below).
+- **Placement** (`Progress:Place(opts)`; user, 2026-10-21; the algorithm and its numbers are under `Engine/Placement.lua`): puts the
+  pointer and the marks where `ns.Placement:Find` says, from the live `ns.Context` (`Level`, `QuestCompleted`, `QuestInLog`,
+  `QuestReady`; a stand-in without them knows nothing, which places no one). It runs by itself in three cases, and on demand:
+  - *First use* (`reason "first"`): `SetGuide` for a guide the character has never been in (`:IsFresh()`: no step done or skipped, no
+    `placed`, the saved step absent or the first one; a different guide than the one loaded, never a re-parse of the same one after
+    a profession plan change) places before the first evaluation, so the load is one `STEP_CHANGED("load")` on the right step. Above
+    level 2 it first waits for the quest history, the completed-quest list the client fills a moment after login (`historyReady`: the
+    list is loaded and not empty, or something is in the quest log; VERIFY(beta), FOREVER-API-NOTES "Open probes"). It places on the
+    first `CONTEXT_CHANGED("quests")` that finds the history, or after 5 s on the level alone. A placement made without the history is
+    made once more, with `reason "refine"`, when it turns up, if the pointer is still on the step the first one ended on.
+  - *A lost place* (`reason "lost"`): the record has progress that matches nothing in the guide (an install changed the step ids;
+    `Resume`'s second result). The character is placed instead of sent to step 1, after a chat line that the guide was updated; the
+    old ids are dropped from the record. A record where some marks still match keeps the old rule (after the furthest one).
+  - *On demand* (`reason "manual"`): the Journal's "Find my place" and `/signpost place`, any time. It is a manual move: `<` right
+    afterwards takes it back (the pointer, the marks and the furthest step as they were); any other move drops the undo.
+  - *Applying*: the steps before the pointer are marked done (their quests are, or they have none) or skipped (their quests are not
+    done; a skip the player made by hand on a step with no quest of its own stays), the pointer's step and every step after it are
+    cleared. The flags are set directly and never through `Skip`, which would decline a profession; the stickies of steps passed
+    are not started, those of steps skipped are dismissed. Then `GUIDE_PLACED(result, reason)`, the evaluation (`STEP_CHANGED("place")`;
+    inside `SetGuide` it is the load's) and `Settle`: the chat lines, which name the step the engine settled on (it passes steps that are
+    done already), the undo, and the second look.
+  - *The chat lines* (`ns.L`): "Your place: step 143/368 (The Barrens). 62 of this guide's 185 quests are done, 3 are in your quest
+    log, and you are level 17.", then "N earlier steps you have not done are marked skipped." with "Wrong? Click a step in the Journal,
+    or type /signpost place to try again."; for a placement by the level alone "None of this guide's quests are done yet, so this is a
+    guess from your level (17)." with "Not sure about this one: ..." (also for a low `confidence`); at the end "This guide ends at level
+    30 and you are level 32: your place is its last step" or "All of this guide's quests are done"; nothing at first use for a
+    character with nothing to go on, "nothing to go on yet" when asked.
+- `:Reset()` and `/signpost reset progress`: forgets this character's record of the guide and loads it again as for a new
+  character (so it is placed again). Typed twice, at most 30 s apart: the first time it says what it will do.
+- Fires `GUIDE_LOADED`, `GUIDE_PLACED`, `STEP_CHANGED`, `STICKY_CHANGED`, `DUNGEON_SKIP_OFFER`. Registers `/signpost next|back|skip
+  [chapter]|step [n|id]|place|reset progress`: `Core/Slash.lua` looks a two-word command up before its first word, so `/signpost
+  reset` stays the step frame's. With `SignpostDB.debug.chat` it prints every step change (the Phase 2 acceptance walk).
 
 ### Engine/Tracking.lua — `ns.Tracking`
 
@@ -387,14 +507,15 @@ The big window (PLAN §3.2), built on `UI:CreateDialogFrame` (UI/Widgets.lua: `B
 guides `ns.Guides:Compatible` accepts, choosing one calls `ns.Guides:Select`), a `SearchBoxTemplate`, three `PanelTabButtonTemplate` tabs:
 **Route** (a chapter list with done/total counts and the current chapter marked, the selected chapter's steps with `[x]` done, `[-]` skipped,
 `>` current; a click goes to the step through `Progress:JumpToId`, more than 20 steps away needs Shift; a dungeon chapter has a "Skip this
-dungeon" box (`Progress:SetChapterSkipped`); a search replaces the step list with matching steps of the whole guide; a "Current step" button),
+dungeon" box (`Progress:SetChapterSkipped`); a search replaces the step list with matching steps of the whole guide; a "Current step" button;
+a "Find my place" button under the chapter list: `Progress:Place`, then `:ShowCurrent()` opens the chapter of the pointer),
 **the class tab** (the class module's `classQuests` for the character's race, each with its status from `Context:QuestTurnedIn/QuestInLog`; a
 `pending` chain reads "new in Forever: quest IDs not known yet"; hidden when the class has no chains) and **Settings** (the step card and pins
 settings, the data sharing consent, the card's size and opacity, the detected profession plan with a Restore button per declined profession,
 "Choose the guide for me", a button for the data sharing window). Lists are plain scroll frames (`ScrollFrameTemplate`), one chapter at a time.
 - API: `:Show(tab)` (`"route"`, `"class"`, `"settings"`), `:Hide()`, `:Toggle(step)`, `:IsShown()`, `:ShowStep(step)` (opens the step's chapter
   and flashes its row for 5 s), `:ShowCurrent()`, `:SelectTab(name)`, `:Refresh()`. Refreshes (coalesced, 0.2 s) on `GUIDE_LOADED`,
-  `STEP_CHANGED`, `GUIDE_SELECTED`, `CONTRIBUTE_CHANGED`, `PROFESSION_PLAN_CHANGED`. Opened by `/signpost` (no argument), `/signpost journal [tab]`,
+  `STEP_CHANGED`, `GUIDE_SELECTED`, `GUIDE_PLACED`, `CONTRIBUTE_CHANGED`, `PROFESSION_PLAN_CHANGED`. Opened by `/signpost` (no argument), `/signpost journal [tab]`,
   the AddOn Compartment entry, the minimap button (LibDataBroker + LibDBIcon, registered at `DB_READY`; right-click opens Settings) and a
   right-click on the step card; a world-map pin click calls `:ShowStep`. It sets `SignpostDB.journal.tab` and `SignpostDB.minimapButton`.
 
@@ -457,7 +578,7 @@ directives of `ns.Progress:Current()` (never sticky ones, never the player's unr
 Core\Init.lua, Core\Errors.lua, Libs\..., Core\Util.lua, Core\SavedVars.lua, Core\Player.lua, Data\Schema.lua,
 Core\Slash.lua, Core\Debug.lua, Core\Probe.lua, Core\MapDump.lua, Core\Learn.lua,
 Engine\Registry.lua, Engine\Directives.lua, Engine\Context.lua, Engine\Parser.lua, Engine\Professions.lua,
-Engine\Conditions.lua, Engine\Travel.lua, Engine\Progress.lua, Engine\Tracking.lua,
+Engine\Conditions.lua, Engine\Travel.lua, Engine\Placement.lua, Engine\Progress.lua, Engine\Tracking.lua,
 Classes\*.lua, Automation\*.lua, Professions\*.lua, Guides\Travel\Borders.lua, Guides\Chapters\*.lua, Guides\Professions\*.lua,
 Guides\*.lua, UI\Widgets.lua, UI\StepFrame.lua, UI\Pins.lua
 ```
@@ -490,6 +611,10 @@ A track created and edited only its own files. Shared files — the TOCs, `docs/
 - Extra mocks in `tests/mocks/<area>.lua`; a spec may stub other modules. `tests/integration_spec.lua` runs the real
   modules together on the scripted client of `tests/mocks/context.lua` (guide, chapter, track and profession module
   registered as their files would; login; quest log, profession, level and position changes).
+- `tests/placement_spec.lua` (the pure function, then bounds on the placement simulation over the shipped guides) and
+  `tests/progress_placement_spec.lua` (first use, late history, lost place, on demand with undo, `reset progress`, on the real
+  stack and the scripted client). The simulation behind the constants is `tests/helpers/placement_sim.lua`; re-run it and print the
+  tables of "Engine/Placement.lua" with `python tools/placement_report.py` after a guide is regenerated.
 - Python tool tests in `tools/tests/test_<tool>.py` (unittest, standard library only).
 - `pwsh -NoProfile -File tools/check.ps1` passes before a task is done (busted, luacheck, StyLua, check_repo, the tool
   tests and `guide_lint.py --strict --no-pack`).

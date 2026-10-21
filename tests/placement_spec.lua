@@ -7,9 +7,9 @@ local Sim = dofile("tests/helpers/placement_sim.lua")
 local ns, shipped = Sim.load()
 local Placement = ns.Placement
 
--- A guide the way the parser builds one: chapters of steps, each step written as short words. "a1" accepts quest 1, "c1"
--- completes it, "t1" hands it in, "go" has no quest, "L9" is a .level 9 gate, "o5" marks quest 5 optional for the step;
--- "t1 a2" is one step with two directives. chapter = { levels = { lo, hi }, dungeon = bool, steps = { ... } }.
+-- A guide the way the parser builds one: chapters of steps, each step written as short words. "a1" accepts quest 1,
+-- "c1" completes it, "t1" hands it in, "go" has no quest, "L9" is a .level 9 gate, "o5" marks quest 5 optional for the
+-- step; "t1 a2" is one step with two directives. chapter = { levels = { lo, hi }, dungeon = bool, steps = { ... } }.
 local function guide(chapters, def)
 	local steps, list = {}, {}
 	for c, chapter in ipairs(chapters) do
@@ -300,10 +300,10 @@ describe("Placement:Find", function()
 	end)
 end)
 
--- The simulation: a character who followed the shipped guides up to a step, spoilt the way real play spoils it, placed by
--- the function above and compared with where it really was. The bounds are the accuracy the constants were chosen for,
--- with room for the guides to change: a regenerated guide may move the numbers a little, a broken constant moves them a
--- lot (tools/placement_report.py prints the real figures).
+-- The simulation: a character who followed the shipped guides up to a step, spoilt the way real play spoils it, placed
+-- by the function above and compared with where it really was. The bounds are the accuracy the constants were chosen
+-- for, with room for the guides to change: a regenerated guide may move the numbers a little, a broken constant moves
+-- them a lot (tools/placement_report.py prints the real figures).
 describe("Placement against the shipped guides", function()
 	local SCENARIOS = {}
 	for _, scenario in ipairs(Sim.SCENARIOS) do

@@ -278,6 +278,13 @@ Quests and spells (Engine/Context.lua, Engine/Directives.lua, Engine/Progress.lu
 - [ ] `C_Item.GetItemNameByID` exists (`C_Item.GetItemInfo` does).
 - [ ] At login on a character with turned-in quests: does auto-skip happen at once (STEP_CHANGED "load") or only at the first
   `CONTEXT_CHANGED("quests")` ("auto")? Ties to the `GetAllCompletedQuestIDs` probe above.
+- [ ] **Find my place at login** (`Engine/Placement.lua`, `Progress:Place`; user 2026-10-21; built on the mock, none of it seen in the client):
+  with a character that has quest history (say level 10 with a dozen quests turned in) and no progress in a guide, is the placement
+  made at once at login (`SignpostCharDB.progress[guide].placed.reason == "first"`, mode `history`), or only after the 5 s wait on
+  the level alone (mode `level`) with `"refine"` when the list arrives? That is: is `C_QuestLog.GetAllCompletedQuestIDs()` filled at
+  `PLAYER_LOGIN` (or `IsQuestFlaggedCompleted` right per quest), or only after the first `QUEST_LOG_UPDATE`? Is the pointer on the
+  step the character is really at, and do the chat lines read right? (Select a guide for a character with history, `/reload`,
+  read `placed` with `tools/read_savedvars.py`; `/signpost place` asks again, `<` takes it back, `/signpost reset progress` starts over.)
 
 Professions (Core/Player.lua, Engine/Professions.lua, Engine/Directives.lua, Core/Learn.lua)
 - [ ] `GetProfessionInfo` keeps the retail return order (skill line 7th); the first two `GetProfessions` values are the

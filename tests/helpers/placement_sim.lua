@@ -12,14 +12,14 @@ local addon = dofile("tests/helpers/addon.lua")
 
 local Sim = {}
 
--- The noise. skip: the share of quests the character did not do although the guide has them before t (iid, or in runs of
--- `runs` quests on average); early: quests after t done already; level: the character's level is off by up to this many
--- levels (a random one in -level .. level); log: the share of runs with the quest log empty; history = false: the
--- completed-quest list is unavailable (nothing done, nothing in the log: only the level is known). Characters that did not
--- follow the guide: scatter = every quest of the guide that the character's level allows (up to two levels above it),
--- before t or after, done with this probability (it levelled on other quests: the true position is the one the level
--- says); lag = the character did the guide's quests only up to this share of t (it stopped following the guide and went
--- on levelling elsewhere).
+-- The noise. skip: the share of quests the character did not do although the guide has them before t (iid, or in runs
+-- of `runs` quests on average); early: quests after t done already; level: the character's level is off by up to this
+-- many levels (a random one in -level .. level); log: the share of runs with the quest log empty; history = false: the
+-- completed-quest list is unavailable (nothing done, nothing in the log: only the level is known). Characters that did
+-- not follow the guide: scatter = every quest of the guide that the character's level allows (up to two levels above
+-- it), before t or after, done with this probability (it levelled on other quests: the true position is the one the
+-- level says); lag = the character did the guide's quests only up to this share of t (it stopped following the guide
+-- and went on levelling elsewhere).
 Sim.SCENARIOS = {
 	{ name = "exact" },
 	{ name = "skip10", skip = 0.1 },
@@ -40,8 +40,8 @@ Sim.SCENARIOS = {
 	{ name = "levelonly", history = false, level = 1 },
 }
 
--- The scenarios by kind: "follow" (a character that followed the guide, with noise), "other" (one that did not: the position is
--- the one its level says) and "level" (the history is unavailable).
+-- The scenarios by kind: "follow" (a character that followed the guide, with noise), "other" (one that did not: the
+-- position is the one its level says) and "level" (the history is unavailable).
 Sim.GROUPS = {
 	follow = { "exact", "skip10", "skip20", "skip30", "skip30runs", "early", "level1", "level2", "nolog", "mixed" },
 	other = { "sparse15", "sparse40", "scatter", "scatter50", "lag", "lag70" },
@@ -184,7 +184,8 @@ end
 
 -- The level the character really has when it starts step i, i = 1 .. n + 1, by three models:
 --   "model"  the guide's own expected levels (ns.Placement:Levels): the placement is graded by its own yardstick;
---   "warp"   the same chapter by chapter, but each chapter's levels are reached on a curve (fast in some chapters, slow in
+--   "warp"   the same chapter by chapter, but each chapter's levels are reached on a curve (fast in some chapters, slow
+-- in
 --            others), so the straight line the placement draws between a chapter's levels is wrong by up to a level;
 --   "sim"    the levels tools/guide_sim.py walks (quest experience from the private pack): a table
 --            { [guide id] = { start = level, steps = { [step id] = level after the step } } } from a Lua file.
@@ -203,7 +204,8 @@ function Sim.truth(ns, entry, kind, simLevels)
 		end
 		return levels
 	end
-	-- The chapters' levels are whole levels: the level a character has, fraction included, is on average half a level above.
+	-- The chapters' levels are whole levels: the level a character has, fraction included, is on average half a level
+	-- above.
 	if kind == "model" then
 		local value = 1
 		for i = 1, n + 1 do
@@ -327,7 +329,7 @@ function Sim.player(entry, levels, t, scenario, rng)
 	}
 end
 
--- Statistics -----------------------------------------------------------------------------------------------------------
+-- Statistics ----------------------------------------------------------------------------------------------------------
 
 function Sim.percentile(sorted, fraction)
 	if #sorted == 0 then
@@ -366,9 +368,9 @@ end
 
 -- The characters to place: opts.ns, guides (the list from Sim.load), truth ("warp", "model" or "sim"), simLevels, seed,
 -- stride (every stride-th step is a true position t, and the last), replicates (noise draws per t), scenarios (default
--- Sim.SCENARIOS), only (a list of guide ids), cut (a function(entry, t) -> false to leave a position out). Returns a list
--- of { entry, scenario, t, levels (the true level at each step), snapshot, labels, stats }; the labels are worked out once,
--- so the constants can be tried over and over (Sim.evaluate).
+-- Sim.SCENARIOS), only (a list of guide ids), cut (a function(entry, t) -> false to leave a position out). Returns a
+-- list of { entry, scenario, t, levels (the true level at each step), snapshot, labels, stats }; the labels are worked
+-- out once, so the constants can be tried over and over (Sim.evaluate).
 function Sim.population(opts)
 	local ns = opts.ns
 	local population = {}
@@ -413,9 +415,9 @@ function Sim.population(opts)
 end
 
 -- Places every character of a population with the constants `find` (Placement:Fit's opts) and grades the answers:
--- { [guide id] = { [scenario name] = { runs = { { t, split, mode, steps, quests, levels, level, result } }, steps = summary,
--- quests = summary, levels = summary, catastrophic = share } } }. A summary is Sim.summary of the errors in steps, in quest
--- steps and in levels; catastrophic is the share of runs 3 or more levels off.
+-- { [guide id] = { [scenario name] = { runs = { { t, split, mode, steps, quests, levels, level, result } }, steps =
+-- summary, quests = summary, levels = summary, catastrophic = share } } }. A summary is Sim.summary of the errors in
+-- steps, in quest steps and in levels; catastrophic is the share of runs 3 or more levels off.
 function Sim.evaluate(ns, population, find)
 	local results, collected = {}, {}
 	for _, item in ipairs(population) do
