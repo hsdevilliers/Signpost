@@ -157,7 +157,10 @@ Maps and travel
 | Player identity (ns.Player only) | `UnitClass("player")` → localized, `"HUNTER"`, classID; `UnitClassBase("player")`; `UnitRace("player")` → localized, `"Troll"`, raceID; `UnitFactionGroup("player")` → `"Horde"`/`"Alliance"`; portraits via `GetClassAtlas(classFile)` (`classicon-<CLASS>`); `C_CreatureInfo.GetClassInfo`/`GetRaceInfo` for tables — verified |
 | Pet | `UnitExists("pet")`, `UnitCreatureFamily("pet")`, `UnitGUID("pet")`; `PET_STABLE_UPDATE`, `UNIT_PET("player")` |
 | Options panel | `Settings.RegisterCanvasLayoutCategory(frame, name)` + `Settings.RegisterAddOnCategory(cat)`; open with `Settings.OpenToCategory(cat:GetID())` — present |
-| Minimap button | LibDataBroker-1.1 + LibDBIcon-1.0 (both load; `## AddonCompartmentFunc` for the compartment) |
+| Minimap button | LibDataBroker-1.1 + LibDBIcon-1.0 (both load; `## AddonCompartmentFunc` for the compartment). The object is `type = "launcher"` with `icon`, `OnClick(frame, mouseButton)` and `OnTooltipShow(tooltip)`; modifier keys are read with `IsShiftKeyDown()` (the LDB spec says nothing of them); `LibDBIcon:Hide/Show` act on the button only, the `hide` flag is the add-on's, `Lock`/`Unlock` keep `db.lock` |
+| AddOn Compartment | TOC `## AddonCompartmentFunc` (`func(addonName, buttonName)`: **left and right clicks both arrive**, `"LeftButton"`/`"RightButton"`), `## AddonCompartmentFuncOnEnter`/`...OnLeave` (`func(addonName, buttonFrame)`); source `Blizzard_Minimap/Mainline/AddonCompartment.lua`. Since 11.0 no third frame argument. Tooltip: `GameTooltip:SetOwner(frame, "ANCHOR_LEFT")` (there is no `MenuUtil.ShowTooltip`; `ShowTooltipEx`/`HideTooltipEx` exist) |
+| Context menu | `MenuUtil.CreateContextMenu(owner, function(owner, root) ... end)` opens at the cursor and closes when the owner is hidden; `root:CreateTitle(text)`, `:CreateButton(text, callback, data)` (closes the menu), `:CreateCheckbox(text, isSelected, onSelect, data)` (stays open, re-reads its state), `:CreateDivider()`. A callback gets `(data, menuInputData, menu)`; `menuInputData.buttonName` names the mouse button |
+| Key bindings | `Bindings.xml` in the add-on's folder, loaded by the client by its name (not in the TOC): `<Binding name="TOKEN" header="HEADER">Lua</Binding>`; labels `BINDING_NAME_<name>`, `BINDING_HEADER_<header>`; the Lua runs insecurely; `keystate` is `"down"` (or `"up"` with `runOnUp="true"`) |
 | Scroll lists | `CreateScrollBoxListLinearView()`, `view:SetElementInitializer(template, fn)`, `ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, view)`, `CreateDataProvider()`; template `MinimalScrollBar` — present |
 | Dropdown | `WowStyle1DropdownTemplate` + `dropdown:SetupMenu(function(dd, root) root:CreateButton(text, fn) end)`; `UIDropDownMenuTemplate` also exists |
 | Panel frame | `ButtonFrameTemplate` (portrait, title, inset, close); `ButtonFrameTemplate_HidePortrait`/`_HideButtonBar`; `UIPanelWindows[name] = {area="left", pushable=1, whileDead=1}`; `ShowUIPanel`/`HideUIPanel` |
@@ -468,6 +471,31 @@ Automation (Automation/*.lua, UI/Journal.lua, UI/StepFrame.lua; all built on the
   the pane at 800 x 560 (the longest first-column label ends at about x = 450).
 - [ ] `InCombatLockdown` and `UnitIsDeadOrGhost("player")` are plain booleans (never secret) and `SettingsPanel` is the
   Blizzard settings frame (an open panel blocks automation).
+
+Launcher: the minimap button, the quick menu, the AddOn Compartment and the key bindings (`UI/Launcher.lua`, `Bindings.xml`,
+`docs/INTERACTIONS.md`; user 2026-10-21; built on the mock, none of it seen in the client; each has a `VERIFY(beta)` comment)
+- [ ] **The quick menu** (`MenuUtil.CreateContextMenu` is verified present; `CreateTitle`, `CreateButton`, `CreateCheckbox` and `CreateDivider`
+  on its root description are not yet): a right-click on the minimap button and on the step card opens it at the cursor with the title,
+  the buttons, the three check boxes and the dividers laid out as in `docs/INTERACTIONS.md`; a check box click keeps the menu open and shows
+  the new state; a button click closes it and does its action; "Show the step card" unchecked hides the card, which is the menu's owner (the
+  menu then closes with it): is that acceptable? Opened during combat the menu and its entries raise no taint warning or
+  `ADDON_ACTION_BLOCKED` (the plan's acceptance for the Journal: it must just open). Without a Menu system the fallback (Settings tab, or
+  the Journal from the card) is never seen on Forever if this works.
+- [ ] **The AddOn Compartment**: a right-click on Signpost's entry reaches `Signpost_OnAddonCompartmentClick("Signpost", "RightButton")` (the
+  Blizzard source registers entries for any click; not seen on Forever); our menu, opened one frame later with `C_Timer.After(0, ...)`,
+  appears and is not closed by the compartment (and: is the delay needed? opening it at once is the simpler code); `IsShiftKeyDown()`
+  is true inside the click while Shift is held; the hover tooltip (`GameTooltip`, `ANCHOR_LEFT`) shows beside the entry and hides on
+  leave; both TOCs' `AddonCompartmentFuncOnEnter`/`OnLeave` lines are read (the client loads `Signpost_Camelot.toc`).
+- [ ] **The Key Bindings screen** shows the header "Signpost" with six labelled actions (Show or hide the Journal, Show or hide the step card,
+  Previous step, Next step, Skip this step, Find my place), most likely under the AddOns category; a bound key runs its `/signpost`
+  command, in combat too, with no `ADDON_ACTION_BLOCKED` or taint warning.
+- [ ] **The minimap button** (LibDBIcon button, `Media\icon-round`): left-click shows or hides the Journal, Shift + left-click the step
+  card, right-click the menu; dragging moves it and "Lock the minimap button's position" stops that; "Show the minimap button" and
+  `/signpost minimap` hide and bring it back, and `hide`, `lock` and the position survive `/reload`; the tooltip reads: name, `<chapter> ·
+  step i/N`, the step's first line, a blank line, three hint lines with yellow keys.
+- [ ] **Settings tab, first column at 800 x 560:** its eleven check boxes, now drawn at 26 (`CHECK_SIZE`), leave the step card steppers and
+  the profession line clear of the "How do I share what was recorded?" button at the bottom. If they do not, give the two minimap boxes
+  `column = 2` in `settingsList()` or shrink the boxes further.
 
 ## Wowhead Forever data environment (fill in Phase 1)
 Filled from the user's `python tools/wowhead_env.py` report (Claude Code never accesses Wowhead). Until that report

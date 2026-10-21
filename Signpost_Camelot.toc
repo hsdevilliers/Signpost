@@ -5,6 +5,8 @@
 ## Version: @project-version@
 ## IconTexture: Interface\AddOns\Signpost\Media\icon
 ## AddonCompartmentFunc: Signpost_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: Signpost_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: Signpost_OnAddonCompartmentLeave
 ## SavedVariables: SignpostDB
 ## SavedVariablesPerCharacter: SignpostCharDB
 ## OptionalDeps: Signpost_Data
@@ -133,5 +135,6 @@ UI\Contribute.lua
 UI\StepFrame.lua
 UI\Pins.lua
 UI\Journal.lua
+UI\Launcher.lua
 UI\Report.lua
 UI\Options.lua

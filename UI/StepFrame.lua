@@ -725,8 +725,13 @@ function StepFrame:OnDragStop()
 	self:PositionItemButton()
 end
 
--- Right-click is reserved for the journal (PLAN §3.2, Phase 4); until it exists this does nothing.
+-- Right-click opens the quick menu (UI/Launcher.lua, docs/INTERACTIONS.md); the Journal is its first entry. A client
+-- without the Menu system gets what the click did before: the Journal, on the current step.
 function StepFrame:OnRightClick()
+	local launcher = ns.Launcher
+	if launcher and launcher.OpenMenu and launcher:OpenMenu(self.frame) then
+		return
+	end
 	local journal = ns.Journal
 	if journal and journal.Toggle then
 		journal:Toggle(self.step)

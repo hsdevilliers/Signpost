@@ -633,10 +633,11 @@ writes `travel.inns`; `tools/guide_travel.py` turns them into `.boat`/`.zeppelin
   other quests: a pin's tooltip lists the lines of the quests the pin names), `DescribeSticky(step)`,
   `DescribeActiveSticky(step)`, `OptionalLines(step)`, `SetShown/SetLocked/SetGrowUp/SetScale/SetAlpha/Reset`;
   `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`, `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`,
-  `Collect()`, `IconFor(kind, override)`. Phase 4 hooks, no-ops until the journal exists: right-click →
-  `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`, `ns.Journal:IsShown()` for `hideWithJournal`.
-  A step with no targets (a doing step) draws nothing, and the pins and edge arrows of the step before are cleared. A
-  joined step has one pin for each of its `.goto` lines that still has something to ask (`Conditions:Targets`).
+  `Collect()`, `IconFor(kind, override)`. Hooks into the Journal and the launcher: right-click → `ns.Launcher:OpenMenu(frame)` (the
+  quick menu; without a Menu system `ns.Journal:Toggle(step)`, the Journal on the current step), world-pin click →
+  `ns.Journal:ShowStep(step)`, `ns.Journal:IsShown()` for `hideWithJournal`. A step with no targets (a doing step) draws nothing, and
+  the pins and edge arrows of the step before are cleared. A joined step has one pin for each of its `.goto` lines that still has
+  something to ask (`Conditions:Targets`).
 
 ### UI/Journal.lua — `ns.Journal`
 
@@ -654,9 +655,55 @@ settings, the data sharing consent, the card's size and opacity, the detected pr
 "Choose the guide for me", a button for the data sharing window). Lists are plain scroll frames (`ScrollFrameTemplate`), one chapter at a time.
 - API: `:Show(tab)` (`"route"`, `"class"`, `"settings"`), `:Hide()`, `:Toggle(step)`, `:IsShown()`, `:ShowStep(step)` (opens the step's chapter
   and flashes its row for 5 s), `:ShowCurrent()`, `:SelectTab(name)`, `:Refresh()`. Refreshes (coalesced, 0.2 s) on `GUIDE_LOADED`,
-  `STEP_CHANGED`, `GUIDE_SELECTED`, `GUIDE_PLACED`, `CONTRIBUTE_CHANGED`, `PROFESSION_PLAN_CHANGED`. Opened by `/signpost` (no argument), `/signpost journal [tab]`,
-  the AddOn Compartment entry, the minimap button (LibDataBroker + LibDBIcon, registered at `DB_READY`; right-click opens Settings) and a
-  right-click on the step card; a world-map pin click calls `:ShowStep`. It sets `SignpostDB.journal.tab` and `SignpostDB.minimapButton`.
+  `STEP_CHANGED`, `GUIDE_SELECTED`, `GUIDE_PLACED`, `CONTRIBUTE_CHANGED`, `PROFESSION_PLAN_CHANGED`. Opened by `/signpost` (no argument, which toggles it),
+  `/signpost journal [tab]`, the minimap button, the AddOn Compartment entry, the quick menu (also reached by a right-click on the step card)
+  and a key binding (all of those: `UI/Launcher.lua`, below); a world-map pin click calls `:ShowStep`. It sets `SignpostDB.journal.tab`.
+  The Settings tab's first column also holds the minimap button's two boxes ("Show the minimap button", "Lock the minimap button's
+  position": `ns.Launcher:SetButtonHidden/SetButtonLocked`); its check boxes are drawn at `CHECK_SIZE` (26) so that eleven of them fit.
+
+### UI/Launcher.lua — `ns.Launcher`
+
+The common add-on interactions (`docs/INTERACTIONS.md` has the conventions, their sources, the map and the decisions). Loaded after
+`UI/Journal.lua`; everything it calls on other modules is looked up at call time and guarded (`ns.Journal`, `ns.StepFrame`, `ns.Tracking`,
+`ns.Progress`, `ns.Slash`, `MenuUtil`, `LibStub`), so a missing piece degrades instead of failing.
+
+- **The minimap button** (`Launcher:Register()` at `DB_READY`, only with LibDataBroker-1.1 and LibDBIcon-1.0): a `type = "launcher"`
+  object named `Signpost`, registered on `SignpostDB.minimapButton` (`{ hide, lock, minimapPos }`; defaults `hide = false, lock = false`).
+  `OnClick(frame, button)` → `Launcher:Click(owner, button)`: **LeftButton** toggles the Journal, **Shift + LeftButton** (Shift read with
+  `IsShiftKeyDown`) toggles the step card (`StepFrame:SetShown`, the saved `shown` setting), **RightButton** opens the quick menu; Ctrl and Alt
+  are ignored, other buttons do nothing. `OnTooltipShow(tooltip)` → `Launcher:FillTooltip(tooltip)`: the name, `Launcher:Where()` (the
+  step card's `<chapter> · step i/N` and the step's first line from `StepFrame.DescribeLines`, or "No guide is loaded for this character."),
+  a blank line, then `hints()`: the three clicks, the key in `|cffffff00` yellow.
+- **The quick menu**: `Launcher:OpenMenu(owner)` → `MenuUtil.CreateContextMenu(owner or UIParent, generator)`; the generator runs
+  `Launcher:BuildMenu(owner, root)` (title, "Open the Journal", the check boxes "Show the step card", "Lock the step card" and "Track only the
+  current step's quests", "Find my place" only when `ns.Progress.Place` is a function, "Previous step", "Skip this step", "Settings...", and
+  "Hide the minimap button" or, while it is hidden, "Show the minimap button"). Returns `false` when there is no Menu system or it raised;
+  `Launcher:OpenMenuOrSettings(owner)` then opens the Journal's Settings tab (what the right-click did before the menu). Callbacks run
+  under `ns.SafeCall`; a state callback that fails reads as off. Previous step, Skip this step and Find my place run `/signpost back`,
+  `skip` and `place` through `ns.Slash:Run` (the same chat lines); Find my place calls `ns.Progress:Place()` itself only when no `place`
+  command is registered.
+- **The AddOn Compartment**: `Core/Slash.lua` owns the three global functions the TOCs name (`## AddonCompartmentFunc`,
+  `AddonCompartmentFuncOnEnter`, `AddonCompartmentFuncOnLeave`: `Signpost_OnAddonCompartmentClick(addonName, buttonName)`,
+  `..Enter(addonName, buttonFrame)`, `..Leave(addonName, buttonFrame)`), each a guarded call into `ns.Launcher`
+  (`OnCompartmentClick(buttonName)`, `OnCompartmentEnter(frame)`, `OnCompartmentLeave(frame)`); without the launcher a click still toggles the
+  Journal. The click map is the button's (a click that names no button counts as a left-click); a **right-click opens the menu one frame
+  later** (`C_Timer.After(0)`, owner `AddonCompartmentFrame` or `UIParent`) because the compartment closes its own menu after the function
+  returns. The hover functions show and hide `GameTooltip` with the same lines, owned by the entry, anchored `ANCHOR_LEFT`.
+- **Settings**: `:ButtonHidden()`, `:ButtonLocked()`, `:SetButtonHidden(hidden)` (writes `hide`, calls LibDBIcon `Hide`/`Show`: the library
+  does not keep the flag), `:SetButtonLocked(locked)` (calls `Lock`/`Unlock`, then writes a plain boolean: `Unlock` clears the field),
+  `:HideButtonWithNotice()` (the menu's version: also says in chat how to get the button back).
+- **Actions** (the same ones the menu, the clicks and the bindings use): `:ToggleJournal()`, `:SetStepCardShown(shown)`, `:ToggleStepCard()`,
+  `:ToggleStepCardLock()`, `:ToggleTracking()`, `:OpenSettings()`, `:CanPlace()`, `:FindMyPlace()`.
+- **Slash commands**: `/signpost card [on|off]` (no word: toggle the step card) and `/signpost minimap [show|hide|lock|unlock]` (no word:
+  show or hide; it reports hidden/shown and locked/unlocked).
+- **Key bindings**: `Bindings.xml` (not in the TOC) declares `SIGNPOST_JOURNAL`, `_CARD`, `_BACK`, `_NEXT`, `_SKIP`, `_PLACE` under the header
+  `SIGNPOST`, each running one `SlashCmdList.SIGNPOST("<command>")` (`""`, `card`, `back`, `next`, `skip`, `place`); the labels
+  `BINDING_HEADER_SIGNPOST` and `BINDING_NAME_SIGNPOST_*` are set at file load from `ns.L`. They are the only globals this module adds,
+  besides the two compartment functions. `tools/check_repo.py` guards the file and its labels.
+- Specs: `tests/launcher_spec.lua` on the real engine, Journal and step card, with the fakes of `tests/mocks/launcher.lua` (LibDataBroker and
+  LibDBIcon shaped after the bundled copy, `MenuUtil.CreateContextMenu` with a recording root, `GameTooltip`, the compartment frame, the
+  modifier-key functions); it parses `Bindings.xml` and runs every binding's Lua body. `tests/journal_spec.lua` covers the Settings
+  boxes, `tests/ui_spec.lua` the step card's right-click.
 
 ### Automation/ — `ns.Automation` (PLAN §3.4; built on the mock, not yet verified in the client)
 
@@ -719,8 +766,10 @@ Core\Slash.lua, Core\Debug.lua, Core\Probe.lua, Core\MapDump.lua, Core\Learn.lua
 Engine\Registry.lua, Engine\Directives.lua, Engine\Context.lua, Engine\Parser.lua, Engine\Professions.lua,
 Engine\Conditions.lua, Engine\Travel.lua, Engine\Placement.lua, Engine\Progress.lua, Engine\Tracking.lua,
 Classes\*.lua, Automation\*.lua, Professions\*.lua, Guides\Travel\Borders.lua, Guides\Chapters\*.lua, Guides\Professions\*.lua,
-Guides\*.lua, UI\Widgets.lua, UI\StepFrame.lua, UI\Pins.lua
+Guides\*.lua, UI\Widgets.lua, UI\StepFrame.lua, UI\Pins.lua, UI\Journal.lua, UI\Launcher.lua
 ```
+
+`Bindings.xml` (the key bindings) sits at the add-on's root and is not in the TOC: the client loads it by its name.
 
 ## Wave 1 tracks and file ownership (integrated 2026-10-17)
 

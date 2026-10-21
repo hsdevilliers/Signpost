@@ -22,7 +22,18 @@ globals = {
 	"SLASH_SIGNPOST1",
 	"SLASH_SIGNPOST2",
 	"SlashCmdList",
+	-- The AddOn Compartment entry's functions, named in the TOCs (the client looks them up by name).
 	"Signpost_OnAddonCompartmentClick",
+	"Signpost_OnAddonCompartmentEnter",
+	"Signpost_OnAddonCompartmentLeave",
+	-- The labels on the Key Bindings screen: Bindings.xml names the actions, UI/Launcher.lua sets these.
+	"BINDING_HEADER_SIGNPOST",
+	"BINDING_NAME_SIGNPOST_JOURNAL",
+	"BINDING_NAME_SIGNPOST_CARD",
+	"BINDING_NAME_SIGNPOST_BACK",
+	"BINDING_NAME_SIGNPOST_NEXT",
+	"BINDING_NAME_SIGNPOST_SKIP",
+	"BINDING_NAME_SIGNPOST_PLACE",
 	-- Core/Pace.lua swaps it for a no-op while its own /played request is out (and restores it).
 	"ChatFrame_DisplayTimePlayed",
 }
@@ -199,6 +210,9 @@ read_globals = {
 	"GetQuestIndexForWatch",
 	"IsQuestWatched",
 	"RemoveQuestWatch",
+	-- added for UI/Launcher.lua (the quick menu and the AddOn Compartment)
+	"AddonCompartmentFrame",
+	"MenuUtil",
 }
 
 -- Specs and the mock define the WoW globals they need.

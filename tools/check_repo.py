@@ -5,6 +5,8 @@
    race, faction or profession.
 3. Both TOCs are identical except for X-Flavor-TOC, start with `## Interface:`, list only files that exist and list
    every addon Lua file.
+4. Bindings.xml (the key bindings) is well-formed, is not listed in a TOC (the client loads it by its name), and every
+   binding's header and name have the BINDING_HEADER_ / BINDING_NAME_ global that gives the Key Bindings screen its text.
 
 Exit status 1 when anything fails.
 """
@@ -50,6 +52,8 @@ SEAM_PATTERNS = [
 ]
 
 ADDON_DIRS = ("Core/", "Engine/", "Classes/", "Professions/", "Data/", "Guides/", "UI/", "Automation/")
+
+BINDINGS = "Bindings.xml"
 
 
 def tracked_files(root: Path) -> list[str]:
@@ -149,9 +153,47 @@ def check_tocs(root: Path, files: list[str]) -> list[str]:
     return problems
 
 
+def check_bindings(root: Path, files: list[str]) -> list[str]:
+    """Bindings.xml, when there is one: the client loads it by its name (a TOC must not list it), it must be
+    well-formed, and every binding needs its labels. The Key Bindings screen reads BINDING_NAME_<name> and
+    BINDING_HEADER_<header> and shows the bare token when the global is missing, so each must be assigned at the start
+    of a line in an addon Lua file (a comment or a spec does not count)."""
+    if BINDINGS not in files:
+        return []
+    problems = []
+    for toc in TOCS:
+        if (root / toc).exists() and BINDINGS in toc_entries((root / toc).read_text(encoding="utf-8")):
+            problems.append(f"{toc}: lists {BINDINGS}, which the client loads by its name")
+    try:
+        tree = ET.parse(root / BINDINGS)
+    except ET.ParseError as error:
+        return problems + [f"{BINDINGS}: not well-formed XML ({error})"]
+    lua = "\n".join(
+        (root / path).read_text(encoding="utf-8", errors="replace")
+        for path in files
+        if path.endswith(".lua") and path.startswith(ADDON_DIRS)
+    )
+
+    def labelled(prefix: str, token: str) -> bool:
+        return re.search(rf"^[ \t]*{prefix}_{re.escape(token)}[ \t]*=", lua, re.M) is not None
+
+    for binding in tree.getroot().iter("Binding"):
+        name, header = binding.get("name"), binding.get("header")
+        if not name:
+            problems.append(f"{BINDINGS}: a Binding without a name")
+            continue
+        found = []
+        if not labelled("BINDING_NAME", name):
+            found.append(f"{BINDINGS}: BINDING_NAME_{name} is not set in an addon Lua file")
+        if header and not labelled("BINDING_HEADER", header):
+            found.append(f"{BINDINGS}: BINDING_HEADER_{header} is not set in an addon Lua file")
+        problems += [problem for problem in found if problem not in problems]  # a header is shared by many bindings
+    return problems
+
+
 def main() -> int:
     files = tracked_files(ROOT)
-    problems = check_forbidden(files) + check_seam(ROOT, files) + check_tocs(ROOT, files)
+    problems = check_forbidden(files) + check_seam(ROOT, files) + check_tocs(ROOT, files) + check_bindings(ROOT, files)
     for problem in problems:
         print(problem)
     print(f"check_repo: {len(files)} files, {len(problems)} problem(s)")
