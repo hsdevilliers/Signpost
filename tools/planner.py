@@ -44,6 +44,10 @@ SCRIPTED_NOTES = {
 GRAIN_TRIES = 5  # finished routes of one grain (a different order of zones each) written out to find that grain's best
 
 
+class RequiredQuestError(ValueError):
+    """A quest the guide requires (`Planner.build(required=...)`) cannot be offered to this character: the message names each and says why."""
+
+
 @dataclass(frozen=True)
 class Settings:
     cap: int = 30  # the level the route ends at (Version 1: 30)
@@ -270,7 +274,9 @@ class Planner:
         self.objs_by_place: dict[tuple, list] = {}
         self.places_at: dict[int, list] = {}
         self.window: list[PQuest] = []  # kept quests by required level
-        self.mandatory: set[int] = set()
+        self.mandatory: set[int] = set()  # the class quests and the required ones: each is done, or (a class quest) accounted for
+        self.required: set[int] = set()  # the quests the guide requires: mandatory like a class quest, and never given up (docs/PLANNER.md)
+        self._closes_required: set[int] = set()  # the quests that would close a required one (its exclusive alternatives): never taken
         self.notes: dict[int, str] = {}
         self.skip_reasons: dict[int, str] = {}
         self.gateways: dict[int, int] = {}  # continent (world instance) -> the hub its boats and zeppelins leave from
@@ -306,6 +312,7 @@ class Planner:
         exclude: dict | None = None,
         notes: dict | None = None,
         mandatory: tuple = (),
+        required: tuple = (),
         chains: tuple = (),
         home: Coord | None = None,
         skip_zones: dict | None = None,
@@ -317,7 +324,8 @@ class Planner:
         planner = cls(pack, world, model, availability.Rules(quests, character), settings)
         planner.notes = dict(notes or {})
         planner.skip_reasons = dict(exclude or {})
-        planner.mandatory = set(mandatory)
+        planner.required = set(required)
+        planner.mandatory = set(mandatory) | planner.required
         planner.home = home
         planner.skip_zones = dict(skip_zones or {})
         planner._giver_index = planner._index_givers(quests)
@@ -336,6 +344,7 @@ class Planner:
         say(f"{len(planner.quests)} of {len(quests)} quests can be routed for this character")
         planner._prune_territory(character.faction)
         planner._prune_unreachable()
+        planner._check_required()
         planner._make_hubs()
         say(f"{len(planner.hubs)} hubs of about {settings.hub_radius:.0f} yards")
         planner._profit()
@@ -420,7 +429,7 @@ class Planner:
         )
         # an escort or an event (the pack's `scripted` flag) is not free experience whatever its NPCs: it costs the time sim_params.json
         # gives it, written as a `.complete` with a note; a class quest keeps unknown_work's 5 minutes and `.todo` instead
-        scripted = "" if qid in self.mandatory else (self.model.scripted_work(qid) or "")
+        scripted = "" if qid in self.mandatory and qid not in self.required else (self.model.scripted_work(qid) or "")
         unknown_work = not objectives and one_npc and not scripted
         if unknown_work and not s.instant_quests and qid not in self.mandatory and qid not in self._required and not record.get("next"):
             return self._drop("no objective in the data (accepted and handed in at one NPC)", qid)
@@ -514,6 +523,44 @@ class Planner:
             nxt = (records.get(q.id) or {}).get("next")
             if isinstance(nxt, int) and nxt in self.quests:
                 self.quests[nxt].parents += (q.id,)
+
+    def _why_not(self, qid: int, depth: int = 0) -> str:
+        """Why a quest is not among the ones this character's route can use: the reason `_consider` or a prune gave it, and for a quest whose
+        prerequisite cannot be routed, which prerequisite and why."""
+        record = self.pack.table("quests").get(qid)
+        if not isinstance(record, dict):
+            return "it is not in the data pack"
+        reason = next((r for r, ids in self.dropped.items() if qid in ids), None)
+        if reason is None:
+            return "the planner left it out"
+        if reason == "excluded":
+            return f"it is excluded ({self.skip_reasons.get(qid, 'by the guide')})"
+        if reason == "a prerequisite cannot be routed" and depth < 4:
+            needed = guide_draft._ids(record.get("preGroup"))
+            alternatives = guide_draft._ids(record.get("preSingle"))
+            gaps = [p for p in needed if p not in self.quests] or ([] if any(p in self.quests for p in alternatives) else alternatives)
+            if gaps:
+                return "a prerequisite cannot be routed: " + "; ".join(f"{p} ({self._why_not(p, depth + 1)})" for p in gaps[:3])
+        return reason
+
+    def _check_required(self) -> None:
+        """Every required quest must be one the character's route can use; if not, a clear error names each and says why (not the availability
+        rules' fault alone: a HARDCORE route's elite rule, an exclusion or a prerequisite that cannot be routed stops a quest the same way)."""
+        problems: list[str] = []
+        for qid in sorted(self.required):
+            record = self.pack.table("quests").get(qid)
+            name = f" ({record['n']})" if isinstance(record, dict) and record.get("n") else ""
+            if qid not in self.quests:
+                problems.append(f"quest {qid}{name}: {self._why_not(qid)}")
+                continue
+            for other in self.quests[qid].excl:
+                if other in self.required and other > qid:
+                    problems.append(f"quests {qid}{name} and {other} are exclusive alternatives: both cannot be required")
+        if problems:
+            raise RequiredQuestError("a required quest cannot be offered to this character:\n  " + "\n  ".join(problems))
+        self._closes_required = {x for r in self.required for x in self.quests[r].excl} | {
+            q.id for q in self.quests.values() if q.id not in self.required and self.required & set(q.excl)
+        }
 
     def _make_hubs(self) -> None:
         """Quest givers, enders and objective areas, grouped per map into hubs of the configured radius."""
@@ -746,10 +793,12 @@ class Planner:
     def offered(self, q: PQuest, level: int, done, active, gone) -> bool:
         """Whether the quest may be accepted now: the game offers it (level, prerequisites, chains, ...), the route still wants it, and the
         quest log has a free place. Every accept the searches make or predict goes through here (`visit`, `options`, `overdue_hubs`)."""
-        if len(active) >= self.s.quest_log_limit:
-            return False
+        if len(active) >= self.s.quest_log_limit and q.id not in self.required:
+            return False  # (a required quest is never kept out by a full log)
         if level < q.req or q.level > level + self.accept_over or (q.id in self.forbidden and q.id not in self.lifted):
             return False
+        if q.id in self._closes_required:
+            return False  # taking it would close a required quest
         if level >= self.s.cap and q.id not in self.core:
             return False  # at the cap only the class quests (and what they need) are still worth the walk
         return self.ready(q, done, active, gone, level) and self.worth_now(q, level)
@@ -878,8 +927,8 @@ class Planner:
             return self._grind_to(st, min(level + 1, self.s.cap))
         wanted: list[int] = []
         for q in self.window:
-            if len(active) >= self.s.quest_log_limit:
-                break  # a full log accepts nothing, whatever the level: no quest is waited for
+            if len(active) >= self.s.quest_log_limit and q.id not in self.required:
+                continue  # a full log accepts nothing, whatever the level: no quest is waited for (a required one is)
             if q.id in done or q.id in active or q.id in gone or not self.ready(q, done, active, gone, level):
                 continue
             if not self.worth_now(q, level) and q.level + 8 < level:
@@ -1097,7 +1146,7 @@ class Planner:
         for _ in range(6 if self.s.completeness > 0 else 4):
             active = set(plan.final.active) if plan.final else set()
             stuck = active & lifted_before
-            unseen = active - removed
+            unseen = active - removed - self.required
             if not (stuck or unseen):
                 break
             levels = self._pickups(plan)
@@ -1502,7 +1551,7 @@ class Planner:
         """The `#skipquest` lines a route needs: class quests it does not do (with why), and the alternatives to a quest it did."""
         skips: dict[int, str] = {}
         done = plan.final.done if plan.final else frozenset()
-        for qid in sorted(self.mandatory):
+        for qid in sorted(self.mandatory - self.required):  # (a required quest is never skipped)
             if qid in done:
                 continue
             if qid in self.skip_reasons:
