@@ -154,6 +154,7 @@ class Job:
     chains: tuple = ()
     start: Coord | None = None
     skip_zones: dict = field(default_factory=dict)
+    required: tuple = ()  # the quests the guide requires (the manifest's `require`, --require): done whatever they cost
 
 
 def manifest_hardcore(root: Path, guide_id: str) -> bool | None:
@@ -202,6 +203,19 @@ def manifest_excludes(root: Path, guide_id: str) -> dict[int, str]:
             for i, a in enumerate(args[:-1]):
                 if a == "--exclude" and args[i + 1].isdigit():
                     found[int(args[i + 1])] = reason
+    return found
+
+
+def manifest_requires(root: Path, guide_id: str) -> list[int]:
+    """The quests the guide's entry in tools/drafts.json requires (`"require": [questID, ...]`): the planned route must do them, whatever they cost."""
+    try:
+        manifest = json.loads((root / "tools" / "drafts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    found: list[int] = []
+    for entry in manifest.get("guides", []):
+        if entry.get("guide") == guide_id and isinstance(entry.get("require"), list):
+            found += [q for q in entry["require"] if isinstance(q, int) and not isinstance(q, bool)]
     return found
 
 
@@ -302,9 +316,10 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
     )
     world = guide_travel.World(pack, project.borders, guide.faction)
     hints = manifest_chains(options.root, guide.id) + [list(c) for c in options.chain]
+    required = tuple(dict.fromkeys(manifest_requires(options.root, guide.id) + [q for ids in options.require for q in ids]))
     job = Job(
         options.root, project, pack, pack_dir, guide, hardcore, character, race, cls, world, settings, params, mandatory, exclude, notes, chains,
-        tuple(tuple(c) for c in hints), start_of(project, guide, world, options.start), skip_zones,
+        tuple(tuple(c) for c in hints), start_of(project, guide, world, options.start), skip_zones, required,
     )
     return job
 
@@ -409,6 +424,7 @@ def planner_for(job: Job, out: Out, overrides: dict | None = None, quiet: bool =
         exclude=job.exclude,
         notes=job.notes,
         mandatory=job.mandatory,
+        required=job.required,
         chains=job.chains,
         home=job.start,
         skip_zones=job.skip_zones,
@@ -523,6 +539,11 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         if s.completeness > 0
         else "a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason (--completeness F finishes the "
              "ones that are a short walk away and pay at least F of the route's pace; off)",
+        (f"required quests (--require, \"require\" in tools/drafts.json): {', '.join(str(q) for q in job.required)}. Each is done "
+         f"whatever it costs, with the quests it needs (all of them are pushed like a class chain's); none is left out for being slow, taken out when the "
+         f"route is written, or kept out by a full quest log, and one that only has to be handed in, in another zone, is handed in next (the route leaves for it)")
+        if job.required
+        else "no quest is required (--require ID,... or \"require\" in the guide's entry of tools/drafts.json makes the route do the quests it names)",
         f"{len(job.mandatory)} class quests are mandatory: each is done or accounted for with a #skipquest reason; there is no deadline, "
         f"but each costs the route {s.class_push / 60:.0f} min for every level it is undone past the level it opens at"
         + (f" (+{s.class_grace})" if s.class_grace else "")
@@ -796,6 +817,21 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
         for qid, reason in pl.skipquests(plan).items():
             if qid in job.mandatory:
                 out(f"              #skipquest {qid} ({pl.quests[qid].name if qid in pl.quests else '?'}): {reason}")
+    if job.required:
+        levels = plan.levels_done()
+        parts = [
+            f"{q} {pl.quests[q].name} at level {levels[q]} (opens {pl.quests[q].req}, a level {pl.quests[q].level} quest)" if q in levels
+            else f"{q} {pl.quests[q].name} NOT DONE"
+            for q in job.required if q in pl.quests
+        ]
+        needed = len(pl.required) - len(pl.asked)
+        for line in labelled(
+            "required      ",
+            f"{len(job.required)} required by the guide"
+            + (f" and {needed} quest{'s' if needed != 1 else ''} {'they need' if needed != 1 else 'it needs'}, all routed and none left out" if needed else "")
+            + "; done at level (the level it opens at): " + "; ".join(parts),
+        ):
+            out(line)
     if pl.s.hardcore:
         highest = max((pl.quests[q].level - 0 for q in done), default=0)
         out(f"HARDCORE      no elite or boss objective in the pool (those are left out before the search); the highest quest level routed is {highest}")
@@ -1050,6 +1086,11 @@ def write_outputs(job: Job, outcome: Outcome, pl: engine.Planner, out_dir: Path,
         legs=[dict(zone=pl.world.geo.name(leg["zone"]) if leg["zone"] is not None else None, seconds=leg["seconds"], levels=[leg["level_in"], leg["level_out"]],
                    hubs=[pl.hubs[h].label for h in leg["hubs"]]) for leg in legs],
         quests_done=sorted(outcome.plan.final.done),
+        required=[
+            dict(quest=q, name=pl.quests[q].name, opens=pl.quests[q].req, level=pl.quests[q].level, done_at=outcome.plan.levels_done().get(q))
+            for q in job.required if q in pl.quests
+        ],
+        required_needed=sorted(pl.required - pl.asked),
         quest_log_limit=pl.s.quest_log_limit,
         quest_log_peak=outcome.plan.log_peak()[0],
         completeness=pl.s.completeness,
@@ -1111,6 +1152,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--exclude", type=int, action="append", default=[], metavar="QUEST", help="never route this quest")
     parser.add_argument("--chain", type=lambda t: [int(x) for x in t.split(",")], action="append", default=[], metavar="Q1,Q2,...",
                         help="quests of a chain the data does not link, in order (the guide manifest's hints are used already)")
+    parser.add_argument("--require", type=lambda t: [int(x) for x in t.split(",")], action="append", default=[], metavar="ID[,ID...]",
+                        help="quests the route must do whatever they cost, with the quests they need (as the guide's `require` list in tools/drafts.json does): "
+                             "never left out for being slow, taken out by the tidy that writes the route, or kept out by a full quest log; an error if one "
+                             "cannot be offered to the character (docs/PLANNER.md, Required quests)")
     parser.add_argument("--start", metavar="MAP,X,Y", help="where the character begins (default: the first place the guide sends it to)")
     parser.add_argument("--runs", type=int, default=300, help="Monte Carlo runs for the thorough technique (default 300)")
     parser.add_argument("--seed", type=int, default=1)
@@ -1156,7 +1201,12 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     presets = list(PRESETS) if options.preset == "all" else [options.preset]
-    first_pl = planner_for(job, out, quiet=True)
+    try:
+        first_pl = planner_for(job, out, quiet=True)
+    except engine.RequiredQuestError as error:
+        out(str(error), always=True)
+        out("(--require, or \"require\" in the guide's entry of tools/drafts.json, names these quests)", always=True)
+        return 2
     report_setup(job, out, first_pl, options)
     pls: dict[str, engine.Planner] = {}
     outcomes: list[Outcome] = []

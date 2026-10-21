@@ -17,7 +17,8 @@ chapter entries stay because the planner reads their --chain and --exclude hints
 
 The manifest, per guide: { "guide": id, "faction", "hardcore": true|false, "chapters": [ { "id", "name", "race", "class",
 "zones": [uiMapID, ...], "levels": "N-M", "args": [extra guide_draft.py arguments] } ], "rewrites": [ { "match": regex,
-"with": replacement } ] }.
+"with": replacement } ], "require": [questID, ...] }. `require` is read by tools/route_planner.py only: the quests its planned route must do
+whatever they cost (docs/PLANNER.md, Required quests); this script ignores it.
 """
 
 from __future__ import annotations
