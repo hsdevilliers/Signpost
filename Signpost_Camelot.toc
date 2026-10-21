@@ -41,6 +41,7 @@ Engine\Parser.lua
 Engine\Professions.lua
 Engine\Conditions.lua
 Engine\Travel.lua
+Engine\Placement.lua
 Engine\Progress.lua
 Engine\Tracking.lua
 
