@@ -70,10 +70,9 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
   Forever druids learn it is unverified (VERIFY(beta)), and so is the way back (hearthstone, a flight path, or the spell). Open: confirm
   both in game (backlog: the question on Teleport: Moonglade), and batch the Lessons Anew and Aquatic Form legs into fewer round trips
   (the chain links alternate between Thunder Bluff and Moonglade, so a trip per link is what the data gives).
-- **`.todo` never completes a step** (found by the review): a step with `.todo` and another directive (the travel steps, an objective
-  step) stays current after the other directive is satisfied, until the player skips it. That is what GUIDE-FORMAT says (`.todo` is never
-  satisfied), but it makes the planner's `.todo` + `.zone` steps and the drafted `.todo` + `.complete` steps need a manual skip.
-  Open for the user: let a step complete on its other directives and keep `.todo` as a display marker, or keep it.
+- **`.todo` beside another directive is only a note** (found by the review; decided by the user on 2026-10-20 and built since): a step with
+  `.todo` and another completable directive (the travel steps, an objective step) completes when the other directives are satisfied; a
+  step that is nothing but a `.todo` still waits for the player (`>`). GUIDE-FORMAT has the rule (`.todo`), `Engine/Conditions.lua` the code.
 - **Forever changes**: new or reworked quests and zones are not in any source yet; each is judged when recorded in game.
 - **Death data**: a contributor's deaths (where, at what level) would improve the list far more than any article. Not built; a
   possible later addition to `Core/Learn.lua`, opt-in like the rest (docs/SHARING-DATA.md).

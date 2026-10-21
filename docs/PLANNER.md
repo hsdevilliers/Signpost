@@ -238,6 +238,10 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
 
 What the quest log limit, completeness, the hub radius and the grains of progress were measured to do (data pack of 2026-10-20, the default beam unless said otherwise,
 planner totals with the class-quest charges; each run is deterministic, so a number is reproduced by the command that names it).
+These tables were measured on the planner's own branch, before the other batch-1 work (both druid rule sets, the `scripted` flag of the rebuilt pack, the shared
+travel price) was merged: compare their numbers with each other, not with the totals of the guides installed afterwards. A beam total is chaotic (an independent
+review ran the default beam on the integrated tools and the rebuilt pack and got Troll 22h07, Skyborne 31h09 and Tauren 44h18, which are not the numbers of these
+tables or of the installed guides): judge a route by its play time and the class quests' "done at level", and re-measure after any change of data or rules.
 
 **The quest log limit** (`python tools/route_planner.py <guide> --quest-log N --no-check --no-write`). The first number of a cell is the beam's total,
 the one in brackets the most quests the written route holds at once:
