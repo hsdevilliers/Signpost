@@ -1,12 +1,14 @@
 ---
 title: The Skyborne guide places worse than the others: four cases of the placement spec are red
 kind: finding
-status: open
+status: done
 priority: normal
 area: engine, guides
 source: claude
 raised: 2026-10-21
 raised_in: WP-A1 regeneration with the island exit required, 2026-10-21
+closed: 2026-10-21
+resolution: feat/find-my-place (WP-B): the level line runs along experience and a gated tolerance lets a clean history outweigh a level that is a little off (Engine/Placement.lua, docs/ENGINE.md). On the final Skyborne guide (the island as one chapter, levels 1 to 15) the four cases pass with the spec's bounds unchanged: the exact follower 0 / 0 quest steps (worst run 4 steps), a fifth skipped 0 / 5, quests done early 0 / 3, all the noise together 2 / 13. The one bound changed, on the lead's decision: mixed.catastrophic == 0 became at most 0.3 percent over a larger draw (measured 0.010 percent for the Tauren guide, 0.012 for the Troll's, none for the Skyborne's; 10 seeds, about 9,000 runs per guide). What stays open is the island's start, in a new item.
 ---
 
 ## What

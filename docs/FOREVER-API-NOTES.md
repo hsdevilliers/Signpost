@@ -308,6 +308,10 @@ How a Horde Windshaper leaves Zephras Isle. The Horde sources agree with each ot
   `GetAddOnMemoryUsage("Signpost_Data")` after `UpdateAddOnMemoryUsage()`, and no Lua errors from the generated files.
 - [ ] Whether QuestieDB's instance uiMapIDs exist on Forever (`C_Map.GetMapInfo(279)`, say): 374 pack quests use one as
   `quests[].zone`.
+- [ ] **The experience table** (`Engine/Placement.lua` `XP_TO_NEXT`, VERIFY(launch)): Classic's table, the same as `tools/sim_params.json`.
+  A level 1 character's `UnitXPMax("player")` is 400 (probe 1.60.1.70450), Classic's first entry; read it at every level (the pace recorder
+  could store it at each `PLAYER_LEVEL_UP`) and compare. Only its shape matters to Find my place. Backlog: the question on Forever's
+  experience table.
 
 Added by the Wave 1 modules (each has a matching `VERIFY(beta)`/`VERIFY(launch)` comment in the code; `/signpost context`
 saves Engine/Context's view to `SignpostDB.context` for comparison):

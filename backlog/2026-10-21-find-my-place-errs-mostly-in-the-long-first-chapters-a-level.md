@@ -1,12 +1,14 @@
 ---
 title: Find my place errs mostly in the long first chapters (a level 8 Tauren is put at step 29, not 21)
 kind: finding
-status: open
+status: done
 priority: normal
 area: engine, planner
 source: claude
 raised: 2026-10-21
 raised_in: batch 1, independent review R-guides-A
+closed: 2026-10-21
+resolution: feat/find-my-place (WP-B): the line through a chapter is straight in experience, not in level, which fixes the long first chapters (against the simulator's levels the straight line was +1.68 levels on average and 3.18 at the 90th percentile in chapters of nine or more levels; the experience line is -0.12 and 1.10). On the final Tauren guide a level 8 character with nothing done is put at step 19, where the simulator has level 8 at steps 19 to 21 (it was step 29). Tables re-run in docs/ENGINE.md.
 ---
 
 ## What

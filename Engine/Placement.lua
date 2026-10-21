@@ -385,7 +385,7 @@ function Placement:Fit(labels, stats, lv, top, span, snapshot, opts)
 				if mode == "history" and gap > 0 then
 					-- the history outweighs a level that is a little off: more in a long chapter, whose line is the less
 					-- certain, and only as far as the quests show the character playing the guide up to here
-					local tolerance = tolBase + tolSpan * (span[k] or 0)
+					local tolerance = tolBase + tolSpan * ((span and span[k]) or 0)
 					if gateHigh > gateLow then
 						local labeled = open + done
 						local share = labeled > 0 and done / labeled or 0 -- nothing before k: nothing shows it
