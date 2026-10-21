@@ -70,7 +70,8 @@ beam compares its best finished routes as they would be written, and against the
   better. The simulator's own grinding rate is used.
 - **Travel** is walking on one continent (distance by the map data, a detour factor); between continents it is the walk to the
   capital's boat or zeppelin, `--ferry` minutes, and the walk from the other capital. Reaching a continent or island with no
-  gateway (another race's start island) is not allowed, unless the character begins there.
+  gateway (another race's start island) is not allowed, unless the character begins there. The numbers are
+  `tools/signpost_tools/pricing.py`'s, the same ones the simulation of the written route uses (below, "What it cannot see").
 - **Zone friction**: every change of zone costs the planner `--friction` minutes (default 3) on top of the travel, so it does not
   hop between zones for a few experience points. It steers the search; it is not play time and is reported apart.
 - **Class quests are mandatory** (the chains of `Classes/<CLASS>.lua`, up to the cap): each is done or accounted for with a
@@ -125,9 +126,17 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   the level when a quest has none), 8 kills and 6 items per objective, kill 12 s, loot 4 s. The route is the best one under them,
   not a prediction of a player's clock. Forever's own tuning is unknown (CLAUDE.md, "Forever is not Classic"): quests and class
   quests Forever added that the pack lacks are not routed.
-- **The planner and the simulator price travel differently.** The simulator charges a flat few minutes for a border that is not
-  learned yet; the planner prices it by distance. The full simulation of a written route runs 10-20% below the planner's estimate
-  (backlog: `price-travel-differently`).
+- **Travel is priced once, and still an assumption.** The planner's search, the travel graph that proposes a guide's travel steps and the
+  simulation of the written route take their numbers from `tools/signpost_tools/pricing.py` (7 yards a second, no detour, flights, a boat's
+  3 minute wait and 4 minute ride, the hearthstone, 15 minutes for a change of continent the data has no boat for); a `"travel"` object in
+  `tools/sim_params.json` overrides any of them, and a typo there is an error. Before this the simulation charged nothing for a `.zone` hop
+  (the step leaves the player nowhere in particular, so the next walk was never measured) or for a change of continent with no boat in the
+  data, and a planned route simulated 14 to 24% under the planner's estimate. Now the fidelity line agrees within 3% (beam, shared pack:
+  Troll Hunter 20h15 simulated against 20h37 planned, -1.7%; Tauren Druid 24h12 against 24h57, -3.0%; Skyborne Druid 22h31 against 22h59,
+  -2.0%). What is left is travel: the planner walks between hub centres and adds 8 seconds for each change of place within a visit (about 20
+  minutes a route), and the simulation walks the steps' own positions and does not price the walk inside a doing step (last bullet). The
+  detour is 1.0 (the straight line) because no play data says otherwise, and a boat or zeppelin has never been timed: `python tools/guide_sim.py
+  --pace` is the way to calibrate once play data exists.
 - **Class quests are pushed, not scheduled**: a chain whose quests are far apart (the Cat Form chain's items) can still come several levels
   after it opens; the report lists the class quests more than 5 levels late and the level each was done at. A character that starts on an island
   (the Skyborne's) cannot reach the other continents' class quests before it leaves, however hard they are pushed.
@@ -143,4 +152,4 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
 - **Group quests** in a normal route are tagged `.optional`, not yet shown as a line beside the step.
 - **Walking inside a doing step is not priced**: the planner adds a few seconds for each place of a hub; once the objective areas are joined into one
   doing step the simulator charges only the walk between steps (the step keeps one position). A pick-up and hand-in step keeps the position of
-  each NPC, and the simulator walks them in order.
+  each NPC, and the simulator walks them in order. This is part of the 2 to 3% by which the full simulation still runs under the planner's estimate.
