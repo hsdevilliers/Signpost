@@ -208,9 +208,36 @@ What exists for the Windshaper (Horde Skyborne) start, and what does not:
   replaced by `windshaper-druid-NN-<zone>` chapters, and `tools/drafts.json` keeps their entries only for the planner's `--chain` hints.
   The pack does know the mainland quests of the Windshaper race (Welcome to Azeroth 95350, Journey to the Crossroads 98024). Still not in the
   pack: how a Windshaper leaves the island (no transport, crossing or flight master for Zephras Isle; the only link is the island story's last
-  quest, The Earthen Ring 95349, which ends in Mulgore: backlog item "How does a Skyborne character leave Zephras Isle"), and objective
+  quest, The Earthen Ring 95349, which ends in Mulgore: answered by research on 2026-10-21, see "Skyborne exit" below; VERIFY(beta)), and objective
   counts and positions for several quests (the chapters carry `.todo` steps naming them). `Core/Learn.lua` remains the way to fill the gaps
   from play. Objective kill counts are not kept in the pack at all, so `tools/guide_sim.py` uses a parameter for them.
+
+### Skyborne exit (research 2026-10-21; beta-era fan guides and the Warcraft Wiki; nothing seen in the game: every line is VERIFY(beta))
+How a Horde Windshaper leaves Zephras Isle. The Horde sources agree with each other (one outlier is ignored):
+- **The chain.** The island story ends at the Shrine of Akir with the finale ("Making Our Move", "The Inner Sanctum", "Confront Lorthuna": a
+  scripted boss fight, Rohash is summoned, Kirin Tor and Earthen Ring reinforcements arrive), hand-ins with Ayessa Dawnsinger (in Valanaar)
+  and Talanis Shadowsong, back to Ayessa, then "The Fate of Zephras" and "What Comes Next", then "The Earthen Ring" from Ayessa Dawnsinger.
+  That is the pack's chain 93836 -> 93090 -> 95349, which ends in Mulgore with Alaana Stormwalker (she gives Welcome to Azeroth 95350).
+- **The vehicle.** An airship (the guides also say zeppelin or skyship; the real name is unknown) leaves from Valanaar's southwest or
+  westernmost dock (the wait is about 7 to 8 minutes) and lands at Skywatcher Plateau, north-west Mulgore, beside Thunder Bluff (the flight
+  master is in Thunder Bluff). The beta-era Horde path then goes on to Orgrimmar (Thrall); "Exploring the Horde", the tour of the faction
+  leaders, starts with Nazgrel there.
+- **The level.** The island is levels 1 to 12; beta players leave at about 12 to 14. No source gives the level of the exit quest.
+- **Alliance (High Order Skyborne), for the record:** "The Magical City of Dalaran" from Elaadrin Evengale, a skycutter from the tower south
+  of Valanaar to Dalaran (landing by the Kirin Tor camp west of the city), then a Skyborne portal to Stormwind. The airship to Dalaran that
+  the user remembered is this route.
+- **Outlier, ignored:** gamer-guides.com sends the Horde by boat to Dalaran and the Orgrimmar portal; four other sources and the pack's own
+  chain say Mulgore.
+- **Unknown:** whether the airship can be boarded without the quest chain; the exact dock position; the vehicle's real name; the level of
+  the exit quest.
+- Sources: [Warcraft Wiki: Zephras Isle](https://warcraft.wiki.gg/wiki/Zephras_Isle),
+  [classicwowforever.com: boats and zeppelins](https://classicwowforever.com/boats-and-zeppelins/),
+  [classicwowforever.com: Zephras Isle (Skyborne)](https://classicwowforever.com/guides/wow-forever-zephras-isle-skyborne/),
+  [wowhandbook.com: Zephras Isle](https://wowhandbook.com/zones/zephras-isle/),
+  [warcrafttavern.com: Zephras Isle walkthrough](https://www.warcrafttavern.com/forever/guides/zephras-isle-walkthrough/).
+- **To confirm in the game** (backlog verify item "Skyborne exit in the game"): the quest chain and the level it is done at, the dock
+  position, the vehicle's name, the landing spot, and whether the airship can be boarded before the chain is done. A Windshaper's recorded
+  play (the friend's, or the user's) answers all of it: `/signpost learned` lists the ride once someone has ridden it.
 
 ## Observed in the game (user reports)
 - 2026-10-20, a level-1 Troll in the Valley of Trials: Gornek offers **Cutting Teeth** and **Wayward Weapons**, Kaltunk offers **Your Place in the
