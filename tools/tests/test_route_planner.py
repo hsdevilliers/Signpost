@@ -13,7 +13,7 @@ import route_install
 import route_planner as rp
 from signpost_tools import guidefile
 from tests.guide_fixtures import BORDERS_LUA, MAPS, TRAVEL, TempProject, guide_lua, write_pack
-from tests.test_guide_draft import NPCS, QUESTS
+from tests.test_guide_draft import HOME, NPCS, QUESTS
 
 ITEMS = {9999: {"n": "Thing"}, 9998: {"n": "Elite Drop", "drops": [3002]}, 9997: {"n": "Stone", "drops": [3002], "objDrops": [1]}}
 
@@ -355,6 +355,48 @@ class RequiredOptionTest(RouteCase):
             self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0")
             data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
             self.assertEqual((data["required"], data["required_needed"]), ([], []))
+
+
+class GroupReportTest(RouteCase):
+    """The report says why a quest is optional: an elite kill, a dungeon quest, or a quest that follows one of those (docs/PLANNER.md, "Group quests")."""
+
+    def setUp(self):
+        super().setUp()
+        quests = {
+            **QUESTS,
+            360: {"n": "After Elite", "r": 1, "l": 2, "preSingle": [220], "o": [{"id": 3001, "k": "kill"}], **HOME},  # needs the group quest Elite Hunt
+            370: {"n": "Into The Deep", "r": 1, "l": 3, "zone": 999, "o": [{"id": 9999, "k": "item"}], **HOME},  # 999 is no map of the pack
+        }
+        self.pack = write_pack(self.pack_dir, {"maps": MAPS, "quests": quests, "npcs": NPCS, "travel": TRAVEL, "items": ITEMS})
+
+    def test_the_done_line_counts_the_optional_quests_by_why(self):
+        code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertRegex(flat, r"done \d+ quests turned in, \d+ of them tagged optional \(\d+ group quests, 1 dungeon quest, 1 following one of those\)")
+        self.assertIn("a normal route: quests up to 5 levels above you are accepted and worked on up to 3; group quests (elite kills), dungeon quests and the quests "
+                      "that need one of those first are tagged optional", flat)
+
+    def test_the_plan_file_lists_the_optional_quests_with_why(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0")
+            self.assertEqual(code, 0, text)
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            found = {entry["quest"]: (entry["name"], entry["group"]) for entry in data["optional"]}
+            self.assertEqual(found[220], ("Elite Hunt", "elite"))
+            self.assertEqual(found[360], ("After Elite", "follows"))
+            self.assertEqual(found[370], ("Into The Deep", "dungeon"))
+            chapters = "\n".join(path.read_text(encoding="utf-8") for path in sorted((Path(out_dir) / "greedy" / "Guides" / "Chapters").glob("plan-*.lua")))
+            self.assertIn(".optional 360 -- follows a group quest: After Elite", chapters)
+            self.assertIn(".note Into The Deep: dungeon quest: needs a group", chapters)
+
+    def test_a_hardcore_route_says_it_has_no_dungeon_quest(self):
+        code, text = self.run_main("orc", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn("HARDCORE: no elite or boss objectives, no dungeon quests (what needs one goes with it)", flat)
+        self.assertIn("no elite or boss objective and no dungeon quest in the pool", flat)
+        self.assertNotIn("tagged optional", flat)
 
 
 class SearchReportTest(unittest.TestCase):

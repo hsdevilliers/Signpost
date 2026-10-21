@@ -41,6 +41,10 @@ SCRIPTED_NOTES = {
     ("event", False): "event: the quest finishes when something happens here (an ambush, a ritual); read the quest log",
     ("event", True): "HARDCORE event: enemies may come at you here; be healed and buffed first, and come back later if unsure",
 }
+# Why a normal route tags a quest `.optional` (`PQuest.group`): the comment of its `.optional` line, and the `.note` the accept carries (an elite kill is a
+# group quest and needs no note: the player knows).
+GROUP_COMMENTS = {"elite": "group quest", "dungeon": "dungeon quest", "follows": "follows a group quest"}
+GROUP_NOTES = {"dungeon": "dungeon quest: needs a group", "follows": "follows a group quest: needs a group too"}
 GRAIN_TRIES = 5  # finished routes of one grain (a different order of zones each) written out to find that grain's best
 
 
@@ -116,7 +120,8 @@ class PQuest:
     parents: tuple = ()  # quests whose `next` it is: the game hands it over when one of them is turned in
     parent: int | None = None
     class_mask: int | None = None
-    optional: bool = False  # a group (elite) quest in a normal guide
+    optional: bool = False  # a group quest in a normal guide: an elite kill, a dungeon quest, or what needs one of those first
+    group: str = ""  # why: "elite", "dungeon" or "follows" (it needs a group quest first); GROUP_COMMENTS
     mandatory: bool = False  # a class quest: routed, or #skipquest-ed with a reason
     kept: bool = True
     start_hubs: tuple = ()
@@ -348,6 +353,7 @@ class Planner:
         planner._expand_required()
         planner._prune_territory(character.faction)
         planner._prune_unreachable()
+        planner._mark_group_chains()
         planner._check_required()
         planner._make_hubs()
         say(f"{len(planner.hubs)} hubs of about {settings.hub_radius:.0f} yards")
@@ -439,8 +445,11 @@ class Planner:
             return self._drop("no objective in the data (accepted and handed in at one NPC)", qid)
         if scripted:  # the one objective that stands for the work: done where the quest starts, which is where the escort sets off
             objectives.append(PObjective(1, "scripted", 0, list(starts)))
+        dungeon = self._in_instance(record)
         if s.hardcore and elite:
             return self._drop("HARDCORE: needs an elite or boss kill", qid)
+        if s.hardcore and dungeon:
+            return self._drop("HARDCORE: dungeon quest (needs a group)", qid)
         if (record.get("l") or 0) > s.cap + 5:
             return self._drop("far above the level cap", qid)
         classes = record.get("classes")
@@ -459,12 +468,36 @@ class Planner:
             excl=tuple(guide_draft._ids(record.get("exclusive"))),
             parent=record.get("parent") if isinstance(record.get("parent"), int) else None,
             class_mask=classes if isinstance(classes, int) else None,
-            optional=elite and not s.hardcore,
+            optional=(elite or dungeon) and not s.hardcore,
+            group="elite" if elite else ("dungeon" if dungeon else ""),
             mandatory=qid in self.mandatory,
             end_unknown=end_unknown,
             unknown_work=unknown_work and qid in self.mandatory,
             scripted=scripted,
         )
+
+    def _in_instance(self, record: dict) -> bool:
+        """Whether a quest belongs to a dungeon or a raid: the pack gives the quest the zone it is sorted under, and a dungeon's id is not one of the pack's maps (its
+        world zones, continents and battlegrounds are); a quest with no zone is not. Its objectives lie inside, and a solo player cannot do them."""
+        zone = record.get("zone")
+        maps = self.pack.table("maps")
+        return bool(maps) and isinstance(zone, int) and not isinstance(zone, bool) and zone not in maps
+
+    def _mark_group_chains(self) -> None:
+        """A quest that needs a group quest first (the pack's prerequisites, or the chain that hands it over) cannot be done solo either: a normal route tags it
+        `.optional` too, and so on down the chain. A quest with alternatives (any one of its `preSingle`) is tagged only when every alternative is. A class
+        quest keeps its place. (A HARDCORE route has dropped the group quests and, with them, everything that needs them.)"""
+        changed = True
+        while changed:
+            changed = False
+            for q in self.quests.values():
+                if q.optional or q.mandatory:
+                    continue
+                needed = [self.quests[p] for p in list(q.pre_all) + list(q.parents) if p in self.quests]
+                alternatives = [self.quests[p] for p in q.pre_any if p in self.quests]
+                if any(p.optional for p in needed) or (alternatives and all(p.optional for p in alternatives)):
+                    q.optional, q.group = True, "follows"
+                    changed = True
 
     def _prune_territory(self, faction: str) -> None:
         """Zones where the character's faction has hardly any quest givers are the other side's: a Horde character does not
@@ -1778,6 +1811,8 @@ class Planner:
                     lines.append(f"  .level {q.req}")
                     gated = q.req
                 lines.append(f"  .accept {q.id}{gate} -- {name}")
+                if q.group in GROUP_NOTES:
+                    lines.append(f"  .note {name}: {GROUP_NOTES[q.group]}")
                 if q.unknown_work:
                     lines.append(f'  .todo "{name}: the pack has no objective for it; read what it asks in the quest log"')
                 if q.id in self.notes:
@@ -1788,16 +1823,16 @@ class Planner:
                 lines.append(f"  .turnin {q.id}{gate} -- {name}")
             else:
                 objective = next((o for o in q.objectives if o.index == a.index), None)
-                if objective is None or not objective.spots:
+                if (objective is None or not objective.spots) and q.group != "dungeon":  # (a dungeon's objectives lie inside it: the note says so)
                     why = "is only in places this guide does not go" if objective is not None and objective.elsewhere else "has no position in the pack"
                     lines.append(f'  .todo "{name}: objective {a.index} {why}"')
                 lines.append(f"  .complete {q.id},{a.index}{gate} -- {name}")
                 if q.scripted:
                     lines.append(f"  .note {name}: {SCRIPTED_NOTES[(q.scripted, self.s.hardcore)]}")
             if q.optional:
-                optional[q.id] = name
-        for qid, name in optional.items():
-            lines.append(f"  .optional {qid} -- group quest: {name}")
+                optional[q.id] = f"{GROUP_COMMENTS.get(q.group, 'group quest')}: {name}"
+        for qid, comment in optional.items():
+            lines.append(f"  .optional {qid} -- {comment}")
         return lines, gated
 
 
