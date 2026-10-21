@@ -51,7 +51,7 @@ Use `[[ ... ]]`, or `[=[ ... ]=]` when the text itself contains `]]`.
 | `#class <list>`, `#race <list>`, `#faction <name>` | guide | informational; selection uses the `Register` table |
 | `#include <chapterId>` | guide or chapter | splice that registered chapter's text here, before gating; nested includes are fine, a cycle or unknown id is an error |
 | `#chapter <levels> <name> [#dungeon]` | guide or chapter | start a chapter; `<levels>` is `N` or `N-M`; `#dungeon` makes it a dungeon chapter (Skip toggle, PLAN §3.3) |
-| `#skipquest <questID> >> <reason>` | guide or chapter | the class/profession quest coverage lint accepts this quest as skipped on purpose |
+| `#skipquest <questID> >> <reason>` | guide or chapter | the class/profession quest coverage lint accepts this quest as skipped on purpose; the Route Planner also writes one, with the reason and the numbers, for every quest it picked up on the way and did not finish (`not finished by this route: ...`, docs/PLANNER.md) |
 | `#track <key>` | track | first statement of a track file |
 
 Steps in a guide's own text before its first `#chapter` form an implicit chapter named after the guide, levels from

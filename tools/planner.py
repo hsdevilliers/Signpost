@@ -74,7 +74,7 @@ class Settings:
     # and works it only when that is the better use of the time; one still in the log at the end is taken out when the route is written
     # (`Planner.tidy`). With `completeness` F > 0, tidy first tries to finish it: a stop at its objectives, right after the pick-up, when they are at
     # most `completeness_trip` seconds of walking away and the quest pays at least F times the route's pace (experience per second, the trip
-    # included). 0 is off: the quest is taken out, and the report says why (the numbers are in `Planner.left_out`).
+    # included). 0 is off: the quest is taken out, and the report says why (a record for each in `plan.stats["left_out"]`).
     completeness: float = 0.0
     completeness_trip: float = 30.0
 
@@ -1077,7 +1077,7 @@ class Planner:
         removed: set[int] = set()
         gave_up: set[int] = set()  # a stop was added for them and they still were not finished
         lifted_before: set[int] = set()
-        found: dict[int, tuple] = {}  # quest -> (character's level, place, hub) when it was picked up, from the plan it was first found unfinished in
+        found: dict[int, tuple] = {}  # quest -> `_pickups` of the plan it was first found unfinished in: (level, place, hub, whether the route passes a hand-in later)
         for _ in range(6 if self.s.completeness > 0 else 4):
             active = set(plan.final.active) if plan.final else set()
             stuck = active & lifted_before
@@ -1175,10 +1175,10 @@ class Planner:
     def _finishable(self, plan: Plan, candidates: set) -> tuple[dict, dict]:
         """Tidy's completeness: of the quests this route left unfinished, the ones worth finishing and how. Returns ({visit index: {quests that
         must be picked up there even though they are forbidden}}, {visit index: [hubs to stop at after that visit]}). A quest qualifies when it
-        could be worked at the level it was picked up at, pays at least `Settings.completeness` of the route's pace, and its objectives and the
-        place to hand it in are at most `Settings.completeness_trip` seconds of walking from where it was picked up. The stops are the hubs of its
-        objectives (nearest first) and, unless the route passes the hand-in later, the hand-in's hub. A quest this route did finish (an earlier
-        round of tidy) keeps its pick-up where it is."""
+        could be worked at the level it was picked up at, pays at least `Settings.completeness` of the route's pace, and its objectives are at most
+        `Settings.completeness_trip` seconds of walking from where it was picked up, and so is the place to hand it in unless the route goes on to a
+        hub where it is handed in anyway. The stops are the hubs of its objectives (nearest first) and, unless the route passes the hand-in later,
+        the hand-in's hub. A quest this route did finish (an earlier round of tidy) keeps its pick-up where it is."""
         s = self.s
         hubs = [v.hub for v in plan.visits]
         path, st = [], plan.final
@@ -1231,7 +1231,7 @@ class Planner:
             why = (f"it could not be worked at level {level} (a level {q.level} quest) and the route did not come back when it could"
                    if level < s.cap else "the route had reached the cap")
         elif far > reach:
-            code, why = "far", f"its objectives are {far:.0f} s of walking away (the route walks up to {reach:.0f} s for a quest it picked up)"
+            code, why = "far", f"its objectives are {far:.0f} s of walking away (the route walks up to {reach:.0f} s for one)"
         elif end_seconds > reach and not passes:
             code, why = "handin", f"it is handed in {end_seconds:.0f} s of walking away and the route does not pass there"
         else:
@@ -1505,7 +1505,7 @@ class Planner:
                 if other not in done and other in self.quests and other not in skips:
                     skips[other] = f"alternative to quest {qid}, which is routed"
         for record in plan.stats.get("left_out", ()):  # nothing is dropped silently: what tidy took out is named, with its reason
-            skips.setdefault(record["quest"], f"picked up on the way and not finished: {record['why']}")
+            skips.setdefault(record["quest"], f"not finished by this route: {record['why']}")
         return skips
 
     def hub_near(self, coord: Coord) -> int | None:

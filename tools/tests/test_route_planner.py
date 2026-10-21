@@ -147,8 +147,8 @@ class EndToEndTest(RouteCase):
             for field in ("name", "level", "picked_level", "hub", "why", "trip", "handin", "work", "rate", "pace", "ratio", "unplaced"):
                 self.assertIn(field, record)
             guide = (Path(out_dir) / "greedy" / "Guides" / "Plan.lua").read_text(encoding="utf-8")
-            self.assertIn("#skipquest 202 >> picked up on the way and not finished: it is handed in 96 s of walking away", guide)
-            self.assertIn("#skipquest 229 >> picked up on the way and not finished: it could not be worked at level 1", guide)
+            self.assertIn("#skipquest 202 >> not finished by this route: it is handed in 96 s of walking away", guide)
+            self.assertIn("#skipquest 229 >> not finished by this route: it could not be worked at level 1", guide)
 
     def test_completeness_finishes_the_quests_a_short_walk_away_and_the_reports_say_so(self):
         with tempfile.TemporaryDirectory() as out_dir:
@@ -163,10 +163,11 @@ class EndToEndTest(RouteCase):
             data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
             self.assertEqual((data["completeness"], data["completeness_trip"]), (0.01, 200.0))
             self.assertEqual(data["completed"], [202, 211])
+            self.assertEqual(data["completed_unplaced"], [])  # (the fixture's two have positions)
             self.assertEqual([r["quest"] for r in data["left_out"]], [229])
             guide = (Path(out_dir) / "greedy" / "Guides" / "Plan.lua").read_text(encoding="utf-8")
             self.assertNotIn("#skipquest 202", guide)  # a quest that was finished is in the route, not skipped
-            self.assertIn("#skipquest 229 >> picked up on the way and not finished", guide)
+            self.assertIn("#skipquest 229 >> not finished by this route", guide)
             self.assertIn("availability  0 error(s)", text)  # and the route as written is still one the game would offer
             self.assertIn("lint          0 error(s)", text)
 
@@ -351,6 +352,12 @@ class LeftOutReportTest(unittest.TestCase):
         self.assertIn("92462 Infestation Investigation (level 2, picked up at level 1, Aetheen of the Gales): the reason of 92462", text)
         self.assertIn("92463 The Next One (level 2, picked up at level 1, Aetheen of the Gales): the reason of 92463", text)
         self.assertLess(text.index("92462"), text.index("92463"))  # the near ones first: they are the ones a setting would get back
+
+    def test_the_causes_are_listed_most_frequent_first(self):
+        text = " ".join(self.lines([self.record(1, "far"), self.record(2, "price"), self.record(3, "price"), self.record(4, "price")]).split())
+        self.assertIn("(3 near but not worth the trip, 1 objectives too far)", text)
+        text = " ".join(self.lines([self.record(1, "far"), self.record(2, "far"), self.record(3, "far"), self.record(4, "price")]).split())
+        self.assertIn("(3 objectives too far, 1 near but not worth the trip)", text)
 
     def test_the_quests_with_an_objective_the_data_cannot_place_are_counted(self):
         text = " ".join(self.lines([self.record(1, unplaced=True), self.record(2), self.record(3, unplaced=True)]).split())
