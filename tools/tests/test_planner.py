@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -1516,6 +1517,106 @@ class RequiredTest(PlannerCase):
         self.assertEqual((pl.required, pl.leaving(st)), (set(), []))
         self.assertFalse(pl._work_here(st))
         self.assertEqual(pl.options(st), pl._options(st))
+
+
+class GroupQuestTest(PlannerCase):
+    """What a solo player cannot do, and what needs it (docs/PLANNER.md, "Group quests"): an elite kill, a dungeon quest (sorted under an instance), and every quest that
+    needs one of those first, are `.optional` in a normal route; a HARDCORE route leaves them all out."""
+
+    def quests(self):
+        return {
+            **QUESTS,
+            220: {**QUESTS[220], "next": 365},  # Elite Hunt (kills an elite) hands 365 over when it is turned in
+            355: {"n": "Earlier Number", "r": 1, "l": 2, "preSingle": [360], **HOME},  # a lower number than the quest it follows: found on the second look
+            360: {"n": "After Elite", "r": 1, "l": 2, "preSingle": [220], **HOME},
+            361: {"n": "After After", "r": 1, "l": 2, "preSingle": [360], **HOME},
+            362: {"n": "Either Way", "r": 1, "l": 2, "preSingle": [220, 201], **HOME},  # any one of the two: the normal quest will do
+            363: {"n": "Both Needed", "r": 1, "l": 2, "preGroup": [220, 201], **HOME},  # both: the group quest is one of them
+            365: {"n": "Handed Over", "r": 1, "l": 2, **HOME},
+            366: {"n": "Class Follower", "r": 1, "l": 2, "classes": 4, "preSingle": [220], **HOME},
+            370: {"n": "Into The Deep", "r": 1, "l": 3, "zone": 999, "o": [{"id": 9999, "k": "item"}], **HOME},  # 999 is no map of the pack: an instance
+            371: {"n": "Deeper", "r": 1, "l": 3, "zone": 999, "preSingle": [370], **HOME},
+            372: {"n": "Nowhere", "r": 1, "l": 3, "o": [{"id": 9999, "k": "item"}], **HOME},  # no zone: a quest like any other
+            373: {"n": "In Westland", "r": 1, "l": 3, "zone": 10, "o": [{"id": 9999, "k": "item"}], **HOME},  # a map of the pack
+            374: {"n": "After The Deep", "r": 1, "l": 3, "preSingle": [371], **HOME},
+        }
+
+    def build(self, **kw):
+        return self.planner(quests=self.quests(), **kw)
+
+    def text(self, pl):
+        plan = pl.plan("greedy", self.start(pl))
+        return plan, "\n".join(chapter.text("West") for chapter in pl.emit(plan, "HUNTER"))
+
+    def test_what_needs_a_group_quest_is_optional_too_down_the_chain(self):
+        pl = self.build()
+        self.assertEqual((pl.quests[220].optional, pl.quests[220].group), (True, "elite"))
+        for qid in (355, 360, 361, 363, 365):  # the quest after it, the ones after that, a group of prerequisites with it among them, the quest it hands over
+            self.assertEqual((pl.quests[qid].optional, pl.quests[qid].group), (True, "follows"), qid)
+        self.assertFalse(pl.quests[362].optional)  # one of two ways: the normal one will do
+        self.assertEqual(pl.quests[362].group, "")
+        self.assertFalse(pl.quests[201].optional)
+
+    def test_a_class_quest_keeps_its_place_even_when_it_follows_a_group_quest(self):
+        pl = self.build(mandatory=(366,))
+        self.assertFalse(pl.quests[366].optional)
+        self.assertEqual(pl.quests[366].group, "")
+
+    def test_the_route_tags_every_quest_of_the_chain_and_the_ones_that_follow_say_so(self):
+        plan, text = self.text(self.build())
+        for qid, name in ((360, "After Elite"), (361, "After After"), (363, "Both Needed"), (365, "Handed Over")):
+            self.assertIn(f".optional {qid} -- follows a group quest: {name}", text, qid)
+            self.assertIn(f".note {name}: follows a group quest: needs a group too", text, qid)
+        self.assertIn(".optional 220 -- group quest: Elite Hunt", text)
+        self.assertNotIn(".note Elite Hunt:", text)  # (the player knows an elite kill needs a group)
+        self.assertNotIn(".optional 362", text)
+        self.assertNotIn(".optional 201", text)
+        self.assertIn(".accept 362 -- Either Way", text)
+
+    def test_a_hardcore_route_drops_the_group_quest_and_with_it_what_needs_it(self):
+        pl = self.build(hardcore=True)
+        self.assertIn(220, pl.dropped["HARDCORE: needs an elite or boss kill"])
+        for qid in (360, 361, 363):
+            self.assertNotIn(qid, pl.quests, qid)
+            self.assertIn(qid, pl.dropped["a prerequisite cannot be routed"], qid)
+        self.assertIn(362, pl.quests)  # it has the normal way
+        self.assertFalse(any(q.optional for q in pl.quests.values()))
+
+    def test_a_quest_sorted_under_an_instance_is_a_dungeon_quest_optional_with_a_note_in_a_normal_route(self):
+        pl = self.build()
+        for qid in (370, 371):
+            self.assertEqual((pl.quests[qid].optional, pl.quests[qid].group), (True, "dungeon"), qid)
+        self.assertEqual((pl.quests[374].optional, pl.quests[374].group), (True, "follows"))  # and what needs a dungeon quest
+        for qid in (372, 373):  # no zone, and a zone that is a map of the pack
+            self.assertFalse(pl.quests[qid].optional, qid)
+        plan, text = self.text(pl)
+        self.assertIn(".optional 370 -- dungeon quest: Into The Deep", text)
+        self.assertIn(".note Into The Deep: dungeon quest: needs a group", text)
+        self.assertNotIn('.todo "Into The Deep: objective 1', text)  # its objective lies inside the dungeon: the note says so, not a hole in the data
+        self.assertIn('.todo "Nowhere: objective 1 has no position in the pack"', text)  # (a quest like any other still gets its `.todo`)
+        self.assertNotIn(".optional 372", text)
+
+    def test_a_hardcore_route_leaves_a_dungeon_quest_out_with_its_reason(self):
+        pl = self.build(hardcore=True)
+        self.assertEqual(sorted(pl.dropped["HARDCORE: dungeon quest (needs a group)"]), [370, 371])
+        self.assertIn(374, pl.dropped["a prerequisite cannot be routed"])
+        self.assertIn(372, pl.quests)
+        self.assertIn(373, pl.quests)
+
+    def test_a_rule_that_skips_a_dungeon_quest_keeps_its_own_reason(self):
+        reason = "HARDCORE: dungeon quest (Test Deep): the items lie inside"
+        pl = self.build(hardcore=True, exclude={370: reason})
+        self.assertIn(370, pl.dropped["excluded"])
+        self.assertNotIn(370, pl.dropped["HARDCORE: dungeon quest (needs a group)"])
+        self.assertEqual(pl.skipquests(pl.plan("greedy", self.start(pl)))[370], reason)  # the #skipquest line says what the rule says
+
+    def test_a_pack_without_maps_cannot_tell_a_dungeon_and_a_zone_that_is_no_number_is_none(self):
+        pl = self.build()
+        self.assertTrue(pl._in_instance({"zone": 999}))
+        for record in ({}, {"zone": None}, {"zone": True}, {"zone": "221"}, {"zone": 10}):
+            self.assertFalse(pl._in_instance(record), record)
+        pl.pack = types.SimpleNamespace(table=lambda name: {})
+        self.assertFalse(pl._in_instance({"zone": 999}))
 
 
 class SettingsTest(unittest.TestCase):

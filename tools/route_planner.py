@@ -528,10 +528,11 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         f"quests slower than grinding are left out (threshold {s.profit_threshold:g}x) unless they are class quests or needed by a kept quest"
         if s.skip_unprofitable
         else "no quest is left out for being slow",
-        (f"HARDCORE: no elite or boss objectives, no quest more than {s.hardcore_over} level above the character, "
-         f"{len(job.exclude)} skips (tools/hardcore_rules.json and the guide's own list)")
+        (f"HARDCORE: no elite or boss objectives, no dungeon quests (what needs one goes with it), no quest more than {s.hardcore_over} level above the "
+         f"character, {len(job.exclude)} skips (tools/hardcore_rules.json and the guide's own list)")
         if s.hardcore
-        else f"a normal route: quests up to {pl.accept_over} levels above you are accepted and worked on up to {pl.work_over}; group quests are tagged optional",
+        else f"a normal route: quests up to {pl.accept_over} levels above you are accepted and worked on up to {pl.work_over}; group quests (elite kills), "
+             f"dungeon quests and the quests that need one of those first are tagged optional",
         f"the quest log holds at most {s.quest_log_limit} quests; no quest is accepted while it is full (--quest-log N; Forever's is 40, confirmed "
         f"by the user in the game, 2026-10-21; Classic's is 25)",
         (f"a quest the route picked up and did not finish is finished when its objectives are at most {s.completeness_trip:g} s of walking away and it pays "
@@ -792,7 +793,10 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
     out.section("THE QUESTS")
     done = plan.final.done
     optional = [q for q in done if pl.quests[q].optional]
-    out(f"done          {len(done)} quests turned in" + (f", {len(optional)} of them group quests tagged optional" if optional else ""))
+    why = [f"{n} {one if n == 1 else many}" for key, one, many in (("elite", "group quest", "group quests"), ("dungeon", "dungeon quest", "dungeon quests"),
+                                                                    ("follows", "following one of those", "following one of those"))
+           if (n := sum(1 for q in optional if pl.quests[q].group == key))]
+    out(f"done          {len(done)} quests turned in" + (f", {len(optional)} of them tagged optional ({', '.join(why)})" if optional else ""))
     held, held_level, held_clock = plan.log_peak()
     out(f"quest log     the most quests held at once: {held} (at level {held_level}, {hms(held_clock)} in); the log holds {pl.s.quest_log_limit} "
         f"(--quest-log N; Forever's is {engine.Settings.quest_log_limit}, confirmed by the user in the game)")
@@ -834,7 +838,7 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
             out(line)
     if pl.s.hardcore:
         highest = max((pl.quests[q].level - 0 for q in done), default=0)
-        out(f"HARDCORE      no elite or boss objective in the pool (those are left out before the search); the highest quest level routed is {highest}")
+        out(f"HARDCORE      no elite or boss objective and no dungeon quest in the pool (those are left out before the search); the highest quest level routed is {highest}")
 
 
 def explain_decisions(out: Out, pl: engine.Planner, plan: engine.Plan, limit: int) -> None:
@@ -1086,6 +1090,7 @@ def write_outputs(job: Job, outcome: Outcome, pl: engine.Planner, out_dir: Path,
         legs=[dict(zone=pl.world.geo.name(leg["zone"]) if leg["zone"] is not None else None, seconds=leg["seconds"], levels=[leg["level_in"], leg["level_out"]],
                    hubs=[pl.hubs[h].label for h in leg["hubs"]]) for leg in legs],
         quests_done=sorted(outcome.plan.final.done),
+        optional=[dict(quest=q, name=pl.quests[q].name, group=pl.quests[q].group) for q in sorted(outcome.plan.final.done) if pl.quests[q].optional],
         required=[
             dict(quest=q, name=pl.quests[q].name, opens=pl.quests[q].req, level=pl.quests[q].level, done_at=outcome.plan.levels_done().get(q))
             for q in job.required if q in pl.quests
