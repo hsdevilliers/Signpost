@@ -24,3 +24,7 @@ If Context changes how it loads the list (a probe on Forever may force that: whe
 ## Notes
 
 Left alone in batch 1 because `Engine/Context.lua` may be touched by the quest-tracking work (WP-D) at the same time.
+
+Batch 1 review fix (branch fix/review-engine): the rule is now only "the list is loaded and not empty" (`completedEmpty == false`): a quest in the quest log no
+longer counts, because it let a placement go ahead on the log alone. `historyReady` still reads `Context.completedEmpty` itself; `Context` also has
+`QuestLogLoaded()` now (the log side), so `HistoryLoaded()` would sit beside it.

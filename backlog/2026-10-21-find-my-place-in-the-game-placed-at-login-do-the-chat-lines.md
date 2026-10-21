@@ -28,3 +28,15 @@ The user (or the friend's SavedVariables) confirms the above, or the differences
 ## Notes
 
 The feature itself is closed in the item "Find my place: a guide slots in where the character is when the player starts using it".
+
+Batch 1 review fixes (branch fix/review-engine) add things to look at, still on mocks only:
+
+- The first placement now waits for the completed list when only the quest log is there (a quest in the log no longer counts as the list): with
+  a character at level 3 or more, does `placed.mode` say `history` at once (`GetAllCompletedQuestIDs` filled at login) or `level`/`history` after the
+  5 s wait and then a `refine`?
+- A saved record carries `fingerprint` (the checksum of the guide text). After an addon update the first login of a character with progress
+  should say "Your saved place may not match this version of the guide, so it is found again from your quest history." once (`placed.reason ==
+  "lost"`), and no later login should (`SignpostCharDB.progress[guide].fingerprint` is the same after every `/reload`).
+- `/signpost context` saves `questLogLoaded`: at which login is it true, and does the first evaluation see it (the item on the step card has the group
+  quest side of it)?
+- A character placed at a step has the same ongoing goals (`Ongoing:` lines on the card) as one that walked to it.
