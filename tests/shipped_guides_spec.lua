@@ -209,9 +209,10 @@ describe("the shipped guides", function()
 				it(
 					"hands in at several NPCs and offers a group quest at the last, which never holds the step",
 					function()
-						-- Silverpine Forest: hand-ins and a pick-up at a few NPCs, the last one offering Assault on Fenris Isle (442), a
-						-- group quest. How many NPCs the planner puts in the step changes with each regeneration, so the step is read, not
-						-- assumed: one pin for each of its .goto lines, the group quest named on the last.
+						-- Silverpine Forest: hand-ins and a pick-up at a few NPCs, the last one offering Assault on Fenris
+						-- Isle (442), a group quest. How many NPCs the planner puts in the step changes with each
+						-- regeneration, so the step is read, not assumed: one pin for each of its .goto lines, the group
+						-- quest named on the last.
 						local step = stepWith("turnin446", "accept442")
 						local context = mocks.context()
 						assert.is_nil(ns.Conditions:OptionalOnly(step, context)) -- other quests decide it: not optional-only
