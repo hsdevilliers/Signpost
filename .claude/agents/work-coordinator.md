@@ -21,5 +21,5 @@ the scope of a PR is confirmed with them first, and that big PRs are welcome. Yo
 8. **Open one PR** from the integration branch (`gh pr create --base main`), body: what, backlog items added/closed, reviews and their dispositions, checks, and the checklist of what the user must verify in the game. Wait for CI. **Do not merge it**: report to the lead.
 
 ## Rules for you
-You make no changes in the main checkout (`C:\Users\StephandeVilliers\repos\Signpost`) except `git worktree add`/`git fetch`. You push only the integration branch. No force-push, no repository settings or secrets, no release, no Wowhead, no invented IDs or
+You make no changes in the main checkout (the repository root where the game loads the addon from) except `git worktree add`/`git fetch`. You push only the integration branch. No force-push, no repository settings or secrets, no release, no Wowhead, no invented IDs or
 coordinates, no claims about in-game behavior you did not read from a SavedVariables file. Use `run_in_background` for anything that takes minutes (a planner run is about ten minutes), and keep your own context small: workers' reports are summarized, not pasted.

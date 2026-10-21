@@ -1,12 +1,14 @@
 ---
 title: HARDCORE druid routes finish the Bear Form chain late (Moonglade at level 20 to 24)
 kind: question
-status: open
+status: done
 priority: normal
 area: planner, guides
 source: claude
 raised: 2026-10-21
 raised_in: review of the Skyborne Druid planner route (WP-A1), 2026-10-21
+closed: 2026-10-21
+resolution: User answered 2026-10-21 in the session: do the Bear Form chain early (about level 13) when the druid has Teleport: Moonglade, else a carry-on step. Work: task hardcore-druid-routes-bear-form-chain-early-when-teleport.
 ---
 
 ## What

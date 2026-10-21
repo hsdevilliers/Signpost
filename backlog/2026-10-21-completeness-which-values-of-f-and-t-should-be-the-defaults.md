@@ -1,12 +1,14 @@
 ---
 title: Completeness: which values of F and T should be the defaults?
 kind: question
-status: open
+status: done
 priority: normal
 area: planner
 source: claude
 raised: 2026-10-21
 raised_in: the completeness measurements of the planner worker (E1, batch 1), 2026-10-21
+closed: 2026-10-21
+resolution: User answered 2026-10-21 in the session: T 45 s and F 0.6 as the defaults. Applied after batch 1: task completeness-default-f-0-6-t-45-s-regenerate-the-three (the Skyborne guide first, in a quick PR).
 ---
 
 ## What

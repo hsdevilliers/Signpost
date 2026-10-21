@@ -1,12 +1,14 @@
 ---
 title: HARDCORE at levels 26 to 30: keep one level of margin, and what about the Gloomrise nest?
 kind: question
-status: open
+status: done
 priority: normal
 area: planner, guides
 source: claude
 raised: 2026-10-21
 raised_in: review of the Tauren Druid planner route, batch 1 (WP-A2), 2026-10-21
+closed: 2026-10-21
+resolution: User answered 2026-10-21 in the session: keep the one-level margin, and keep skipping the Gloomrise nest until it has been seen in the game. No work; the four nest rules stay in tools/hardcore_rules.json.
 ---
 
 ## What
