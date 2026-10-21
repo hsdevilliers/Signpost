@@ -39,8 +39,9 @@ function Window:Create()
 		"GameFontHighlight",
 		top,
 		-8,
-		L["Where NPCs, quest givers, flight masters, trainers, vendors and zone borders are, so the guides get better. "]
-			.. L["Only IDs, the names of NPCs, objects and flight nodes, and map positions are recorded. "]
+		L["Where NPCs, quest givers, flight masters, innkeepers, trainers, vendors and zone borders are, "]
+			.. L["and where boats and zeppelins dock, so the guides get better. "]
+			.. L["Only IDs, the names of NPCs, objects, flight nodes and places, and map positions are recorded. "]
 			.. L["No chat and no player or pet names."]
 	)
 

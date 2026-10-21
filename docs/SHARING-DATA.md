@@ -1,14 +1,16 @@
 # Sharing what Signpost recorded (for contributors)
 
-Signpost can learn where NPCs, quest givers, flight masters, trainers, vendors and zone borders are while you play, so the guides
-get better. It is **your choice** and **nothing is sent by the addon**: the data stays in a file on your computer until you copy it.
+Signpost can learn where NPCs, quest givers, flight masters, innkeepers, trainers, vendors and zone borders are, and where boats
+and zeppelins dock, while you play, so the guides get better. It is **your choice** and **nothing is sent by the addon**: the data
+stays in a file on your computer until you copy it.
 
 ## 1. Say yes in the game
 
 The first time you log in, a window "Help improve Signpost" opens. Tick **Record this while I play** and press **Done**. You can
 change it any time with `/signpost contribute` (or `/signpost contribute off`). Without the tick, nothing is recorded.
 
-Recorded: IDs, the names of NPCs, objects and flight nodes, and map positions. Not recorded: chat, your name, your character's or
+Recorded: IDs, the names of NPCs, objects, flight nodes and places (the game's own zone texts at a dock), and map positions; for a
+boat or zeppelin ride the two docks, how long it took and your faction. Not recorded: chat, your name, your character's or
 pet's name, anything about other players. The file also holds Signpost's settings and error log.
 
 ## 2. Hand the file over (Windows)
