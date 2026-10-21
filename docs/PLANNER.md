@@ -240,6 +240,7 @@ does that those opened). The default stays **off** until the user has chosen fro
 | 0.8 | 30 s | 0 | 22h49 (+0.0%) | 0h20 | 21h02 (+0.0%) | 18h12 (+0.0%) |
 | 0.6 | 30 s | 0 | 22h49 (+0.0%) | 0h20 | 21h02 (+0.0%) | 18h12 (+0.0%) |
 | 0.4 | 30 s | 0 | 22h49 (+0.0%) | 0h20 | 21h02 (+0.0%) | 18h12 (+0.0%) |
+| 0.6 | 45 s | 1 (+2) | 22h47 (-0.1%) | 0h20 | 21h00 (-0.1%) | 18h11 (-0.1%) |
 | 0.8 | 60 s | 1 (+2) | 22h47 (-0.1%) | 0h20 | 21h00 (-0.1%) | 18h11 (-0.1%) |
 | 0.6 | 60 s | 1 (+2) | 22h47 (-0.1%) | 0h20 | 21h00 (-0.1%) | 18h11 (-0.1%) |
 | 0.4 | 60 s | 1 (+2) | 22h47 (-0.1%) | 0h20 | 21h00 (-0.1%) | 18h11 (-0.1%) |
@@ -255,6 +256,7 @@ does that those opened). The default stays **off** until the user has chosen fro
 | 0.8 | 30 s | 0 | 44h40 (+0.0%) | 17h40 | 24h57 (+0.0%) | 18h57 (+0.0%) |
 | 0.6 | 30 s | 0 | 44h40 (+0.0%) | 17h40 | 24h57 (+0.0%) | 18h57 (+0.0%) |
 | 0.4 | 30 s | 0 | 44h40 (+0.0%) | 17h40 | 24h57 (+0.0%) | 18h57 (+0.0%) |
+| 0.6 | 45 s | 0 | 44h40 (+0.0%) | 17h40 | 24h57 (+0.0%) | 18h57 (+0.0%) |
 | 0.8 | 60 s | 0 | 44h40 (+0.0%) | 17h40 | 24h57 (+0.0%) | 18h57 (+0.0%) |
 | 0.6 | 60 s | 0 | 44h40 (+0.0%) | 17h40 | 24h57 (+0.0%) | 18h57 (+0.0%) |
 | 0.4 | 60 s | 0 | 44h40 (+0.0%) | 17h40 | 24h57 (+0.0%) | 18h57 (+0.0%) |
@@ -281,8 +283,8 @@ does that those opened). The default stays **off** until the user has chosen fro
 What the table says:
 - **T matters, F hardly does.** At T = 30 s only the Skyborne gains a quest, 92462 Infestation Investigation (its work is 20 s away and pays 71% of the route's pace, so F = 0.8
   leaves it out and 0.6 or 0.4 finishes it); the Troll Hunter and the Tauren Druid gain none. At T = 45 s the Skyborne route does 92462 *and* its follow-up 92463 The Cirrusfly
-  Queen (which is offered only once 92462 is handed in) and Flutterfly Dust, which pays 1.6 times the pace and is 34 s away. Past 60 s the further quests are mostly
-  small ones; the Troll Hunter gets 5 only at F = 0.4 and T = 90 s.
+  Queen (which is offered only once 92462 is handed in) and Flutterfly Dust, which pays 1.6 times the pace and is 34 s away; the Troll Hunter gets one small quest and the
+  Tauren Druid none. Past 60 s the further quests are mostly small ones; the Troll Hunter gets 5 only at F = 0.4 and T = 90 s.
 - **Most of what tidy takes out is far away**, and stays out: of the 28 (Skyborne), 41 (Troll Hunter) and 16 (Tauren Druid) quests the beam picked up and did not finish, 19, 30
   and 11 have their objectives more than 30 s from the pick-up (for the Troll Hunter and the Skyborne about a third of them pay less than a tenth of the route's pace; the rest pay as
   well as the route but are 70 s to several minutes away, and 857 s is the model's fallback for a place on another map with no walk known), 8, 7 and 5 are handed in far away where
@@ -315,6 +317,19 @@ yards merged the NPCs and the kill area of 92462 into one hub (the first visit t
 The totals move by several hours either way (the Skyborne from 27h42 to 42h34, the Troll Hunter from 21h01 to 29h03), as much as any other setting of the rough search, and
 with no direction: no evidence for a different default, so none is changed. Pricing the walk by the map makes the Skyborne much slower in the planner (every walk between two
 NPCs is paid for) and the Troll Hunter faster, which is the same roughness again.
+
+**The grains of progress** (`python tools/route_planner.py <guide> --preset thorough --runs 10 --no-check --no-write`; the `grains` table of the report: each grain searched on its own,
+its best route as it would be written). `thorough` runs 2, 4 and 8 parts to a level; the Troll Hunter was run with 1, 2, 3, 4, 6 and 8 as well.
+
+| guide | best route as written, by parts to a level | the grains disagree by | the beam (2 parts) |
+| --- | --- | --- | --- |
+| Troll Hunter | 1: 26h37, 2: 22h04, 3: 21h50, 4: 34h36, 6: 21h43, 8: 21h54 | 12h53 (59%) | 22h49 |
+| Skyborne Druid | 2: 27h56, 4: 41h11, 8: 26h43 | 14h28 (54%) | 28h52 |
+| Tauren Druid | 2: 45h46, 4: 40h46, 8: 44h45 (it finished 11 routes) | 5h00 (12%) | 44h40 |
+
+No grain is the best everywhere (4 parts is the worst on the Troll Hunter and the Skyborne and the best on the Tauren Druid), so the answer to "which grain" is the one `thorough` gives:
+all of them, and the best route as written. The best of 2, 4 and 8 is 7.4% (Skyborne) and 8.7% (Tauren) shorter than the beam's one grain, and on the Troll Hunter 6 parts is
+less than 1% better than the best of the default three, so the default grains stay. Every guide is over the 5% warning: the best route found is a good one, not a proven one.
 
 ## Design note: shared hunting spots (not built)
 

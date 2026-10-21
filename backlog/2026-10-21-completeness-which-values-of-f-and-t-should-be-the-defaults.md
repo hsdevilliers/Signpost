@@ -19,7 +19,7 @@ In plain words:
 
 What the table shows (beam, all three guides, 10 settings each; every run deterministic):
 - **T matters, F hardly does.** At T = 30 s only the Skyborne gains a quest (Infestation Investigation, at F = 0.6 or lower: it pays 71% of the route's pace); the Troll Hunter and the Tauren Druid gain none.
-- **T = 45 s with F = 0.6 is the smallest setting that brings both 92462 and its follow-up 92463 (The Cirrusfly Queen) into the Skyborne route**: 3 quests finished (Infestation Investigation, The Cirrusfly Queen, Flutterfly Dust) and 2 more opened by them, nothing changes for the other two guides, and the play time is 0.2% shorter (planner and full simulation).
+- **T = 45 s with F = 0.6 is the smallest of the measured settings (30, 45, 60 and 90 s) that brings both 92462 and its follow-up 92463 (The Cirrusfly Queen) into the Skyborne route**: 3 quests finished (Infestation Investigation, The Cirrusfly Queen, Flutterfly Dust) and 2 more opened by them, the play time is 0.2% shorter (planner and full simulation); the Troll Hunter gets 1 small quest (and 2 it opens, 0.1% shorter) and the Tauren Druid none.
 - Larger T finishes a few more small quests (the Skyborne 5 to 8, the Troll Hunter 1 to 5, the Tauren Druid 0 to 1) and moves the play time by -0.9% to +0.5%, which is inside the search's own roughness.
 - None of the quests added has an objective with no position in the data.
 - The planner's *total* for the Skyborne rises by 2 to 7% with the setting on, only because of the class-quest charge (see the finding about that charge); the play time does not.

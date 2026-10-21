@@ -893,7 +893,6 @@ class ChapterTest(PlannerCase):
             self.assertEqual([c.zone for c in pl.emit(plan, "HUNTER")], expected, asked)  # three steps in Eastland are a detour when four are asked for
 
 
-
 class CompletenessTest(PlannerCase):
     """A quest the search picks up on the way and never goes back for (the Skyborne gap, 2026-10-21): the search accepts it at the first chance (an
     accept costs it nothing), its only objective spots are in another hub about 20 s of walking away, the trip pays slightly less than the route's

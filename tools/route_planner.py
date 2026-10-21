@@ -1086,8 +1086,8 @@ def main(argv: list[str] | None = None) -> int:
                              "least F times the route's pace in experience per second (0.6: at least 60%%); 0 is off, the quest is taken out and listed "
                              "with the reason (default %(default)g; docs/PLANNER.md, Completeness)")
     parser.add_argument("--completeness-trip", type=float, default=engine.Settings.completeness_trip, metavar="SECONDS",
-                        help="the longest walk from where a quest was picked up to its objectives, and to where it is handed in, that --completeness "
-                             "will make (default %(default)g)")
+                        help="the longest walk from where a quest was picked up to its objectives, and (unless the route goes there anyway) to where it is "
+                             "handed in, that --completeness will make (default %(default)g)")
     parser.add_argument("--walk-by-map", action="store_true",
                         help="charge the walk between the places of one hub by the map's distance, not a flat 8 s (Settings.local_walk) for each change of place "
                              "(an experiment: docs/PLANNER.md, Measurements)")
