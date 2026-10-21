@@ -1,5 +1,6 @@
 {
   "_note": "Every number here is an ASSUMPTION for WoW: Forever (PLAN section 7, Phase 9): none is measured. Seconds unless named otherwise. `python tools/guide_sim.py --sensitivity` shows which of them a route's ranking depends on.",
+  "travel": {"_note": "overrides for the travel prices of tools/signpost_tools/pricing.py (walk_speed, detour, transport_wait, transport_across, dock_walk, ...), which the Route Planner and the simulation of a written route both use; none is set here, so the defaults there hold. Name one to override it, e.g. \"detour\": 1.2"},
   "interact_seconds": 12,
   "kill_seconds": 12,
   "loot_seconds": 4,

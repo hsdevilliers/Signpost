@@ -1,12 +1,14 @@
 import dataclasses
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import guide_sim
 import guide_travel
 import planner as engine
-from signpost_tools import availability, steps
-from tests.guide_fixtures import MAPS, TRAVEL, TempProject, write_pack
+from signpost_tools import availability, guidefile, pricing, steps
+from signpost_tools.guidefile import Coord
+from tests.guide_fixtures import MAPS, TRAVEL, TempProject, guide_lua, write_pack
 from tests.test_guide_draft import HOME, NPCS, QUESTS, START
 
 ITEMS = {9999: {"n": "Thing"}, 9998: {"n": "Elite Drop", "drops": [3002]}, 9997: {"n": "Stone", "drops": [3002], "objDrops": [1]}}
@@ -599,6 +601,59 @@ class DataQualityTest(PlannerCase):
         plan = pl.plan("greedy", self.start(pl))
         self.assertNotIn(211, pl.quests)
         self.assertEqual(pl.skipquests(plan).get(211), "battleground (PvP) quest, not leveling content")
+
+
+class OnePriceTest(PlannerCase):
+    """The planner's price for getting from one hub to another is the simulation's price for the same trip, written as steps."""
+
+    ISLE = {1008: {"n": "Islander", "p": [[40, 50, 50]], "side": "Horde"}}
+
+    def quests(self):
+        found = dict(QUESTS)
+        for number, npc in enumerate((1002,) * 4 + (1008,) * 4):  # a zone needs four quests of the faction to count as the character's
+            found[400 + number] = {"n": f"Errand {number}", "r": 1, "l": 1, "s": {"npc": [npc]}, "e": {"npc": [npc]}, "side": "Horde", "races": 178}
+        return found
+
+    def hubs(self, pl):
+        return pl.hub_near(Coord(10, 40, 40)), pl.hub_near(Coord(20, 60, 60)), pl.hub_near(Coord(40, 50, 50))
+
+    def simulated(self, pl, a, b, zone):
+        """The seconds the simulation charges for the step that arrives at hub b from hub a, the way the planner writes a zone change."""
+        text = "step\n  .goto " + pl.hubs[a].center.dsl() + "\nstep\n  .todo \"travel: the graph has no route yet\"\n  .zone " + str(zone)
+        text += "\nstep\n  .goto " + pl.hubs[b].center.dsl() + "\n"
+        self.files({"Guides/Test.lua": guide_lua(text)})
+        project = guidefile.load_project(self.root)
+        guide = project.guides["test-guide"]
+        route = guidefile.build_route(project, guide, guidefile.variants(project, guide)[0])
+        return guide_travel.simulate(route, pl.world).steps[-1].seconds
+
+    def build(self):
+        return super().planner(quests=self.quests(), npcs={**NPCS, **self.ISLE})
+
+    def test_a_change_of_zone_costs_the_same_walk_in_the_search_and_in_the_written_route(self):
+        pl = self.build()
+        a, b, _ = self.hubs(pl)
+        self.assertNotEqual(pl.hubs[a].zone, pl.hubs[b].zone)
+        self.assertGreater(pl.travel(a, b), 60)
+        self.assertAlmostEqual(self.simulated(pl, a, b, pl.hubs[b].zone), pl.travel(a, b), places=6)
+
+    def test_a_change_of_continent_the_data_has_no_route_for_costs_the_same_trip(self):
+        pl = self.build()
+        a, _, c = self.hubs(pl)
+        self.assertNotEqual(pl.world.geo.instance(pl.hubs[a].map), pl.world.geo.instance(pl.hubs[c].map))
+        self.assertEqual(pl.travel(a, c), pricing.PRICES.continent)
+        self.assertEqual(self.simulated(pl, a, c, pl.hubs[c].zone), pricing.PRICES.continent)
+
+    def test_when_the_shared_price_changes_both_follow(self):
+        faster = dataclasses.replace(pricing.PRICES, walk_speed=14.0, dock_walk=0.0)
+        with mock.patch.object(pricing, "PRICES", faster):
+            pl = self.build()
+            a, b, c = self.hubs(pl)
+            self.assertAlmostEqual(self.simulated(pl, a, b, pl.hubs[b].zone), pl.travel(a, b), places=6)
+            self.assertAlmostEqual(pl.travel(a, b), pl.world.geo.distance(pl.hubs[a].center, pl.hubs[b].center) / 14.0, places=6)
+            self.assertEqual(pl.travel(a, c), faster.continent)
+            self.assertEqual(self.simulated(pl, a, c, pl.hubs[c].zone), faster.continent)
+        self.assertEqual(pricing.PRICES.walk_speed, 7.0)  # restored
 
 
 class ScriptedQuestTest(PlannerCase):

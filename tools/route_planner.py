@@ -291,7 +291,7 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
         instant_quests=options.instant_quests,
         skip_unprofitable=not options.no_skip,
         profit_threshold=options.threshold,
-        ferry_seconds=options.ferry * 60,
+        ferry_seconds=engine.Settings.ferry_seconds if options.ferry is None else options.ferry * 60,
         gateways=(1454, 1458) if guide.faction == "Horde" else (1453, 1455, 1457),
     )
     world = guide_travel.World(pack, project.borders, guide.faction)
@@ -694,8 +694,10 @@ def report_validation(out: Out, pl: engine.Planner, plan: engine.Plan, ev: Evalu
         out("              " + line[:WIDTH - 14])
     estimate, full = plan.seconds, sim.seconds
     out(f"fidelity      the planner estimated {hms(estimate)}; the full simulation of the written route says {hms(full)} "
-        f"({(full - estimate) / estimate * 100:+.1f}%). The simulator cannot price a change of zone whose border is not learned yet "
-        f"(it charges a flat few minutes); the planner prices it by distance, so it is the more cautious of the two")
+        f"({(full - estimate) / estimate * 100:+.1f}%). Both price travel with the same numbers (signpost_tools/pricing.py: a change of zone "
+        f"is the walk between the places, a change of continent the boat and the walks to and from it); they still differ in the walking inside "
+        f"a hub: the planner adds a few seconds for each place of a visit, the simulation walks the steps' own positions and does not price "
+        f"the walk inside a doing step")
     out(f"              it reaches level {sim.level}; {len(sim.stalls)} level gates stall it for {hms(sim.stall)}; travel {share(sim.travel, sim.seconds).strip()} of the time")
 
 
@@ -917,7 +919,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cap", type=int, default=30, help="the level the route ends at (default 30, Version 1)")
     parser.add_argument("--mode", default="auto", choices=["auto", "hardcore", "normal"], help="plan as HARDCORE or normal (default: the guide's)")
     parser.add_argument("--friction", type=float, default=3.0, help="minutes a change of zone costs the planner besides the travel (default 3)")
-    parser.add_argument("--ferry", type=float, default=7.0, help="minutes for the boat or zeppelin between continents (default 7)")
+    parser.add_argument("--ferry", type=float, help="minutes for the boat or zeppelin between continents (default: the price the simulation uses too, 7; tools/signpost_tools/pricing.py)")
     parser.add_argument("--hub-radius", type=float, default=150.0, help="yards a hub spans (default 150)")
     parser.add_argument("--class-push", type=float, default=20.0,
                         help="minutes a class quest costs the route for each level it is undone past the level it opens at (default 20)")

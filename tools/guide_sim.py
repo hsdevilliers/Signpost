@@ -436,7 +436,6 @@ def run(
     gated = 0  # the highest `.level N` the route has asked for so far: the one level the guide itself guarantees
     result = Result(route.guide.id, route.variant.label())
     chapters: dict[int, ChapterTime] = {}
-    previous = 0.0
     for state in travel.steps:
         rs = state.step
         chapter = chapters.get(rs.chapter)
@@ -444,8 +443,7 @@ def run(
             source = route.chapters[rs.chapter]
             chapter = chapters[rs.chapter] = ChapterTime(source.name, source.levels, level_in=progress.level, level_out=progress.level)
         log = StepLog(rs.id, chapter.name, state.zone_out, state.coord_out)
-        walk = max(0.0, state.clock - previous - guide_travel.STEP_SECONDS) * model.walk_factor
-        previous = state.clock
+        walk = state.seconds * model.walk_factor  # the step's travel, priced by signpost_tools/pricing.py
         log.walk = walk
         if walk >= 30:
             log.events.append(f"travel {minutes(walk)}")

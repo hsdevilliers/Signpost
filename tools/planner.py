@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import guide_draft  # noqa: E402
 import guide_sim  # noqa: E402
 import guide_travel  # noqa: E402
-from signpost_tools import availability, steps  # noqa: E402
+from signpost_tools import availability, pricing, steps  # noqa: E402
 from signpost_tools.guidefile import Coord  # noqa: E402
 
 GRIND = "grind"
@@ -54,9 +54,9 @@ class Settings:
     zone_friction: float = 180.0  # seconds charged against a route for each change of zone (not added to its clock)
     skip_unprofitable: bool = True  # leave out quests slower than grinding (never class quests or what a kept quest needs)
     profit_threshold: float = 1.0  # a quest must give this many times the experience per second of grinding
-    detour: float = 1.0  # walking distance over straight-line distance
+    detour: float = pricing.PRICES.detour  # walking distance over straight-line distance (the simulation of the written route uses the same)
     local_walk: float = 8.0  # seconds between two NPCs of one hub
-    ferry_seconds: float = 420.0  # the boat or zeppelin between continents, waiting included (the walks to and from it extra)
+    ferry_seconds: float = pricing.PRICES.ferry  # the boat or zeppelin between continents, waiting included (the walks to and from it extra)
     gateways: tuple = (1454, 1458)  # the capitals whose hubs a trip between continents leaves and arrives by (Horde)
     branch: int = 8  # hubs tried from each node
     width: int = 30  # partial routes kept per bucket of progress by the beam
@@ -587,7 +587,7 @@ class Planner:
         for o in q.objectives:
             if o.spots:
                 walk += 2 * min(self._yards(q.start_places[0], c) for c in o.spots)
-        seconds += walk / guide_travel.WALK_SPEED * self.s.detour
+        seconds += walk / pricing.PRICES.walk_speed * self.s.detour
         return xp / max(seconds, 1.0)
 
     def _index(self) -> None:
@@ -619,11 +619,12 @@ class Planner:
 
     def _walk(self, a: int, b: int) -> float | None:
         d = self.world.geo.distance(self.hubs[a].center, self.hubs[b].center)
-        return None if d is None else d * self.s.detour / guide_travel.WALK_SPEED
+        return None if d is None else d * self.s.detour / pricing.PRICES.walk_speed
 
     def travel(self, a: int | None, b: int) -> float:
         """Seconds from hub a to hub b: walking on one continent; between continents the walk to the capital's boat or
-        zeppelin, the ride (waiting included) and the walk from the other capital (a flat 15 minutes if a gateway is unknown)."""
+        zeppelin, the ride (waiting included) and the walk from the other capital (pricing.PRICES.continent, 15 minutes, if a gateway is
+        unknown). The prices are signpost_tools/pricing.py's, which the simulation of the written route uses too."""
         if a is None or a == b:
             return 0.0
         key = (a, b)
@@ -633,7 +634,7 @@ class Planner:
                 geo = self.world.geo
                 ga, gb = self.gateways.get(geo.instance(self.hubs[a].map)), self.gateways.get(geo.instance(self.hubs[b].map))
                 legs = (self._walk(a, ga), self._walk(gb, b)) if ga is not None and gb is not None else (None, None)
-                seconds = legs[0] + self.s.ferry_seconds + legs[1] if None not in legs else 900.0
+                seconds = legs[0] + self.s.ferry_seconds + legs[1] if None not in legs else pricing.PRICES.continent
             self._travel[key] = self._travel[(b, a)] = seconds
         return self._travel[key]
 

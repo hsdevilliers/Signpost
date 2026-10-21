@@ -2,7 +2,8 @@ import unittest
 
 import guide_sim
 from guide_sim import Model
-from signpost_tools import guidefile
+from signpost_tools import guidefile, pricing
+from signpost_tools.guidefile import Coord
 from tests.guide_fixtures import MAPS, TRAVEL, TempProject, chapter_lua, guide_lua
 from tests.test_guide_travel import world
 
@@ -209,6 +210,18 @@ class RunTest(TempProject):
         self.assertEqual(marks[3], "elite")  # its objective is an elite
         self.assertEqual(marks[2], "above")  # level 5 at level 1
         self.assertEqual(guide_sim.risk_score(result), 3 + 4)
+
+    def test_a_change_of_zone_with_no_route_is_travel_time_in_the_full_simulation(self):
+        # it used to cost nothing: the planner priced such a hop by distance and the simulation of the written route did not
+        text = "#chapter 1-5 One\nstep\n  .goto 10,40,40\n  .accept 1\nstep\n  .todo \"travel: the graph has no route yet\"\n  .zone 20\nstep\n  .goto 20,60,60\n  .turnin 1\n"
+        result = self.run_text(text)
+        hop = pricing.PRICES.walk(world().geo.distance(Coord(10, 40, 40), Coord(20, 60, 60)))
+        self.assertGreater(hop, 100)
+        self.assertAlmostEqual(result.travel, hop)
+        self.assertAlmostEqual(result.chapters[0].travel, hop)
+        self.assertEqual([round(entry.walk) for entry in result.log], [0, 0, round(hop)])
+        slower = self.run_text(text, ["kill_seconds=12"])  # no travel parameter in the model's: the walk is the simulation's own
+        self.assertAlmostEqual(slower.travel, hop)
 
     def test_a_scripted_quest_costs_time_at_its_complete_and_is_a_hardcore_risk(self):
         steps = "step\n  .goto 10,40,40\n  .accept 10\n  .accept 11\n  .level 6\n"
