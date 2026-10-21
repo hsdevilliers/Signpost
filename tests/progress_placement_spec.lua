@@ -219,6 +219,24 @@ describe("a character new to a guide", function()
 		assert.are.equal(1, count(mock, "1 of this guide's 5 quests are done, 1 are in your quest log"))
 	end)
 
+	it("takes < right afterwards as the plain back, not as the undo of a placement it did not ask for", function()
+		local ns = start({ level = 4, completed = { 101, 102 } })
+		assert.are.equal("valley:6", current(ns))
+		slash("back")
+		assert.are.equal("valley:5", current(ns))
+	end)
+
+	it("is not placed again at a later login when its first placement had nothing to go on", function()
+		local first = start({ level = 1 })
+		assert.are.equal("none", record(first).placed.mode)
+		local saved = first.Util.CopyTable(first.char)
+		-- it did some quests meanwhile, and the record still says where it started: that is its place, not a new start
+		local ns, _, mock, log = start({ level = 4, completed = { 101, 102 }, saved = saved })
+		assert.are.equal(0, #log.placed)
+		assert.are.equal(0, count(mock, "Your place"))
+		assert.are.equal("none", record(ns).placed.mode)
+	end)
+
 	it("marks the quests it did not do before its place as skipped", function()
 		local ns, _, mock = start({ level = 6, completed = { 101, 103 } })
 		assert.are.equal("plains:1", current(ns))
@@ -349,6 +367,11 @@ describe("a placement that waits for the quest history", function()
 		mock.fire("QUEST_LOG_UPDATE")
 		world.advance(2)
 		assert.are.equal(1, #log.placed)
+		-- and the timer of the wait, which runs out after the placement was made, does not place it a second time
+		world.advance(6)
+		assert.are.equal(1, #log.placed)
+		assert.are.equal(1, count(mock, "Your place"))
+		assert.are.equal("plains:3", current(ns))
 	end)
 
 	-- A character that has done the whole valley and is working on a quest in the plains. The client has sent its quest
@@ -438,6 +461,176 @@ describe("a placement that waits for the quest history", function()
 		assert.are_not.equal("plains:1", after)
 	end)
 
+	-- Every way of moving by hand while the first placement is still waiting for the history ends the wait: the player's
+	-- word beats a guess made later, which would have moved the pointer under them and turned what they marked done into
+	-- skipped steps (R-engine-1 #5).
+	describe("is given up when the player moves by hand while it waits", function()
+		local function givenUp(ns, world, mock, log)
+			world.advance(6) -- the wait is over
+			assert.are.equal(0, #log.placed)
+			assert.is_nil(record(ns).placed)
+			assert.are.equal(0, count(mock, "Your place"))
+			assert.are.same({}, keys(record(ns).skipped))
+			historyArrives(world, mock, { 101, 102, 103 }) -- and the history arriving later places nobody either
+			assert.are.equal(0, #log.placed)
+		end
+
+		it("with >, which keeps its steps done and the pointer where the player put it", function()
+			local ns, world, mock, log = start({ level = 4, advance = 0.5 })
+			slash("next")
+			slash("next")
+			assert.are.equal("valley:3", current(ns))
+			world.advance(6)
+			assert.are.equal("valley:3", current(ns)) -- not where the level says, valley:5
+			assert.are.same({ "valley:1", "valley:2" }, keys(record(ns).done))
+			givenUp(ns, world, mock, log)
+		end)
+
+		it("with skip", function()
+			local ns, world, mock, log = start({ level = 4, advance = 0.5 })
+			slash("skip")
+			assert.are.equal("valley:2", current(ns))
+			assert.is_true(ns.Progress:IsSkipped("valley:1"))
+			world.advance(6)
+			assert.are.equal("valley:2", current(ns))
+			assert.is_nil(record(ns).placed)
+			assert.are.equal(0, #log.placed)
+			assert.are.equal(0, count(mock, "Your place"))
+		end)
+
+		it("with a jump to another step", function()
+			local ns, world, mock, log = start({ level = 4, advance = 0.5 })
+			slash("step 3")
+			world.advance(6)
+			assert.are.equal("valley:3", current(ns))
+			givenUp(ns, world, mock, log)
+		end)
+
+		it("with < after the engine itself moved on", function()
+			local ns, world, mock, log = start({ level = 4, advance = 0.5 })
+			world.log = { quest(101, { objectives = { objective("Boar slain", 0, 4) } }) }
+			mock.fire("QUEST_ACCEPTED", 101)
+			world.advance(1.2)
+			assert.are.equal("valley:2", current(ns)) -- the engine passed the accept; still no history
+			slash("back")
+			assert.are.equal("valley:1", current(ns))
+			world.advance(6)
+			assert.are.equal("valley:1", current(ns))
+			assert.are.equal(0, #log.placed)
+			assert.is_nil(record(ns).placed)
+		end)
+
+		it("with a dungeon chapter's skip", function()
+			local ns, world, mock, log = start({
+				level = 8,
+				advance = 0.5,
+				noGuide = true,
+				setup = function(n)
+					n.Chapters:Register(
+						"fields",
+						table.concat({
+							"#chapter 1-6 Fields",
+							"step",
+							"  .accept 101",
+							"step",
+							"  .complete 101",
+							"#chapter 6-8 Cellar #dungeon",
+							"step",
+							"  .accept 301",
+							"step",
+							"  .complete 301",
+							"#chapter 8-10 Hills",
+							"step",
+							"  .accept 401",
+							"",
+						}, "\n")
+					)
+					assert.is_true(n.Guides:Register({
+						id = "dungeon-wait",
+						name = "Dungeon",
+						faction = "*",
+						races = { "*" },
+						classes = { "*" },
+						levels = { 1, 10 },
+						text = "#include fields\n",
+					}))
+				end,
+			})
+			assert.is_true(ns.Progress:SetChapterSkipped(2, true))
+			world.advance(6)
+			assert.are.equal("fields:1", current(ns))
+			assert.are.equal(0, #log.placed)
+			assert.are.equal(0, count(mock, "Your place"))
+		end)
+
+		-- at the last step neither > nor skip moves the pointer, and both are still the player's word
+		for _, press in ipairs({ "next", "skip" }) do
+			it("with " .. press .. " at the last step, where the pointer does not move", function()
+				local ns, world, mock, log = start({
+					level = 4,
+					advance = 0.5,
+					noGuide = true,
+					setup = function(n)
+						n.Chapters:Register("one", "#chapter 1-12 One\nstep\n  .accept 101\n")
+						assert.is_true(n.Guides:Register({
+							id = "one-step",
+							name = "One",
+							faction = "*",
+							races = { "*" },
+							classes = { "*" },
+							levels = { 1, 12 },
+							text = "#include one\n",
+						}))
+					end,
+				})
+				slash(press)
+				world.advance(6)
+				assert.are.equal("one:1", current(ns))
+				assert.are.equal(0, #log.placed)
+				assert.are.equal(0, count(mock, "Your place"))
+				assert.is_nil(ns.char.progress["one-step"].placed)
+			end)
+		end
+
+		it("and so is the second look, even when the player came back to the step it left", function()
+			local ns, world, mock, log = start({ level = 4, advance = 0.5 })
+			world.advance(6) -- placed by the level alone, at valley:5, to be looked at again when the history comes
+			assert.are.equal("valley:5", current(ns))
+			slash("back")
+			slash("next")
+			assert.are.equal("valley:5", current(ns)) -- the same step again, by the player's hand
+			historyArrives(world, mock, { 101, 102, 103 })
+			assert.are.equal(1, #log.placed)
+			assert.are.equal(0, count(mock, "placing you again"))
+		end)
+
+		it("but not when something else happens: the wait goes on and places the character", function()
+			local ns, world, mock, log = start({ level = 4, advance = 0.5 })
+			world.advance(0.5)
+			ns.Events:Fire(
+				"PROFESSION_PLAN_CHANGED",
+				{ primary = {}, secondary = {}, declined = {}, learned = {}, unknown = {} }
+			)
+			world.advance(6)
+			assert.are.equal("valley:5", current(ns))
+			assert.are.equal(1, #log.placed)
+			assert.are.equal(1, count(mock, "Your place"))
+		end)
+	end)
+
+	it("does not place it again when the engine itself moved the pointer on before the history came", function()
+		local ns, world, mock, log = start({ level = 4, advance = 0.5 })
+		world.advance(6) -- placed by the level, at valley:5, to be looked at again when the history comes
+		assert.are.equal("valley:5", current(ns))
+		-- quest 102 is handed in, which the engine passes at once; the client's list is still empty
+		mock.fire("QUEST_TURNED_IN", 102, 0, 0)
+		world.advance(1.2)
+		assert.are.equal("valley:6", current(ns))
+		historyArrives(world, mock, { 101, 102, 103 })
+		assert.are.equal(1, #log.placed)
+		assert.are.equal(0, count(mock, "placing you again"))
+	end)
+
 	it("does not wait longer when the guide is parsed again during the wait", function()
 		local ns, world = start({ level = 4, advance = 0.5 })
 		world.advance(3)
@@ -516,10 +709,22 @@ describe("a saved place that is not in the guide", function()
 			dbVersion = 2,
 			progress = { [GUIDE_ID] = { current = "valley:99", done = { ["valley:1"] = true, ["valley:2"] = true } } },
 		}
-		local ns, _, mock, log = start({ level = 4, completed = {}, saved = saved })
+		-- 6 s: the wait for the quest history, which a placement would have to go through, is over
+		local ns, _, mock, log = start({ level = 4, completed = {}, saved = saved, advance = 6 })
 		assert.are.equal("valley:3", current(ns))
 		assert.are.equal(0, #log.placed)
 		assert.are.equal(0, count(mock, "Your place"))
+		assert.is_nil(record(ns).placed)
+	end)
+
+	it("leaves a record with nothing but a step the player jumped to alone", function()
+		-- a jump made before progress was marked: its place is all it has; no mark, no placement
+		local saved = { dbVersion = 2, progress = { [GUIDE_ID] = { current = "plains:2" } } }
+		local ns, _, mock, log = start({ level = 7, completed = { 101, 102, 103 }, saved = saved })
+		assert.are.equal("plains:2", current(ns))
+		assert.are.equal(0, #log.placed)
+		assert.are.equal(0, count(mock, "Your place"))
+		assert.is_nil(record(ns).placed)
 	end)
 end)
 
@@ -1119,6 +1324,34 @@ describe("Find my place (/signpost place)", function()
 		slash("back")
 		assert.are.equal("fields:1", current(ns))
 		assert.is_true(ns.Progress:ChapterSkipped(2)) -- the undo would have given the cellar back
+	end)
+
+	it("is not taken back by < in another guide that happens to be at a step with the same id", function()
+		-- two guides that include the same chapter have steps with the same ids; the undo belongs to the guide it was made in
+		local ns, _, _, _ = start({
+			level = 4,
+			completed = { 101, 102 },
+			saved = { dbVersion = 2, progress = { ["z-shares-valley"] = { current = "valley:6" } } },
+			setup = function(n)
+				assert.is_true(n.Guides:Register({
+					id = "z-shares-valley",
+					name = "Shares the valley",
+					faction = "*",
+					races = { "*" },
+					classes = { "*" },
+					levels = { 1, 6 },
+					text = "#include valley\n",
+				}))
+			end,
+		})
+		slash("step 2")
+		slash("place")
+		assert.are.equal("valley:6", current(ns)) -- placed in the first guide, and `<` would take it back
+		assert.is_true(ns.Guides:Select("z-shares-valley", ns.Player))
+		assert.are.equal("z-shares-valley", ns.Progress:Guide().id)
+		assert.are.equal("valley:6", current(ns)) -- the same id in the other guide
+		slash("back")
+		assert.are.equal("valley:5", current(ns)) -- one step back, not the first guide's undo
 	end)
 
 	it("is plain back after the engine moved the pointer on by itself", function()

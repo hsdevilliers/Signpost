@@ -426,7 +426,9 @@ quest never taken.
     placement by the log alone marks everything the character did before it as skipped; VERIFY(beta), FOREVER-API-NOTES "Open
     probes"). It places on the first `CONTEXT_CHANGED("quests")` that finds the list, or after 5 s by what there is (the quest log
     and the level). A placement made without the list is made once more, with `reason "refine"`, when it turns up, if the pointer is
-    still on the step the first one ended on.
+    still on the step the first one ended on. A move by the player's hand (`>`, `<`, skip, a jump, a dungeon chapter's skip:
+    `Progress:PlayerMoved`) ends either wait for good: a placement made later would move the pointer under the player and turn the
+    steps they marked done into skipped ones.
   - *A lost place* (`reason "lost"`): the record has progress that matches nothing in the guide (an install changed the step ids;
     `Resume`'s second result), or it is for another text of the guide (the fingerprint above: the second chat line, and the whole
     record is dropped). The character is placed instead of sent to step 1, after a chat line that the guide was updated; the

@@ -358,6 +358,13 @@ end
 -- completes one of the steps after it that were still open when it was chosen ("unless a quest event proves
 -- otherwise"). Holds are not saved: after a reload, auto-skip applies again.
 
+-- A move by the player's hand ends a placement that is still to come (waiting for the quest history, or waiting to be
+-- made once more when it arrives): what the player did beats a guess made later, which would move the pointer under
+-- them and turn the steps they marked done into skipped ones.
+function Progress:PlayerMoved()
+	self.placing, self.refining = nil, nil
+end
+
 function Progress:Hold(index)
 	local steps = self.guide.steps
 	local baseline = {}
@@ -602,6 +609,7 @@ end
 function Progress:Land(index, how)
 	local step = self.guide.steps[index]
 	local record = self.record
+	self:PlayerMoved()
 	self.hold = nil
 	self.undo = nil
 	self.index = index
@@ -629,6 +637,7 @@ function Progress:Next()
 	if not step then
 		return false
 	end
+	self:PlayerMoved()
 	if not self.record.skipped[step.id] then
 		self.record.done[step.id] = true
 	end
@@ -665,6 +674,7 @@ function Progress:Skip()
 	if not step then
 		return false
 	end
+	self:PlayerMoved()
 	local record = self.record
 	record.skipped[step.id] = true
 	record.done[step.id] = nil
@@ -743,6 +753,7 @@ function Progress:SetChapterSkipped(chapterIndex, skipped)
 	if not chapter.dungeon then
 		return false, L["Only dungeon chapters can be skipped as a whole."]
 	end
+	self:PlayerMoved()
 	local steps, record = self.guide.steps, self.record
 	for i = range.first, range.last do
 		local id = steps[i].id
