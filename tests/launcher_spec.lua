@@ -282,7 +282,7 @@ describe("the minimap button", function()
 			assert.truthy(texts[3] == " " and texts[4]:find("Left-click", 1, true))
 		end)
 
-		-- Where() reads the engine's guide and step: a stand-in for a guide the chapter bounds of which are not known
+		-- Launcher:Where() on guides and steps of the spec's own making: the shapes the header has to cope with
 		describe("where the player is", function()
 			local function where(ns, guide, step)
 				ns.Progress.Guide = function()
@@ -297,14 +297,53 @@ describe("the minimap button", function()
 			it("counts in the whole guide when the chapter has no bounds", function()
 				local ns = start()
 				local guide = { name = "Guide", chapters = { { name = "Chapter" } }, steps = { {}, {}, {}, {}, {} } }
-				assert.are.equal("Chapter" .. DOT .. "step 2/5", (where(ns, guide, { id = "x", chapter = 1, index = 2 })))
+				assert.are.equal(
+					"Chapter" .. DOT .. "step 2/5",
+					(where(ns, guide, { id = "x", chapter = 1, index = 2 }))
+				)
 			end)
 
 			it("counts in the whole guide when the step lies outside its chapter's bounds", function()
 				local ns = start()
-				local guide =
-					{ name = "Guide", chapters = { { name = "Chapter", first = 1, last = 3 } }, steps = { {}, {}, {}, {}, {} } }
-				assert.are.equal("Chapter" .. DOT .. "step 4/5", (where(ns, guide, { id = "x", chapter = 1, index = 4 })))
+				local guide = {
+					name = "Guide",
+					chapters = { { name = "Chapter", first = 1, last = 3 } },
+					steps = { {}, {}, {}, {}, {} },
+				}
+				assert.are.equal(
+					"Chapter" .. DOT .. "step 4/5",
+					(where(ns, guide, { id = "x", chapter = 1, index = 4 }))
+				)
+			end)
+
+			it("counts in the whole guide when the step lies before its chapter's first step", function()
+				local ns = start()
+				local guide = {
+					name = "Guide",
+					chapters = { { name = "Chapter", first = 3, last = 5 } },
+					steps = { {}, {}, {}, {}, {} },
+				}
+				assert.are.equal(
+					"Chapter" .. DOT .. "step 2/5",
+					(where(ns, guide, { id = "x", chapter = 1, index = 2 }))
+				)
+			end)
+
+			it("counts the first and the last step of a chapter inside it", function()
+				local ns = start()
+				local guide = {
+					name = "Guide",
+					chapters = { { name = "Chapter", first = 3, last = 5 } },
+					steps = { {}, {}, {}, {}, {}, {} },
+				}
+				assert.are.equal(
+					"Chapter" .. DOT .. "step 1/3",
+					(where(ns, guide, { id = "x", chapter = 1, index = 3 }))
+				)
+				assert.are.equal(
+					"Chapter" .. DOT .. "step 3/3",
+					(where(ns, guide, { id = "x", chapter = 1, index = 5 }))
+				)
 			end)
 
 			it("names the guide when the step has no chapter", function()
@@ -313,10 +352,16 @@ describe("the minimap button", function()
 				assert.are.equal("Guide" .. DOT .. "step 3/3", (where(ns, guide, { id = "x", chapter = 9, index = 3 })))
 			end)
 
-			it("gives just the name when the step has no place", function()
+			it("gives just the name when the step has no number", function()
+				local ns = start()
+				local guide = { name = "Guide", chapters = { { name = "Chapter" } }, steps = { {}, {} } }
+				assert.are.equal("Chapter", (where(ns, guide, { id = "x", chapter = 1 })))
+			end)
+
+			it("gives just the name when the guide has no steps to count", function()
 				local ns = start()
 				local guide = { name = "Guide", chapters = { { name = "Chapter" } }, steps = {} }
-				assert.are.equal("Chapter", (where(ns, guide, { id = "x", chapter = 1 })))
+				assert.are.equal("Chapter", (where(ns, guide, { id = "x", chapter = 1, index = 1 })))
 			end)
 
 			it("gives no first line for a step that says nothing", function()
