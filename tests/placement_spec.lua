@@ -141,6 +141,15 @@ describe("Placement:Find", function()
 		assert.are.equal(3, result.ahead) -- the three steps of quest 10
 	end)
 
+	it("puts the pointer past the steps that are done already, even when the level pulls the split earlier", function()
+		-- a level 2 character who has done quests 1 to 4: the level says the start of the guide, the quests say step 13
+		local g = guide({ { levels = { 1, 10 }, steps = questline(1, 10) } })
+		local result = Placement:Find(g, snap({ level = 2, done = range(1, 4) }))
+		assert.is_true(result.split < 13)
+		assert.are.equal(13, result.index)
+		assert.are.equal(0, result.ahead) -- nothing done lies at or after the pointer
+	end)
+
 	it("takes a trip between the last quest done and the next one open as the place", function()
 		local g = guide({ { steps = { "a1", "c1", "t1", "go", "a2", "c2", "t2" } } })
 		assert.are.equal(4, Placement:Find(g, snap({ done = { 1 } })).index)
@@ -191,6 +200,18 @@ describe("Placement:Find", function()
 			for i = 2, #lv do
 				assert.is_true(lv[i] >= lv[i - 1])
 			end
+		end)
+
+		it("does not fall back when a chapter starts below where the one before it ended", function()
+			local lv = Placement:Levels(guide({
+				{ levels = { 1, 10 }, steps = { "go", "go", "go" } },
+				{ levels = { 8, 12 }, steps = { "go", "go", "go" } },
+			}))
+			for i = 2, #lv do
+				assert.is_true(lv[i] >= lv[i - 1], i)
+			end
+			assert.is_true(lv[4] >= 10 and lv[5] >= 10) -- the second chapter's own line starts below that
+			assert.are.equal(12, lv[7])
 		end)
 
 		it("takes nothing from a dungeon chapter's levels", function()

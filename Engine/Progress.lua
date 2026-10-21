@@ -513,10 +513,6 @@ function Progress:Commit(reason)
 	self:SaveStates()
 	if self.announced ~= step then
 		self.announced = step
-		-- the undo of a placement is for the step the placement ended on
-		if self.undo and self.undo.afterId ~= step.id then
-			self.undo = nil
-		end
 		self:Echo(
 			L["Step %d/%d (%s) [%s]: %s"],
 			self.index,
@@ -1051,7 +1047,9 @@ function Progress:Settle()
 	end
 end
 
--- `<` right after a manual placement: the pointer, the marks and the furthest step as they were before it.
+-- `<` right after a manual placement: the pointer, the marks and the furthest step as they were before it. It is there
+-- while the pointer is on the step the placement ended on; any move by hand drops it (Land, SetChapterSkipped), and the
+-- engine moving the pointer on by itself leaves it on a step that is not that one.
 function Progress:UndoPlacement()
 	local undo, step = self.undo, self:CurrentStep()
 	if not (undo and step and undo.afterId == step.id) then

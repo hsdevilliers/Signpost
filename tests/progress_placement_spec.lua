@@ -207,6 +207,44 @@ describe("a character new to a guide", function()
 		assert.are.equal(1, count(mock, "3 earlier steps you have not done are marked skipped."))
 	end)
 
+	it("names the step the engine settled on, past a step it passes at once", function()
+		local ns, _, mock = start({
+			level = 4,
+			completed = { 101 },
+			noGuide = true,
+			setup = function(n)
+				n.Chapters:Register(
+					"gate",
+					table.concat({
+						"#chapter 1-12 Gate",
+						"step",
+						"  .accept 101",
+						"step",
+						"  .level 2",
+						"step",
+						"  .accept 102",
+						"step",
+						"  .complete 102",
+						"",
+					}, "\n")
+				)
+				assert.is_true(n.Guides:Register({
+					id = "gate-place",
+					name = "Gate",
+					faction = "*",
+					races = { "*" },
+					classes = { "*" },
+					levels = { 1, 12 },
+					text = "#include gate\n",
+				}))
+			end,
+		})
+		-- the placement puts the pointer on the level 2 gate, which the level 4 character has passed: the engine goes on
+		assert.are.equal("gate:3", current(ns))
+		assert.are.equal("gate:2", ns.char.progress["gate-place"].placed.step)
+		assert.are.equal(1, count(mock, "Your place: step 3/4 (Gate)."))
+	end)
+
 	it("never marks the step it puts the pointer on", function()
 		local ns = start({ level = 4, completed = { 101, 102 } })
 		assert.is_false(ns.Progress:IsDone("valley:6"))
@@ -314,6 +352,18 @@ describe("a placement that waits for the quest history", function()
 		assert.are.equal(1, #log.placed)
 		assert.are.equal(0, count(mock, "placing you again"))
 		assert.are_not.equal("plains:1", after)
+	end)
+
+	it("does not wait longer when the guide is parsed again during the wait", function()
+		local ns, world = start({ level = 4, advance = 0.5 })
+		world.advance(3)
+		ns.Events:Fire(
+			"PROFESSION_PLAN_CHANGED",
+			{ primary = {}, secondary = {}, declined = {}, learned = {}, unknown = {} }
+		)
+		assert.are.equal("valley:1", current(ns))
+		world.advance(2.6) -- 6 s after login: the first wait is over
+		assert.are.equal("valley:5", current(ns))
 	end)
 
 	it("does not wait at level 2 or below", function()
@@ -564,6 +614,58 @@ describe("Find my place (/signpost place)", function()
 		assert.are.equal("valley:6", current(ns)) -- one step back, no undo
 		assert.are_not.equal(moved, current(ns))
 		assert.is_true(ns.Progress:IsDone("valley:5"))
+		-- back on the step the placement ended on, a move by hand has dropped the undo for good
+		slash("back")
+		assert.are.equal("valley:5", current(ns))
+	end)
+
+	it("is not taken back by < after the player skipped a dungeon chapter", function()
+		local ns = start({
+			level = 3,
+			noGuide = true,
+			log = { quest(101, { objectives = { objective("Boar slain", 1, 4) } }) },
+			setup = function(n)
+				n.Chapters:Register(
+					"fields",
+					table.concat({
+						"#chapter 1-6 Fields",
+						"step",
+						"  .accept 101",
+						"step",
+						"  .complete 101",
+						"step",
+						"  .turnin 101",
+						"#chapter 6-8 Cellar #dungeon",
+						"step",
+						"  .accept 301",
+						"step",
+						"  .complete 301",
+						"#chapter 8-10 Hills",
+						"step",
+						"  .accept 401",
+						"",
+					}, "\n")
+				)
+				assert.is_true(n.Guides:Register({
+					id = "dungeon-place",
+					name = "Dungeon",
+					faction = "*",
+					races = { "*" },
+					classes = { "*" },
+					levels = { 1, 10 },
+					text = "#include fields\n",
+				}))
+			end,
+		})
+		assert.are.equal("fields:2", current(ns)) -- 101 is in the log: its complete step
+		slash("step 1")
+		slash("place")
+		assert.are.equal("fields:2", current(ns))
+		assert.is_true(ns.Progress:SetChapterSkipped(2, true)) -- the cellar is ahead: the pointer stays
+		assert.are.equal("fields:2", current(ns))
+		slash("back")
+		assert.are.equal("fields:1", current(ns))
+		assert.is_true(ns.Progress:ChapterSkipped(2)) -- the undo would have given the cellar back
 	end)
 
 	it("is plain back after the engine moved the pointer on by itself", function()
