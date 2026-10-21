@@ -1,12 +1,17 @@
--- PLANNED: the beam route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 2 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
 
 ns.Chapters:Register(
-	"windshaper-druid-16-moonglade",
+	"windshaper-druid-07-moonglade",
 	[[
 #chapter 24-25 Moonglade
+step
+  .goto 1450,56.21,30.64
+  .turnin 94913 .class DRUID -- Moonglade
+  .turnin 98340 .class DRUID -- The Great Cat Spirit
+  .accept 98341 .class DRUID -- The Great Windborne Cat Spirit
 step
   .goto 1450,43.92,73.44
   .turnin 98341 .class DRUID -- The Great Windborne Cat Spirit
@@ -24,37 +29,10 @@ step
   .goto 1450,56.21,30.64
   .turnin 98738 .class DRUID -- Blessings of the Great Windborne Cat Spirit
   .accept 98362 .class DRUID -- To Thunder Bluff
+  .level 25 -- reach it first: kill or grind on the way
+  .note Grind about 2,300 experience before you go on: about 14 kills of creatures near your level (an estimate)
 step
-  .todo "travel from Moonglade to Ashenvale: the travel graph has no route yet"
-  .zone 1440 >> Go to Ashenvale
-step
-  .goto 1440,74.11,60.92
-  .turnin 6482 -- Freedom to Ruul
-  .goto 1440,73.06,61.48
-  .accept 6441 -- Satyr Horns
-  .note The horns drop from the satyrs of the camps, among them the named Prince Raze (near 81.6,48.5) and Geltharis (near 78,42.4), whom the data does not rank: take the ordinary satyrs one at a time and leave the named ones if a fight looks bad.
-step
-  .goto 1440,67.12,56.41
-  .complete 6441 -- Satyr Horns
-step
-  .goto 1440,73.06,61.48
-  .turnin 6441 -- Satyr Horns
-step
-  .todo "border The Barrens/Ashenvale: no crossing coordinates yet (record them in game or in Borders.lua)"
-  .zone 1413 >> Go into The Barrens
-step
-  .goto 1413,39.16,12.17
-  .complete 876 -- Serena Bloodfeather
-step
-  .goto 1413,51.62,30.9
-  .turnin 876 -- Serena Bloodfeather
-  .accept 1060 -- Letter to Jin'Zil
-step
-  .goto 1413,45.1,57.68
-  .accept 893 -- Weapons of Choice
-  .goto 1413,44.62,59.27
-  .accept 97250 -- Wrongly Blamed, Justly Corrected
-  .goto 1413,44.55,59.26
-  .accept 878 -- Tribes at War
+  .todo "Walk from Moonglade to Stonetalon Mountains: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Stonetalon Mountains."
+  .zone 1442 >> Go to Stonetalon Mountains
 ]]
 )
