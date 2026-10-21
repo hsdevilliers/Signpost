@@ -176,7 +176,10 @@ local function slash(text)
 end
 
 describe("step frame", function()
-	after_each(uiMock.uninstall)
+	after_each(function()
+		uiMock.uninstall()
+		G.MenuUtil = nil -- a right-click spec installs one
+	end)
 
 	it("renders the current step: chapter header, lines, icon and buttons", function()
 		local ns, mock, _, engine = load({
@@ -373,7 +376,29 @@ describe("step frame", function()
 		noErrors(ns, mock)
 	end)
 
-	it("keeps right-click for the journal", function()
+	it("opens the quick menu on a right-click, with the card as its owner, and not on a left-click", function()
+		local ns, mock = load()
+		local frame = ns.StepFrame.frame
+		local owners, toggled = {}, false
+		G.MenuUtil = {
+			CreateContextMenu = function(owner)
+				owners[#owners + 1] = owner
+			end,
+		}
+		ns.Journal = {
+			Toggle = function()
+				toggled = true
+			end,
+		}
+		frame:GetScript("OnMouseUp")(frame, "LeftButton")
+		assert.are.same({}, owners)
+		frame:GetScript("OnMouseUp")(frame, "RightButton")
+		assert.are.same({ frame }, owners)
+		assert.is_false(toggled) -- the Journal is the menu's first entry now, not what the click does
+		noErrors(ns, mock)
+	end)
+
+	it("keeps right-click for the Journal, on the current step, when the client has no Menu system", function()
 		local ns, mock, _, engine = load()
 		local frame = ns.StepFrame.frame
 		frame:GetScript("OnMouseUp")(frame, "RightButton")

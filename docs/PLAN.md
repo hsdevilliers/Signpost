@@ -102,7 +102,8 @@ database fills in during the launch period.
 
 ### 3.2 Journal window (`UI/Journal.lua`) — the "Dungeon Journal" look
 
-Open with `/signpost`, minimap button (LibDBIcon), AddOn Compartment entry, or right-click on the step frame.
+Open with `/signpost`, the minimap button (LibDBIcon), the AddOn Compartment entry, the quick menu (a right-click on the step frame, the
+minimap button or the compartment entry) or a key binding; the click map and the menu are `docs/INTERACTIONS.md`.
 Register in `UIPanelWindows` (`area="left", pushable=1, whileDead=1`) so Esc closes it and it tiles with Blizzard panels.
 
 Layout (one frame built from `ButtonFrameTemplate`, which supplies portrait, title bar, close button, inset):

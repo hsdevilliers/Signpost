@@ -303,6 +303,8 @@ describe("slash commands", function()
 		assert.are.equal("/sign", SLASH_SIGNPOST2)
 		assert.is_function(SlashCmdList.SIGNPOST)
 		assert.is_function(Signpost_OnAddonCompartmentClick)
+		assert.is_function(Signpost_OnAddonCompartmentEnter)
+		assert.is_function(Signpost_OnAddonCompartmentLeave)
 	end)
 
 	it("stores the ping marker", function()

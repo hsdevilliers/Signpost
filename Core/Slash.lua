@@ -97,9 +97,31 @@ SlashCmdList.SIGNPOST = function(input)
 	Slash:Run(input)
 end
 
--- Named in both TOCs as ## AddonCompartmentFunc.
-function Signpost_OnAddonCompartmentClick()
-	Slash:Run("")
+-- The AddOn Compartment entry (named in both TOCs as ## AddonCompartmentFunc, ...OnEnter and ...OnLeave):
+-- UI/Launcher.lua decides what a click does and what the tooltip says (docs/INTERACTIONS.md). A click gets
+-- (addonName, buttonName), the hover functions (addonName, menuButtonFrame). Without the launcher a click still opens
+-- the Journal.
+function Signpost_OnAddonCompartmentClick(_, buttonName)
+	local launcher = ns.Launcher
+	if launcher and launcher.OnCompartmentClick then
+		ns.SafeCall(launcher.OnCompartmentClick, launcher, buttonName)
+	else
+		Slash:Run("")
+	end
+end
+
+function Signpost_OnAddonCompartmentEnter(_, buttonFrame)
+	local launcher = ns.Launcher
+	if launcher and launcher.OnCompartmentEnter then
+		ns.SafeCall(launcher.OnCompartmentEnter, launcher, buttonFrame)
+	end
+end
+
+function Signpost_OnAddonCompartmentLeave(_, buttonFrame)
+	local launcher = ns.Launcher
+	if launcher and launcher.OnCompartmentLeave then
+		ns.SafeCall(launcher.OnCompartmentLeave, launcher, buttonFrame)
+	end
 end
 
 ns.Events:Register("PLAYER_LOGIN", function()

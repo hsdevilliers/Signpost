@@ -1,0 +1,26 @@
+<Bindings>
+	<!--
+		Signpost's key bindings (docs/INTERACTIONS.md). The client loads this file by its name: it is not listed in the TOC.
+		Each action runs one /signpost command, so no function of ours stands behind a key and the keys do exactly what the
+		typed command does. The labels on the Key Bindings screen are BINDING_HEADER_SIGNPOST and BINDING_NAME_<name>,
+		set in UI/Launcher.lua. A bare /signpost shows or hides the Journal.
+	-->
+	<Binding name="SIGNPOST_JOURNAL" header="SIGNPOST">
+		SlashCmdList.SIGNPOST("")
+	</Binding>
+	<Binding name="SIGNPOST_CARD" header="SIGNPOST">
+		SlashCmdList.SIGNPOST("card")
+	</Binding>
+	<Binding name="SIGNPOST_BACK" header="SIGNPOST">
+		SlashCmdList.SIGNPOST("back")
+	</Binding>
+	<Binding name="SIGNPOST_NEXT" header="SIGNPOST">
+		SlashCmdList.SIGNPOST("next")
+	</Binding>
+	<Binding name="SIGNPOST_SKIP" header="SIGNPOST">
+		SlashCmdList.SIGNPOST("skip")
+	</Binding>
+	<Binding name="SIGNPOST_PLACE" header="SIGNPOST">
+		SlashCmdList.SIGNPOST("place")
+	</Binding>
+</Bindings>

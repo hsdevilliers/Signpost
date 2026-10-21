@@ -3,6 +3,7 @@
 -- click jumps, the settings write through to the step card and the pins, and every way of opening it works.
 local addon = dofile("tests/helpers/addon.lua")
 local contextMock = dofile("tests/mocks/context.lua")
+local launcherMock = dofile("tests/mocks/launcher.lua")
 -- Client globals are set through G, the real global table (see tests/helpers/addon.lua).
 local G = addon.G
 
@@ -94,6 +95,7 @@ after_each(function()
 	end
 	sessions = {}
 	contextMock.uninstall()
+	launcherMock.uninstall()
 	G.IsShiftKeyDown = nil
 end)
 
@@ -514,9 +516,83 @@ describe("Journal", function()
 
 	describe("the minimap button", function()
 		it("is created when the libraries are there and left alone when they are not", function()
-			-- the test client has no LibStub: nothing is created and nothing fails
+			-- this client has no LibDataBroker or LibDBIcon: nothing is created and nothing fails
 			local ns = start()
-			assert.is_table(ns.db.minimapButton)
+			assert.are.same({ hide = false, lock = false }, ns.db.minimapButton)
+			local client
+			start(function()
+				client = launcherMock.install(G.LibStub)
+			end)
+			assert.is_not_nil(client.buttons.Signpost)
+		end)
+
+		it("has its two settings in the Settings tab's first column, written through to LibDBIcon", function()
+			local client
+			local ns = start(function()
+				client = launcherMock.install(G.LibStub)
+			end)
+			ns.Journal:Show("settings")
+			local byLabel = {}
+			for _, box in ipairs(ns.Journal.frame.settings.boxes) do
+				byLabel[box.def.label] = box
+			end
+			local show = byLabel["Show the minimap button"]
+			local lock = byLabel["Lock the minimap button's position"]
+			assert.is_not_nil(show)
+			assert.is_not_nil(lock)
+			assert.is_nil(show.def.column) -- the first column, with the step card and pin settings
+			assert.is_nil(lock.def.column)
+			assert.is_true(show.def.get())
+			assert.is_false(lock.def.get())
+
+			show.check.GetChecked = function()
+				return false
+			end
+			show.check.scripts.OnClick(show.check)
+			assert.is_true(ns.db.minimapButton.hide)
+			assert.is_true(client.buttons.Signpost.hidden)
+			assert.is_false(show.def.get())
+			show.check.GetChecked = function()
+				return true
+			end
+			show.check.scripts.OnClick(show.check)
+			assert.is_false(ns.db.minimapButton.hide)
+			assert.is_false(client.buttons.Signpost.hidden)
+
+			lock.check.GetChecked = function()
+				return true
+			end
+			lock.check.scripts.OnClick(lock.check)
+			assert.is_true(ns.db.minimapButton.lock)
+			assert.is_true(client.buttons.Signpost.locked)
+			assert.is_true(lock.def.get())
+			lock.check.GetChecked = function()
+				return false
+			end
+			lock.check.scripts.OnClick(lock.check)
+			assert.is_false(ns.db.minimapButton.lock)
+			assert.is_false(client.buttons.Signpost.locked)
+			assert.are.same(
+				{ { "Hide", "Signpost" }, { "Show", "Signpost" }, { "Lock", "Signpost" }, { "Unlock", "Signpost" } },
+				client.calls
+			)
+		end)
+
+		it("keeps the boxes in step with a change made elsewhere (the menu, /signpost minimap)", function()
+			local ns = start(function()
+				launcherMock.install(G.LibStub)
+			end)
+			ns.Journal:Show("settings")
+			local show
+			for _, box in ipairs(ns.Journal.frame.settings.boxes) do
+				if box.def.label == "Show the minimap button" then
+					show = box
+				end
+			end
+			G.SlashCmdList.SIGNPOST("minimap hide")
+			assert.is_false(show.def.get())
+			ns.Journal:Refresh()
+			assert.is_false(show.check._checked)
 		end)
 	end)
 end)

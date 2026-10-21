@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 import check_repo
 import package
@@ -47,6 +49,69 @@ class SeamTest(unittest.TestCase):
     def test_forbidden_paths(self):
         files = ["tools/cache/q.json", "Data/Quests.generated.lua", "tools/dev.local.json", "tools/bin/x.exe", "ok.lua"]
         self.assertEqual(len(check_repo.check_forbidden(files)), 4)
+
+
+class BindingsTest(unittest.TestCase):
+    XML = (
+        '<Bindings>\n<Binding name="X_ONE" header="X">Run("one")</Binding>\n'
+        '<Binding name="X_TWO" header="X">Run("two")</Binding>\n</Bindings>\n'
+    )
+    LUA = 'BINDING_HEADER_X = "X"\nBINDING_NAME_X_ONE = "One"\nBINDING_NAME_X_TWO = "Two"\n'
+
+    def problems(self, xml=XML, lua=LUA, toc=TOC.format(flavor="x"), extra=None):
+        """check_bindings on a scratch checkout: Bindings.xml, UI/Labels.lua and one TOC; `extra` adds files."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            written = {"Bindings.xml": xml, "UI/Labels.lua": lua, "Signpost.toc": toc, **(extra or {})}
+            for name, text in written.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text, encoding="utf-8")
+            return check_repo.check_bindings(root, sorted(written))
+
+    def test_a_complete_set_of_bindings_passes(self):
+        self.assertEqual(self.problems(), [])
+
+    def test_no_bindings_file_is_fine(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(check_repo.check_bindings(Path(directory), ["UI/Labels.lua"]), [])
+
+    def test_a_binding_without_a_label_is_reported(self):
+        problems = self.problems(lua='BINDING_HEADER_X = "X"\nBINDING_NAME_X_ONE = "One"\n')
+        self.assertEqual(len(problems), 1)
+        self.assertIn("BINDING_NAME_X_TWO", problems[0])
+
+    def test_a_header_without_a_label_is_reported(self):
+        problems = self.problems(lua='BINDING_NAME_X_ONE = "One"\nBINDING_NAME_X_TWO = "Two"\n')
+        self.assertEqual(len(problems), 1)
+        self.assertIn("BINDING_HEADER_X", problems[0])
+
+    def test_a_label_that_is_only_a_comment_or_a_longer_name_does_not_count(self):
+        lua = '-- BINDING_NAME_X_ONE = "One"\nBINDING_NAME_X_TWO_MORE = "Two"\nBINDING_HEADER_X = "X"\n'
+        problems = self.problems(lua=lua)
+        self.assertEqual(len(problems), 2)
+
+    def test_a_label_set_outside_the_addon_folders_does_not_count(self):
+        problems = self.problems(lua="", extra={"tests/labels.lua": self.LUA})
+        self.assertEqual(len(problems), 3)
+
+    def test_a_toc_must_not_list_the_file(self):
+        problems = self.problems(toc=TOC.format(flavor="x") + "Bindings.xml\n")
+        self.assertEqual(len(problems), 1)
+        self.assertIn("Signpost.toc", problems[0])
+
+    def test_a_binding_needs_a_name(self):
+        problems = self.problems(xml='<Bindings><Binding header="X">Run()</Binding></Bindings>')
+        self.assertEqual(len(problems), 1)
+        self.assertIn("without a name", problems[0])
+
+    def test_malformed_xml_is_reported(self):
+        problems = self.problems(xml='<Bindings><Binding name="X_ONE">Run(1 < 2)</Binding></Bindings>')
+        self.assertEqual(len(problems), 1)
+        self.assertIn("not well-formed", problems[0])
+
+    def test_the_real_bindings_pass(self):
+        files = check_repo.tracked_files(check_repo.ROOT)
+        self.assertEqual(check_repo.check_bindings(check_repo.ROOT, files), [])
 
 
 class PackageTest(unittest.TestCase):
