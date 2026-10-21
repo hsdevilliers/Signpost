@@ -9,6 +9,11 @@ ns.Guides:Register({
 	levels = { 1, 30 },
 	text = [[
 #guide Skyborne Druid (HARDCORE)
+#chapter 1 Read this first
+step
+  .note HARDCORE route made from quest data (QuestieDB's Classic baseline plus its Forever layers), not yet from play. It leaves out dungeons, group quests, escorts and elite or named targets the data can show, but it cannot know every danger: heal up, keep an escape ready and skip a step that looks too hard.
+  .note Leaving Zephras Isle is unverified. In the quest data the island story ends with What Comes Next and The Earthen Ring (it starts with Ayessa Dawnsinger on the island and ends with Alaana Stormwalker in Mulgore), and this route leaves the island at level 12 without them. If you cannot leave, finish that chain first.
+  .note Not in the data: where a Windshaper learns Cure Poison (14) and Aquatic Form (16), because the Tauren quest chains are not open to a Skyborne (ask your druid trainer), and how to reach Moonglade for Cat Form at level 20.
 #skipquest 235 >> alternative to quest 6382, which is routed
 #skipquest 742 >> alternative to quest 6382, which is routed
 #skipquest 746 >> HARDCORE: the forge is hard to reach without a group
@@ -48,7 +53,5 @@ ns.Guides:Register({
 #include windshaper-druid-21-thousand-needles
 #include windshaper-druid-22-the-barrens
 #include windshaper-druid-23-ashenvale
-step
-  .todo "After Zephras Isle: where a Windshaper levels from 12 to 20 is not in the data yet; do the quests that suit your level, then go on at the Cat Form chain at 20"
 ]],
 })

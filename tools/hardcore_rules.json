@@ -106,6 +106,94 @@
       "confidence": "medium"
     },
     {
+      "id": 1491,
+      "name": "Smart Drinks",
+      "action": "skip",
+      "reason": "HARDCORE: Wailing Caverns quest: the Wailing Essence drops from elite ectoplasms",
+      "source": "the data pack: the quest's zone is the Wailing Caverns (map 279, the zone of Deviate Hides and Leaders of the Fang) and four of the item's five known sources are elite; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 1013,
+      "name": "The Book of Ur",
+      "action": "skip",
+      "reason": "HARDCORE: dungeon quest (Shadowfang Keep): the book lies inside the dungeon",
+      "source": "the data pack: the quest's zone is Shadowfang Keep (map 310, the zone of Arugal Must Die) and the book is an object the pack places nowhere; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 6921,
+      "name": "Amongst the Ruins",
+      "action": "skip",
+      "reason": "HARDCORE: dungeon quest (Blackfathom Deeps): the Fathom Core lies inside the dungeon",
+      "source": "the data pack: the quest's zone is Blackfathom Deeps (map 221, the zone of Trouble in the Deeps) and the Fathom Stone is an object the pack places nowhere; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 879,
+      "name": "Betrayal from Within",
+      "action": "skip",
+      "reason": "HARDCORE: kills the named Kuz, Nak and Lok Orcbane, targets the data does not flag as elite",
+      "source": "docs/HARDCORE.md (the review of the Barrens draft listed Kuz and Nak with Verog and Hezrul; only those two were put on this list); first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 850,
+      "name": "Kolkar Leaders",
+      "action": "skip",
+      "reason": "HARDCORE: kills the named Kolkar leader Barak Kodobane, a target the data does not flag as elite",
+      "source": "the same reasoning as Verog the Dervish and Hezrul Bloodmark above (named Kolkar targets); first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 6621,
+      "name": "King of the Foulweald",
+      "action": "skip",
+      "reason": "HARDCORE: kills Chief Murgut, a named furbolg chief the data places nowhere and does not flag as elite",
+      "source": "the data pack (NPC 12918 has no position); own knowledge of the game (Classic), from memory; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 5147,
+      "name": "Wanted - Arnak Grimtotem",
+      "action": "skip",
+      "reason": "HARDCORE: bounty on Arnak Grimtotem, a named Grimtotem in his camp, a target the data does not flag as elite",
+      "source": "the same reasoning as the other named targets on this list; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 94638,
+      "name": "Strength and Mercy",
+      "action": "note",
+      "text": "VERIFY(beta): the Bear Form trial; the data only says to kill Ur'endra (near 54,65). Go in at full health with your buffs up and leave if it goes badly: the Tauren Bear Form test (Lunaclaw) kills careless players.",
+      "source": "the data pack (objective: kill NPC 258443 Ur'endra); docs/HARDCORE.md for the Tauren test; not seen in game",
+      "confidence": "low"
+    },
+    {
+      "id": 94913,
+      "name": "Moonglade",
+      "action": "note",
+      "text": "Moonglade is far from here and this route goes there at level 20, with the Cat Form quests. VERIFY(beta): cast Teleport: Moonglade (Classic's druid trainer teaches it at level 10; where Forever teaches it is unconfirmed). The way back is the hearthstone or a flight master (the client lists Horde flight nodes at Moonglade).",
+      "source": "the earlier drafted Skyborne Druid chapters (the Moonglade .todo steps the planner's install does not keep); docs/HARDCORE.md; the client's flight nodes in the data pack's maps",
+      "confidence": "low"
+    },
+    {
+      "id": 98404,
+      "name": "The Great Windborne Cat Spirit",
+      "action": "note",
+      "text": "VERIFY(beta): the three relics lie in the Stormrage Barrow Dens, east Moonglade (the data puts Fang near 72,66, Claw near 75,67 and Silent Shadow near 74,65). Fan guides say the spirits there attack on sight and the relics are party loot; a statue at the door gives a stealth blessing. Go in at full health and leave if hurt.",
+      "source": "docs/CLASS-QUESTS.md (worstguidesever.com and foreverchanges.pro, beta descriptions); the relics' positions are in the data pack",
+      "confidence": "low"
+    },
+    {
+      "id": 86576,
+      "name": "Bloodfury Trinkets",
+      "action": "note",
+      "text": "Elites roam among these harpies: Bloodfury Ripper (elite, near 31,62) and Sister Riven (rare elite, near 30,69). Kill only the ordinary harpies and keep away from those two.",
+      "source": "the data pack (NPC ranks and positions: 12579 and 5930)",
+      "confidence": "high"
+    },
+    {
       "id": 5930,
       "name": "Great Bear Spirit",
       "action": "note",

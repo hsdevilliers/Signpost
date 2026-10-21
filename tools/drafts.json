@@ -178,7 +178,9 @@
             "--only",
             98024,
             "--note",
-            "95350=Unverified: the route after Zephras Isle comes from the quest data (QuestieDB's Forever layers), not from play yet."
+            "95350=Unverified: the route after Zephras Isle comes from the quest data (QuestieDB's Forever layers), not from play yet.",
+            "--chain",
+            "94911,94913"
           ]
         },
         {

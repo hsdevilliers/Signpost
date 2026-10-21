@@ -3,8 +3,9 @@ local ADDON_NAME, ns = ...
 -- The class quest chains are the druid quests of the data pack: QuestieDB's Classic baseline (the Tauren chains) and,
 -- since 2026-10-20, its Forever layers (the Cat Form chain at 20 and the Windshaper Skyborne chains: quest IDs, levels
 -- and races are facts from there; QuestieDB says those layers do not supply complete objectives or restrictions).
--- Trainer spells are not in either source; they come from in-game learning (Core/Learn.lua). The Windshaper's own
--- Cat Form quests ("The Great Windborne Cat Spirit" ...) are not in the pack yet: a pending chain.
+-- Trainer spells are not in either source; they come from in-game learning (Core/Learn.lua). The Windshaper's own Cat
+-- Form quests ("The Great Windborne Cat Spirit" ...) are in the pack (the windshaper-cat-form chain below); a Windshaper's
+-- Cure Poison and Aquatic Form quests, if it has any, are not: the Tauren chains are limited to Tauren.
 -- VERIFY(beta): the forms (Bear Form at 10, Aquatic Form at 16, Cat Form at 20, Travel Form) and who learns them where
 -- are unconfirmed until a druid has done them; the level-60 set and reputation chains are not listed.
 ns.Classes:Register("DRUID", {
