@@ -292,6 +292,18 @@ Professions (Core/Player.lua, Engine/Professions.lua, Engine/Directives.lua, Cor
 - [ ] `UNIT_SPELLCAST_SUCCEEDED("player", castGUID, spellID)` fires once per crafted item with the recipe's spell ID (`.craft`).
 - [ ] `GetTrainerServiceSkillLine(i)` names the profession as `GetProfessionInfoBySkillLineID` does (Learn's trainer skill).
 - [ ] VERIFY(launch): profession rank-up thresholds (Classic trains the next rank at max − 25: 50/75, 125/150, 200/225).
+- [ ] **Profession tracks** (`Guides/Professions/`, the Troll Hunter's five; every number in them is Classic's, marked VERIFY(launch)): at
+  the Orgrimmar trainers (Thuwd for Skinning, Kamari and Karolek for Leatherworking, Arnok for First Aid, Zamja for Cooking, Lumak for
+  Fishing) which ranks each one offers and what each rank asks (Classic: Journeyman level 10 and skill 50, Expert level 20 and skill 125,
+  Artisan level 35 and skill 200), and whether the trainer titles in the pack ("Journeyman Leatherworker", "Expert Leatherworker") mean what
+  they did in Classic. The trainers' positions are QuestieDB's converted Classic coordinates: walk to the pins in Orgrimmar, Undercity and
+  Thunder Bluff. (`/signpost debug on` at a trainer records its services.)
+- [ ] **Forever-only profession content** that the pack's Forever layers carry and no track uses yet: a "Junior Skinning Trainer" (Kagil) in
+  the Valley of Trials; a "Camping 101: <profession>" quest for every profession (Brakk at Razor Hill gives them, each needs the profession
+  and ends at its trainer; the Cooking one is in the route already); "Craftsman's Writ" crafting quests. What they teach, ask and give is
+  unknown: take each once and let `Core/Learn.lua` record it.
+- [ ] Where Expert First Aid, Cooking and Fishing are taught (the data names no trainer or book for them), who sells a fishing pole, and
+  where to fish (the data has no fishing spots, so `.fish` is unused).
 
 Travel (Engine/Travel.lua, Engine/Context.lua, Core/Learn.lua, tools/guide_travel.py, tools/wowhead_export.py)
 - [ ] Boarding signals on a boat or zeppelin, each an assumption (with the transport probe above): the map position or

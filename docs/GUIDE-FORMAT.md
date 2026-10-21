@@ -300,6 +300,43 @@ of the place it lands in: inside a chapter, that chapter; between two chapters, 
 is not (a dungeon's Skip must not skip profession steps), else the earlier chapter when a step in that gap is `@hub`,
 else the later one.
 
+## Writing a track
+
+What the five shipped tracks (`Guides/Professions/`, the Troll Hunter's default plan) settled, so the next one starts from it:
+
+```
+#track skinning
+step @zone 1454                           -- the first visit to Orgrimmar
+  .race Troll                             -- the position below is this route's: gate it
+  .goto 1454,63.36,45.42 -- Thuwd, Skinning Trainer (npc 7088)
+  .trainprof skinning >> Learn Skinning from Thuwd
+  .sticky .skill skinning 150             -- the skill goal rides beside the route from here on
+  .note Skin every beast you kill. Classic's ranks, unverified in Forever: Apprentice to 75, Journeyman to 150.
+step @zone 1458                           -- the next rank, at the next town with a trainer on the route
+  .race Troll
+  .goto 1458,70.16,59.18 -- Killian Hagey, Skinning Trainer (npc 7087)
+  .trainprof skinning >> Train your next Skinning rank from Killian Hagey
+```
+
+- **The first `.trainprof` step of a track teaches the profession**: skipping it declines the profession (`TaughtTrack` in
+  `Engine/Progress.lua`), so it is the track's first step, carries the `.sticky .skill <key> <N>` goal and tells the player that skipping
+  it drops the profession's other steps. Every later `.trainprof` step is a rank step.
+- **A rank step is `.trainprof <key>` again, at the next trainer the route passes.** The directive passes by itself while the skill is more
+  than 25 below the cap, and is satisfied by the cap rising (or by learning the profession, for a character that had not), so one step serves
+  every rank and its text says "your next rank". The level and skill a rank asks are a `.note`: Classic's numbers until Forever's are known.
+- **Anchors without `.hub` lines** (the planner writes none into the chapters): `@zone <uiMapID>` puts a step before the first route step in
+  that map from the place of the track's previous step on. The same anchor twice in a row lands at the same place, so a later visit to a
+  town is reached by putting a step for another town between the two. `@level <N>` is for what belongs to a level wherever the player is.
+  When a regenerated route no longer visits a town a track names, the lint reports `unmatched-anchor`: anchor that step again.
+- **A step with its own position belongs to one route.** The guide of another race would report an unmatched anchor for it, or take a
+  trainer that is not on its way: gate such a step with `.race` (one file may hold the steps of several races), and the lint stays clean for
+  the guides of the other races.
+- **A `@level` anchor above the guide's highest chapter level is not an error**: the guide stops before it, so the engine drops the step
+  (`guide.errors` says `No route step matches @level N`) and the lint only notes it ("not required yet", as for class chains). The
+  Leatherworking specialization (a `.todo` at level 40) is one.
+- A `.todo` beside another completable directive is a note the lint lists: what the data does not know (a fishing spot, where an Expert rank
+  is taught) is written down so, never guessed.
+
 ## Parsing rules
 
 What `Engine/Parser.lua` and `tools/guide_lint.py` both do where the tables above leave it open:

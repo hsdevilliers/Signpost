@@ -16,7 +16,8 @@ with each profession track merged in:
 - zone changes between steps without travel steps (PLAN §3.6; tools/guide_travel.py proposes them), and .fly to a
   flight path that no earlier .fp teaches;
 - class-only directives in a chapter or track without a .class gate for that class;
-- profession track steps that find no anchor in a guide;
+- profession track steps that find no anchor in a guide (a `@level` anchor above the guide's highest chapter level is a note:
+  the guide stops before it);
 - class quests (classQuests in Classes/<CLASS>.lua and the pack's classes) and profession quests (the pack's
   professions) that are neither accepted and turned in nor #skipquest-ed, up to the guide's highest chapter level.
 Without the data pack (as in CI) the checks that need it are skipped, and a note says which.
@@ -502,6 +503,7 @@ def lint_guide(
     report.variants[guide.id] = len(variants)
     skill_lines = {key: module.skill_line for key, module in project.professions.items() if module.skill_line}
     above = 0
+    late: set[tuple[str, str]] = set()  # track steps anchored (@level) above the guide's highest chapter level
     for variant in variants:
         label = variant.label()
         world = world_for(variant.faction)
@@ -524,6 +526,9 @@ def lint_guide(
             merged, unmatched = guidefile.merge_tracks(project, route, [key], world.within)
             for _, step in unmatched:
                 kind, value = step.anchor
+                if kind == "level" and value > route.max_level():
+                    late.add((key, step.id))  # the guide stops before that level: not required yet, as for class chains
+                    continue
                 message = f"track {key}: step {step.id} (@{kind} {value}) finds no anchor in guide {guide.id}"
                 if kind == "zone" and not world.geo.maps:
                     message += " (without the data pack's map tree only the same map matches)"
@@ -536,6 +541,9 @@ def lint_guide(
                 report.add(problem, guide.id, label)
     if above:
         note = f"guide {guide.id}: {above} class quest chain(s) above its highest chapter level are not required yet"
+        report.notes.append(note)
+    if late:
+        note = f"guide {guide.id}: {len(late)} track step(s) anchored above its highest chapter level are not required yet"
         report.notes.append(note)
 
 

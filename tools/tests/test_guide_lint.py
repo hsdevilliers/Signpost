@@ -573,6 +573,20 @@ class LintTest(LintCase):
             ],
         )
 
+    def test_track_steps_above_the_guides_levels_are_a_note(self):
+        # a guide that stops at level 20 does not reach a level 40 step (a specialization): not required yet, as for class
+        # chains; a level the guide does reach, with no chapter starting there, is a real gap
+        guide = guide_lua("#chapter 1-20 West\nstep\n  .goto 10,50,50\n", levels=(1, 20))
+        track = '#track skinning\nstep @level 40\n  .todo "later"\nstep @level 15\n  .todo "inside"\n'
+        report = self.lint({"Guides/Test.lua": guide, "Guides/Professions/skinning.lua": track_lua("skinning", track)})
+        self.assertEqual(self.found(report), [("unmatched-anchor", "Guides/Professions/skinning.lua", text_line(4))])
+        note = "guide test-guide: 1 track step(s) anchored above its highest chapter level are not required yet"
+        self.assertEqual([n for n in report.notes if "track step(s)" in n], [note])
+        # a track with only the late step passes
+        track = '#track skinning\nstep @level 40\n  .todo "later"\n'
+        report = self.lint({"Guides/Test.lua": guide, "Guides/Professions/skinning.lua": track_lua("skinning", track)})
+        self.assertEqual(self.codes(report), [])
+
     def test_gate_tokens_and_profession_keys(self):
         text = (
             "#professions skinning,skining\n"

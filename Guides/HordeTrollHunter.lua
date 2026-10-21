@@ -9,6 +9,7 @@ ns.Guides:Register({
 	levels = { 1, 30 },
 	text = [[
 #guide Troll Hunter
+#professions skinning,leatherworking,firstaid,cooking,fishing
 #skipquest 235 >> alternative to quest 6382, which is routed
 #skipquest 742 >> alternative to quest 6382, which is routed
 #skipquest 787 >> starts with Eitrigg in Orgrimmar: an intro for characters created there, not for the Valley of Trials
