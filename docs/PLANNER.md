@@ -52,7 +52,7 @@ beam compares its best finished routes as they would be written, and against the
   prerequisites, chains, exclusive quests, race, class, faction). Quests of a chain the data does not link come from the hints in
   `tools/drafts.json` (`--chain`), and the quests the guide's chapters exclude there (`--exclude` with its reason) are left out too. A
   normal route accepts quests up to 5 levels above the character and works on them up to 3; a HARDCORE route 1 and 1, leaves out the elite
-  and boss objectives and the skips of `tools/hardcore_rules.json` (a skip whose reason starts with HARDCORE only in a HARDCORE route; a rule with
+  and boss objectives, the dungeon quests (below) and the skips of `tools/hardcore_rules.json` (a skip whose reason starts with HARDCORE only in a HARDCORE route; a rule with
   `class_quest_of` only in the guides of other classes: docs/HARDCORE.md). Every quest left out on purpose is named in a `#skipquest` line with its
   reason, as the drafted chapters name theirs.
 - **Data it does not trust** (found by an independent review of the first installed guide): the planner leaves out a quest that has no
@@ -62,6 +62,25 @@ beam compares its best finished routes as they would be written, and against the
   giver has a same-named quest limited to another class, or whose giver's other quests all are), and every quest of a battleground zone
   (`skip_zones` in `tools/hardcore_rules.json`). An explore objective is an area to reach, with positions of its own. A class quest with no
   objective in the pack is given 5 minutes and a `.todo`. The setup says how many quests each rule left out.
+- **Group quests, dungeon quests and the quests that follow them** (found by an independent review of the regenerated Troll Hunter route, 2026-10-21: a chain whose first
+  quest needs a group blocked the route, and dungeon quests were plain steps). A solo player cannot do three kinds of quest, and a normal route tags each `.optional`, so that no
+  step waits for it (an optional-only step never holds the player up: GUIDE-FORMAT "Optional-only steps"):
+  - an **elite or boss kill**, a *group quest*;
+  - a **dungeon quest** (`Planner._in_instance`): the pack sorts a quest under the zone it belongs to, and the id of a dungeon or a raid is not one of the pack's maps (those are
+    the world, the continents, the zones and the battlegrounds), so a quest whose zone is no map of the pack is sorted under an instance. A quest with no zone is no dungeon quest,
+    and a pack with no maps cannot tell. Its accept carries the note "dungeon quest: needs a group", and its objectives get no `.todo` for a missing position (they lie inside the
+    dungeon: that is no hole in the data);
+  - a quest that **follows** one of those (`Planner._mark_group_chains`): it needs one by the pack's prerequisites (every quest of a group of prerequisites; of a set of
+    alternatives, any one of its `preSingle`, only when every alternative is one of these) or as the quest a chain hands over, and so on down the whole chain. Its accept carries "follows a
+    group quest: needs a group too". A class quest keeps its place.
+
+  A HARDCORE route leaves out the first two and, with them, everything that needs them (its prerequisite cannot be routed). A skip rule of `tools/hardcore_rules.json` for the same
+  quest is looked at first, so its reason is the one the `#skipquest` line gives. The report's `done` line says how many optional quests there are of each kind and `plan.json` lists
+  them (`optional`). Measured on the pack of 2026-10-21 (the pool is what the character may take): the Troll Hunter's has 21 group quests, **10 dungeon quests** (by their names
+  Wailing Caverns 962, 1486, 1489, 1490, 1491, Shadowfang Keep 1013, Scarlet Monastery 1113, Blackfathom Deeps 6562, 6563, 6921) and **7 that follow one** (Hidden Enemies 5729 and
+  5730, Battle of Hillsbrad 550, the Test of Lore chain 1152, 1154, 1159, 6627); its beam route holds 11 optional quests of 185 (6 group quests, 3 dungeon quests, 2 following one).
+  The Tauren Druid's HARDCORE pool loses **6 more** quests to the dungeon rule (962, 1049, 1113, 1160, 1489, 1490), the Windshaper's **5** (962, 1113, 1160, 1489, 1490); the 6 dungeon
+  quests the HARDCORE rules skip already (1013, 1486, 1491, 6562, 6563, 6921) are the same in both and keep the rule's reason, so those skips are redundant but harmless.
 - **Escorts and events** (the pack's `scripted` flag, QuestieDB's "needs event" bit: the game completes the quest by a script, and the pack
   lists no objective for most of them) are not free deliveries even when they start and end at one NPC (an ambush, a ritual). Such a quest costs
   `escort_seconds` (it starts and ends at different NPCs: the NPC walks with the player, 7 minutes) or `event_seconds` (one NPC: 3 minutes) from
@@ -258,9 +277,13 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   says so; a zone change the travel data cannot place gets a placeholder step in plain words (docs/GUIDE-FORMAT.md) that the lint counts as a
   `.todo`. The travel generator also teaches flight paths: where the route passes a flight master and a later zone change would fly from it,
   it adds a `.fp` step (a flight must save 90 s, or there is no other way), so a written route has more travel steps than the planner priced.
-- **Group quests** in a normal route are tagged `.optional`. A step made only of such quests never holds the player up, and the step card shows
+- **Group, dungeon and following quests** in a normal route are tagged `.optional`. A step made only of such quests never holds the player up, and the step card shows
   the quest as a line beside the steps before it (`Optional: <quest> (group quest)`, GUIDE-FORMAT "Optional-only steps"). The card cannot yet
-  retire the line five levels above the quest: that needs the quest's level in the guide (backlog: `a-group-questid-level-modifier`).
+  retire the line five levels above the quest: that needs the quest's level in the guide (backlog: `a-group-questid-level-modifier`). The planner still plans them as done (their
+  experience and time are in the totals), so a solo player's real route is slower than the plan by about their share. A dungeon quest is found by the zone the pack sorts it under: a
+  quest sorted under an instance whose objectives lie outside it is tagged too, and a dungeon quest the pack sorts under no zone is not. What follows a group quest is found
+  through the pack's prerequisite and chain data only. A zone missing from the pack's maps (they are the client's own dump) would make its quests look like dungeon
+  quests; none does today (the 19 zone ids of quests that are no map of the pack are all dungeons and raids). The drafter (`tools/guide_draft.py`) still tags only elite kills.
 - **Walking inside a doing step is not priced**: the planner adds a few seconds for each place of a hub; once the objective areas are joined into one
   doing step the simulator charges only the walk between steps (the step keeps one position). A pick-up and hand-in step keeps the position of
   each NPC, and the simulator walks them in order. This is part of the 2 to 3% by which the full simulation still runs under the planner's estimate.
