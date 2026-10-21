@@ -481,9 +481,9 @@ local function finishedGotos(list, context)
 end
 
 -- The step's pins, docs/ENGINE.md `target`s: its directives' targets (sticky ones marked sticky = true), without those
--- of satisfied directives and without the `.goto`s that have nothing left to ask (finishedGotos). A directive with a `pin`
--- kind that has no position (no data
--- pack, say) marks the step's first .goto pin with its kind and label instead; an NPC or object pin within a .goto's
+-- of satisfied directives and without the `.goto`s that have nothing left to ask (finishedGotos). A directive with a
+-- `pin` kind that has no position (no data pack, say) marks the step's first .goto pin with its kind and label
+-- instead; an NPC or object pin within a .goto's
 -- radius merges into the .goto's; pins for the same NPC or object at the same spot merge. Every pin with a quest lists
 -- its quests in `quests` (several after a merge). A doing step (see "Step kinds") draws none: its `.goto` and
 -- `.complete` are not asked for pins at all (no other core directive of such a step has any; a sticky place directive

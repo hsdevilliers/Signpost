@@ -418,6 +418,13 @@ describe("pins", function()
 			assert.are.same({ 10 }, xs(ns.Conditions:Targets(lone, context, {})))
 		end)
 
+		it("is not held open by a note, which can never complete", function()
+			local ns = mocks.load()
+			local step = mocks.step(ns, { ".goto 1411,40,40", ".accept 787", ".note Careful here" })
+			local context = mocks.context({ log = { [787] = true } })
+			assert.are.same({}, xs(ns.Conditions:Targets(step, context, {})))
+		end)
+
 		it("is not held open by a sticky directive, which belongs to no place", function()
 			local ns = mocks.load({ professions = { skinning = SKINNING } })
 			local step = mocks.step(ns, { ".goto 1411,40,40", ".accept 787", ".sticky .skill skinning 10" })

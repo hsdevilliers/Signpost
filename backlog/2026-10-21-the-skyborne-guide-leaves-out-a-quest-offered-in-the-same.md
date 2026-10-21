@@ -1,5 +1,5 @@
 ---
-title: The Skyborne guide leaves out a quest offered in the same area as the step it is on (Infestation Investigation)
+title: The Skyborne guide leaves out a quest offered in the same area as its step (Infestation Investigation)
 kind: finding
 status: open
 priority: normal
@@ -29,3 +29,12 @@ A quest offered where the player already stands, with objectives in the area of 
 
 - Raised with the coordinator of batch 1 (WP-A1 and WP-E1) to address when work resumes.
 - Diagnostic used: wrap Planner.build and Planner.plan, run the beam preset with `--no-write`, and print each quest's actions by level.
+
+## The user's follow-up (dictated, 2026-10-21)
+
+"Obviously the Infestation Investigation question is a larger question. It can be because it's a Skyborne new quest that we missed it somehow due to incomplete data, or it's plainly a great shortcoming in our guide planner."
+
+## Which of the two it is (Claude, same day)
+
+- For this quest it is not missing data: the pack has quest 92462 (giver and ender NPC 251368, one kill objective, the follow-up 92463), the game's own offer of it was recorded in the user's save, and the planner keeps it. A fresh beam run takes it; the installed route does not. So here it is the planner's route choice (the winning finalist leaves out a free pick-up), not the data.
+- The user's other cause can still be true for other Forever-new quests: see the item "Are Forever-new quests missing from the data pack" (the audit that tells the two causes apart).
