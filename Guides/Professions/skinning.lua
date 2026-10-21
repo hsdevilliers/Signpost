@@ -7,6 +7,9 @@ local ADDON_NAME, ns = ...
 -- Every step is gated .race Troll: its .goto and its anchor belong to this route, so another race's guide (Tauren,
 -- Skyborne) gets none of them instead of an unmatched anchor. Their own steps join this file later.
 -- The skill goal that rides beside the route (150) is Version 1's, which stops at level 30.
+-- There is no second Orgrimmar step near level 30 for a rank missed on the way: the planner writes no .hub lines, so a step can only
+-- anchor to a town the route visits, and a regenerated route need not return to Orgrimmar (the batch-1 route does not). A rank
+-- missed here is trained at the next town of the plan or on the first visit after it.
 -- EVERY NUMBER HERE IS CLASSIC'S until the Forever client or recorded play says otherwise: the rank levels (Journeyman
 -- 10, Expert 20), the skill a rank is trained from (50, 125), the caps (75, 150, 225) and which trainer teaches which
 -- rank. VERIFY(launch): all of them (docs/FOREVER-API-NOTES.md, Open probes, "Profession tracks").
@@ -44,12 +47,5 @@ step @zone 1456
   .goto 1456,44.44,43.15 -- Mooranta, Skinning Trainer (npc 7089)
   .trainprof skinning >> Train your next Skinning rank from Mooranta
   .note Classic, unverified in Forever: Expert needs level 20 and Skinning 125, and lifts the cap from 150 to 225.
-
--- Back in Orgrimmar near level 30, for a rank missed on the way.
-step @zone 1454
-  .race Troll
-  .goto 1454,63.36,45.42 -- Thuwd, Skinning Trainer (npc 7088)
-  .trainprof skinning >> Train your next Skinning rank from Thuwd
-  .note Only for a rank you missed (Classic, unverified in Forever: Expert needs level 20 and Skinning 125).
 ]]
 )

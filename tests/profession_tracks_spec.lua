@@ -249,8 +249,8 @@ describe("the shipped profession tracks", function()
 		-- The level each step of a track needs, in track order (Classic's: the notes say them). A rank step does not check
 		-- the level itself, so a regenerated route that reaches a town too early is noticed here.
 		local NEEDS = {
-			skinning = { 5, 10, 20, 20 },
-			leatherworking = { 5, 10, 20, 20 },
+			skinning = { 5, 10, 20 },
+			leatherworking = { 5, 10, 20 },
 			firstaid = { 5, 10, 10 },
 			cooking = { 5, 10, 10 },
 			fishing = { 5, 10, 10 },
@@ -517,7 +517,7 @@ describe("the profession steps in the engine", function()
 		ns.Progress:Back()
 		assert.is_nil(ns.char.declinedProfessions.skinning)
 		assert.are.equal("track:skinning:1", current(ns))
-		assert.is_not_nil(ns.Progress:Guide().byId["track:skinning:4"])
+		assert.is_not_nil(ns.Progress:Guide().byId["track:skinning:3"])
 	end)
 
 	it("does not decline anything when a later rank step is skipped", function()

@@ -206,34 +206,48 @@ describe("the shipped guides", function()
 					assert.is_true((ns.Conditions:IsComplete(step, context, {})))
 				end)
 
-				it("hands in at two NPCs and offers a group quest at the third, which never holds the step", function()
-					-- Silverpine Forest: two hand-ins and a pick-up, then Assault on Fenris Isle (442), a group quest
-					local step = stepWith("turnin446", "accept442")
-					local context = mocks.context()
-					assert.is_nil(ns.Conditions:OptionalOnly(step, context)) -- other quests decide it: not optional-only
-					local pins = ns.Conditions:Targets(step, context, {})
-					assert.are.equal(3, #pins)
-					assert.are.same({ { "turnin", 446, 448 }, { "turnin", 92401 }, { "turnin", 448, 442 } }, {
-						{ pins[1].kind, unpack(pins[1].quests) },
-						{ pins[2].kind, unpack(pins[2].quests) },
-						{ pins[3].kind, unpack(pins[3].quests) },
-					})
-					-- the three hand-ins done: the group quest, offered at the third NPC, was never needed to move on
-					context.completed[446], context.completed[92401], context.completed[448] = true, true, true
-					assert.is_true((ns.Conditions:IsComplete(step, context, {})))
-					-- and its own steps: the quest is not taken, so they are passed; once taken, they are not
-					local doing, handIn = stepWith("complete442"), stepWith("turnin442")
-					for _, optional in ipairs({ doing, handIn }) do
-						assert.are.same({ 442 }, ns.Conditions:OptionalOnly(optional, context).quests)
-						assert.is_true((ns.Conditions:IsComplete(optional, context, {})))
+				it(
+					"hands in at several NPCs and offers a group quest at the last, which never holds the step",
+					function()
+						-- Silverpine Forest: hand-ins and a pick-up at a few NPCs, the last one offering Assault on Fenris Isle (442), a
+						-- group quest. How many NPCs the planner puts in the step changes with each regeneration, so the step is read, not
+						-- assumed: one pin for each of its .goto lines, the group quest named on the last.
+						local step = stepWith("turnin446", "accept442")
+						local context = mocks.context()
+						assert.is_nil(ns.Conditions:OptionalOnly(step, context)) -- other quests decide it: not optional-only
+						local gotos = 0
+						for _, directive in ipairs(step.directives) do
+							if directive.name == "goto" then
+								gotos = gotos + 1
+							end
+						end
+						assert.is_true(gotos >= 3)
+						local pins = ns.Conditions:Targets(step, context, {})
+						assert.are.equal(gotos, #pins)
+						assert.are.equal("turnin", pins[#pins].kind)
+						assert.are.same({ 448, 442 }, pins[#pins].quests)
+						-- everything but the group quest done: the group quest, offered at the last NPC, was never needed to move on
+						for _, directive in ipairs(step.directives) do
+							local quest = directive.args and directive.args.questID
+							if quest and quest ~= 442 then
+								context.completed[quest] = true
+							end
+						end
+						assert.is_true((ns.Conditions:IsComplete(step, context, {})))
+						-- and its own steps: the quest is not taken, so they are passed; once taken, they are not
+						local doing, handIn = stepWith("complete442"), stepWith("turnin442")
+						for _, optional in ipairs({ doing, handIn }) do
+							assert.are.same({ 442 }, ns.Conditions:OptionalOnly(optional, context).quests)
+							assert.is_true((ns.Conditions:IsComplete(optional, context, {})))
+						end
+						context.log[442] = true
+						context.objectives[442] = { { text = "Fenris Keep: 0/1", finished = false } }
+						assert.is_false((ns.Conditions:IsComplete(doing, context, {})))
+						context.ready[442] = true
+						assert.is_true((ns.Conditions:IsComplete(doing, context, {})))
+						assert.is_false((ns.Conditions:IsComplete(handIn, context, {}))) -- ready, not handed in
 					end
-					context.log[442] = true
-					context.objectives[442] = { { text = "Fenris Keep: 0/1", finished = false } }
-					assert.is_false((ns.Conditions:IsComplete(doing, context, {})))
-					context.ready[442] = true
-					assert.is_true((ns.Conditions:IsComplete(doing, context, {})))
-					assert.is_false((ns.Conditions:IsComplete(handIn, context, {}))) -- ready, not handed in
-				end)
+				)
 			end
 		end)
 	end

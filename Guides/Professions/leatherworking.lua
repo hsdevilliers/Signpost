@@ -8,6 +8,9 @@ local ADDON_NAME, ns = ...
 -- guide (Tauren, Skyborne) gets none of them instead of an unmatched anchor. Their own steps join this file later. The
 -- specialization step at the end has no position and is for every race.
 -- The skill goal that rides beside the route (150) is Version 1's, which stops at level 30.
+-- There is no second Orgrimmar step near level 30 for a rank missed on the way: the planner writes no .hub lines, so a step can only
+-- anchor to a town the route visits, and a regenerated route need not return to Orgrimmar (the batch-1 route does not). A rank
+-- missed here is trained at the next town of the plan or on the first visit after it.
 -- EVERY NUMBER HERE IS CLASSIC'S until the Forever client or recorded play says otherwise: the rank levels (Journeyman
 -- 10, Expert 20), the skill a rank is trained from (50, 125), the caps (75, 150, 225), which trainer teaches which rank
 -- (read from the trainers' titles) and the specialization (a level 40 quest at Leatherworking 225). VERIFY(launch): all
@@ -45,13 +48,6 @@ step @zone 1456
   .goto 1456,42.32,42.61 -- Tarn, Expert Leatherworker (npc 11084)
   .trainprof leatherworking >> Train your next Leatherworking rank from Tarn
   .note Classic, unverified in Forever: Expert needs level 20 and Leatherworking 125, and lifts the cap from 150 to 225. Mak, the Journeyman Leatherworker, and Una, the Artisan Leatherworker (level 35 in Classic), are close by.
-
--- Back in Orgrimmar near level 30, for a rank missed on the way.
-step @zone 1454
-  .race Troll
-  .goto 1454,62.81,44.15 -- Karolek, Expert Leatherworker (npc 3365)
-  .trainprof leatherworking >> Train your next Leatherworking rank from Karolek
-  .note Only for a rank you missed (Classic, unverified in Forever: Expert needs level 20 and Leatherworking 125). Kamari, the Journeyman Leatherworker, is next door.
 
 -- The decided behavior (PLAN section 7): the specialization is a .todo at level 40; every step before it is neutral. No
 -- chapter of a Version 1 guide (it stops at level 30) reaches level 40, so the lint notes the step and the engine drops it.
