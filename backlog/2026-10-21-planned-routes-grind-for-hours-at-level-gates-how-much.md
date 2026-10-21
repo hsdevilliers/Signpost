@@ -1,12 +1,14 @@
 ---
 title: Planned routes may grind at level gates (2h23 in one, 0h30 in the next): how much grinding is acceptable?
 kind: question
-status: open
+status: done
 priority: low
 area: planner, guides
 source: claude
 raised: 2026-10-21
 raised_in: final independent review of the beam rewrite (PR #38), 2026-10-21
+closed: 2026-10-21
+resolution: Answered by the user (2026-10-21): grinding at a gate is fine, and the guide may tell the player to grind an amount of experience at certain points. The planner does not charge for it. What is left is to say the amount in the step: the item 'A grind step says how much experience to grind'.
 ---
 
 ## What
