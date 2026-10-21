@@ -323,7 +323,43 @@ local function buildRoute(frame, host)
 	leftHost:SetWidth(LEFT_WIDTH)
 	pane.chapters = newList(leftHost, LEFT_WIDTH - 24)
 	pane.chapters.scroll:SetPoint("TOPLEFT", leftHost, "TOPLEFT", 0, 0)
-	pane.chapters.scroll:SetPoint("BOTTOMRIGHT", leftHost, "BOTTOMRIGHT", -22, 0)
+	pane.chapters.scroll:SetPoint("BOTTOMRIGHT", leftHost, "BOTTOMRIGHT", -22, 30)
+	-- "Find my place" (Engine/Placement.lua): moves the pointer to the step the level and the quests say, and shows it.
+	local place = CreateFrame("Button", nil, leftHost, "UIPanelButtonTemplate")
+	place:SetSize(LEFT_WIDTH - 24, 22)
+	place:SetPoint("BOTTOMLEFT", leftHost, "BOTTOMLEFT", 0, 2)
+	place:SetText(L["Find my place"])
+	place:SetScript("OnClick", function()
+		ns.SafeCall(function()
+			local p = progress()
+			if p and p.Place and p:Place({ reason = "manual" }) then
+				Journal:ShowCurrent()
+			else
+				Util.Print(L["No guide is loaded for this character."])
+			end
+		end)
+	end)
+	place:SetScript("OnEnter", function(self)
+		if GameTooltip and GameTooltip.SetOwner then
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:AddLine(L["Find my place"], 1, 0.82, 0)
+			GameTooltip:AddLine(
+				L["Moves you to the step your level and the quests you have done or are on say you are at."],
+				1,
+				1,
+				1,
+				true
+			)
+			GameTooltip:AddLine(L["The < button on the step card takes it back."], 0.6, 0.6, 0.6, true)
+			GameTooltip:Show()
+		end
+	end)
+	place:SetScript("OnLeave", function()
+		if GameTooltip and GameTooltip.Hide then
+			GameTooltip:Hide()
+		end
+	end)
+	pane.place = place
 	local rightHost = CreateFrame("Frame", nil, pane)
 	rightHost:SetPoint("TOPLEFT", leftHost, "TOPRIGHT", 10, 0)
 	rightHost:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", 0, 0)
@@ -1023,6 +1059,7 @@ for _, message in ipairs({
 	"CONTRIBUTE_CHANGED",
 	"PROFESSION_PLAN_CHANGED",
 	"GUIDE_SELECTED",
+	"GUIDE_PLACED",
 }) do
 	ns.Events:RegisterMessage(message, requestRefresh)
 end

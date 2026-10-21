@@ -10,6 +10,8 @@ ns.Slash = Slash
 -- tools/read_savedvars.py ping shows the new text.
 local PING_TEXT = "pong 2: edited after the first beta run"
 
+-- A command is one word ("place"), or two ("reset progress"): a two-word command wins over its first word, which keeps
+-- its own meaning for everything else typed after it (`/signpost reset` is still the step frame's).
 function Slash:Register(name, fn, help)
 	self.commands[name] = { fn = fn, help = help }
 end
@@ -27,6 +29,11 @@ function Slash:Run(input)
 		command = "help"
 	end
 	local entry = self.commands[command]
+	local word, after = rest:match("^(%S+)%s*(.-)$")
+	local two = word and self.commands[command .. " " .. word:lower()]
+	if two then
+		entry, rest = two, after
+	end
 	if not entry then
 		Util.Print(L["Unknown command '%s'."], command)
 		entry = self.commands.help
