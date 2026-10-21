@@ -1,12 +1,14 @@
 ---
 title: Quest tracking stops for the session when the client tracks none of a step's quests (a full tracker too)
 kind: finding
-status: open
+status: done
 priority: low
 area: engine
 source: claude
 raised: 2026-10-20
 raised_in: PR #39 review fixes (quest tracking)
+closed: 2026-10-21
+resolution: Batch 1 WP-D (branch feat/quest-tracking): no more stop for the session. The module backs off for the client and tries again 5, 15, 45, 120 and 300 s after the 1st to 5th failure in a row, and at a later step, quest log change or watch list event once the back-off is over; one error log entry per streak; a full tracker recovers when the player frees a slot (the module frees none: it could lose a quest). The real limit and the answer of a full tracker stay in the verify item.
 ---
 
 ## What

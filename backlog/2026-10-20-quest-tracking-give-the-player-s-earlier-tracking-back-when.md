@@ -1,12 +1,14 @@
 ---
 title: Quest tracking: give the player's earlier tracking back when the setting is turned off or the guide ends
 kind: feature
-status: open
+status: done
 priority: low
 area: engine, ui
 source: claude
 raised: 2026-10-20
 raised_in: PR feat/step-ui (quest tracking)
+closed: 2026-10-21
+resolution: Batch 1 WP-D (branch feat/quest-tracking): Tracking:Release puts back what the player tracked before the module's first change (SignpostCharDB.tracking.before), once, when the setting goes off or a guide choice leaves no guide; it keeps the player's later changes, skips quests no longer in the log, leaves the tracker alone when none is left, and says what it did in chat. Specs on the mock; client behaviour stays in the verify item.
 ---
 
 ## What
