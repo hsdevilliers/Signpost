@@ -1,10 +1,10 @@
 -- The step frame (PLAN §3.1): a small Blizzard-styled panel with the current step — "<chapter> · step i/N", the step's
 -- lines from ns.Conditions:Describe, the active sticky directives, an in-transit note — and < > Skip buttons. A quest
 -- the step has to complete is one line with a done mark, never its objectives' progress: the quest log shows that.
--- Shift-drag moves it; lock, scale, alpha and position are kept in SignpostDB.stepFrame. It hides in combat and while
--- dead (both configurable). A secure button beside it uses the step's .use item; that button is parented to UIParent,
--- not to this frame, so hiding the frame in combat never touches a protected frame, and its attributes, position and
--- visibility change only out of combat (queued until PLAYER_REGEN_ENABLED).
+-- Shift-drag moves it; lock, scale, alpha, position and which way it grows are kept in SignpostDB.stepFrame. It hides
+-- in combat and while dead (both configurable). A secure button beside it uses the step's .use item; that button is
+-- parented to UIParent, not to this frame, so hiding the frame in combat never touches a protected frame, and its
+-- attributes, position and visibility change only out of combat (queued until PLAYER_REGEN_ENABLED).
 local ADDON_NAME, ns = ...
 local L = ns.L
 local Util = ns.Util
@@ -31,6 +31,8 @@ local NORMAL_COLOR = "|cffffd100" -- Blizzard's NORMAL_FONT_COLOR_CODE
 local ITEM_BUTTON_NAME = "SignpostItemButton"
 -- VERIFY(beta): clear of the minimap and the objective tracker at the default UI scale.
 local DEFAULT_POSITION = { point = "TOPRIGHT", relativePoint = "TOPRIGHT", x = -300, y = -220 }
+-- The same place for a frame that grows up: its bottom edge where the top edge of a small frame (80 high) would be.
+local DEFAULT_POSITION_UP = { point = "BOTTOMRIGHT", relativePoint = "TOPRIGHT", x = -300, y = -300 }
 -- The Blizzard dialog border at a size that suits a small frame.
 -- VERIFY(beta): Interface\DialogFrame\UI-DialogBox-Background-Dark exists on Forever (the border file is verified).
 local BACKDROP = {
@@ -44,7 +46,9 @@ local BACKDROP = {
 -- The Objective Tracker's module header strip. VERIFY(beta): the atlas exists on Forever (without it: no strip).
 local HEADER_ATLAS = "Objective-Header"
 
--- `pos` (nil until the frame is first moved) holds { point, relativePoint, x, y } relative to UIParent.
+-- `pos` (nil until the frame is first moved) holds { point, relativePoint, x, y } relative to UIParent. `growUp` says
+-- which edge stays put when a step makes the frame taller or shorter: the top (the default: it grows down) or the
+-- bottom (it grows up, for a frame placed near the bottom of the screen); `pos` is anchored at that edge.
 local DEFAULTS = {
 	shown = true,
 	locked = false,
@@ -53,6 +57,7 @@ local DEFAULTS = {
 	hideInCombat = true,
 	hideWhenDead = true,
 	hideWithJournal = true,
+	growUp = false,
 }
 ns.SavedVars:RegisterDefaults("account", "stepFrame", DEFAULTS)
 
@@ -488,6 +493,7 @@ function StepFrame:Layout()
 		end
 	end
 	frame:SetHeight(y + GAP + BUTTON_HEIGHT + PADDING - 2)
+	self:PositionItemButton() -- it sits beside the top-left corner, which moves when the frame grows up
 end
 
 -- Shows the current step (or hides the frame when there is none).
@@ -570,22 +576,59 @@ end
 
 -- Settings ------------------------------------------------------------------------------------------------------------
 
-function StepFrame:ApplyPosition()
-	local frame = self.frame
-	local pos = settings().pos
-	frame:ClearAllPoints()
-	if
-		type(pos) == "table"
+local function validPosition(pos)
+	return type(pos) == "table"
 		and type(pos.point) == "string"
 		and type(pos.relativePoint) == "string"
 		and type(pos.x) == "number"
 		and type(pos.y) == "number"
-	then
-		frame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.x, pos.y)
-	else
-		local default = DEFAULT_POSITION
-		frame:SetPoint(default.point, UIParent, default.relativePoint, default.x, default.y)
+end
+
+-- The vertical part of an anchor point: "TOP", "BOTTOM", or nil for the middle (CENTER, LEFT, RIGHT).
+local function verticalEdge(point)
+	if point:find("TOP", 1, true) then
+		return "TOP"
+	elseif point:find("BOTTOM", 1, true) then
+		return "BOTTOM"
 	end
+end
+
+-- `pos` anchored at `edge` ("TOP" or "BOTTOM") instead, the frame (`height` tall) staying exactly where it is: the
+-- side of the point (LEFT, RIGHT or none) and the relative point stay, the vertical offset moves by the height. A
+-- position anchored at that edge already comes back as it is.
+local function anchoredAt(pos, edge, height)
+	local current = verticalEdge(pos.point)
+	if current == edge then
+		return pos
+	end
+	local side = pos.point:gsub("TOP", ""):gsub("BOTTOM", "")
+	if side == "CENTER" then
+		side = ""
+	end
+	-- how far the anchor is below the frame's top: nothing at the top, the height at the bottom, half of it in the middle
+	local below = current == "TOP" and 0 or current == "BOTTOM" and height or height / 2
+	local wanted = edge == "TOP" and 0 or height
+	return {
+		point = edge .. side,
+		relativePoint = pos.relativePoint,
+		x = pos.x,
+		y = Util.Round(pos.y + below - wanted, 1),
+	}
+end
+
+function StepFrame:ApplyPosition()
+	local frame = self.frame
+	local s = settings()
+	local saved = validPosition(s.pos) and s.pos or nil
+	local height = frame:GetHeight()
+	height = type(height) == "number" and height or 0
+	local placed = saved and anchoredAt(saved, s.growUp and "BOTTOM" or "TOP", height)
+		or (s.growUp and DEFAULT_POSITION_UP or DEFAULT_POSITION)
+	if saved and placed ~= saved and ns.db then
+		ns.db.stepFrame.pos = placed -- the place at the other edge is the saved one from now on
+	end
+	frame:ClearAllPoints()
+	frame:SetPoint(placed.point, UIParent, placed.relativePoint, placed.x, placed.y)
 end
 
 function StepFrame:ApplySettings()
@@ -648,6 +691,16 @@ end
 
 function StepFrame:SetLocked(locked)
 	ns.db.stepFrame.locked = locked and true or false
+end
+
+-- Which edge stays put when a step changes the frame's height: the bottom (it grows up) or the top (it grows down).
+-- The frame does not move when this changes, only the edge it is anchored at.
+function StepFrame:SetGrowUp(up)
+	ns.db.stepFrame.growUp = up and true or false
+	if self.frame then
+		self:ApplyPosition()
+		self:PositionItemButton()
+	end
 end
 
 function StepFrame:SetScale(scale)
@@ -951,6 +1004,20 @@ ns.Slash:Register("reset", function()
 	StepFrame:Reset()
 	Util.Print(L["Step frame reset to its default position, scale and alpha."])
 end, L["put the step frame back where it started, at scale 1 and full alpha"])
+
+ns.Slash:Register("grow", function(args)
+	local word = (args or ""):lower()
+	if word == "up" or word == "down" then
+		StepFrame:SetGrowUp(word == "up")
+	elseif word ~= "" then
+		Util.Print(L["Use 'grow up' or 'grow down'."])
+		return
+	end
+	Util.Print(
+		settings().growUp and L["Step frame grows upwards: its bottom edge stays where it is."]
+			or L["Step frame grows downwards: its top edge stays where it is."]
+	)
+end, L["which way the step frame grows when a step is longer (up | down)"])
 
 ns.Slash:Register("scale", function(args)
 	local value = tonumber(args)
