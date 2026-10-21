@@ -401,7 +401,7 @@ class CapTest(PlannerCase):
 
 class TidyTest(PlannerCase):
     def test_a_replay_walks_the_grinds_again_or_the_levels_that_open_quests_are_missed(self):
-        pl = self.planner(cap=8)
+        pl = self.planner(cap=8, repair=False)  # (with the repair on, tidy would move 203's pick-up and the route would finish it)
         hub = self.start(pl)
         raw = pl._finish(pl.rollout(pl.start(hub)))
         self.assertTrue(any(v.hub is None for v in raw.visits))  # no quest gets a level 6 character to 8
@@ -1076,6 +1076,7 @@ class ThreeHubTest(PlannerCase):
         1020: {"n": "Third Giver", "p": [[10, 47, 40]], "side": "Horde"},  # B: 70 yards from A (40,40), 160 from the anchor: another hub
         1021: {"n": "Wasp", "p": [[10, 44, 52]], "side": "none"},  # C, 240 yards south of A, 242 from B
         1022: {"n": "Hornet", "p": [[10, 45, 52]], "side": "none"},
+        1030: {"n": "Far Boar", "p": [[10, 40, 82]], "side": "none"},  # D: 840 yards south of A
     }
     AT_B = {"s": {"npc": [1020]}, "e": {"npc": [1020]}, "side": "Horde", "races": 178}
     Q1, Q2, Q3 = 400, 401, 402
@@ -1086,6 +1087,7 @@ class ThreeHubTest(PlannerCase):
             self.Q2: {"n": "Q2 Wasp Nest", "r": 1, "l": 1, "preSingle": [self.Q1], "o": [{"id": 1021, "k": "kill"}], **HOME},
             self.Q3: {"n": "Q3 Hornet Queen", "r": 1, "l": 1, "preSingle": [self.Q1], "o": [{"id": 1022, "k": "kill"}], **self.AT_B},
             403: {"n": "Anchor Errand", "r": 1, "l": 1, "s": {"npc": [1003]}, "e": {"npc": [1003]}, "side": "Horde", "races": 178},
+            404: {"n": "Q4 Far Hunt", "r": 1, "l": 1, "o": [{"id": 1030, "k": "kill"}], **HOME},  # its objective is 600 yards from anywhere the route goes
         }
 
     def three(self, yards=350.0, **settings):
@@ -1152,6 +1154,129 @@ class ThreeHubTest(PlannerCase):
         steps_of = [block for block in text.split("step\n")[1:] if f".complete {self.Q2}" in block]
         self.assertEqual(len(steps_of), 1)
         self.assertIn(f".complete {self.Q3}", steps_of[0])  # one step at the kill area, for both quests
+
+    def raw_route(self, pl, order):
+        """The route as the search wrote it (visits in `order`), before it is written out."""
+        st = pl.start(order[0])
+        for hub in order:
+            st = pl.visit(st, hub) or st
+        return pl._finish(st)
+
+    def test_the_repair_moves_the_pickup_to_the_visit_next_door_and_the_route_finishes_the_quest_on_its_trip_to_the_kill_area(self):
+        pl = self.three(0.0)  # the rule off: the search itself behaves as before, and tidy has to put it right
+        a, b, c = self.hubs(pl)
+        raw = self.raw_route(pl, (a, c, b, a))  # clear the kill area first, pass B after
+        self.assertIn(self.Q3, raw.final.active)  # the search left it in the log
+        written = pl.tidy(raw, a)
+        self.assertIn(self.Q3, written.final.done)  # not lost
+        self.assertEqual(written.final.active, {})
+        self.assertIn(self.Q3, written.stats["moved"])
+        self.assertNotIn(self.Q3, written.stats["removed"])
+        # picked up at B on the first visit (the one at A, B being next door), worked on the trip to C that Q2 makes, handed in at the next visit to B
+        where = {}
+        for index, v in enumerate(written.visits):
+            for x in v.actions:
+                if x.quest == self.Q3:
+                    where[x.kind] = (index, v.hub)
+        self.assertEqual(where["accept"], (0, a))
+        self.assertEqual(where["complete"][1], c)
+        self.assertEqual(where["turnin"][1], b)
+        self.assertLess(where["accept"][0], where["complete"][0])
+        self.assertLess(where["complete"][0], where["turnin"][0])
+        self.assertEqual([m for m in pl.area_misses(written) if m[0] == self.Q3], [])  # and the audit has nothing to say
+
+    def test_without_the_repair_the_same_route_loses_the_quest(self):
+        pl = self.three(0.0, repair=False)
+        a, b, c = self.hubs(pl)
+        written = pl.tidy(self.raw_route(pl, (a, c, b, a)), a)
+        self.assertNotIn(self.Q3, written.final.done)
+        self.assertEqual(written.stats["moved"], [])
+        self.assertIn(self.Q3, written.stats["removed"])
+
+    def test_the_repair_does_not_take_a_quest_whose_objectives_the_route_never_goes_to(self):
+        pl = self.three(0.0)
+        a, b, c = self.hubs(pl)
+        written = pl.tidy(self.raw_route(pl, (a, c, b, a)), a)
+        self.assertIn(404, pl.quests)
+        self.assertNotIn(404, written.final.done)  # picked up at A for nothing, its kill area (600 yards away) never visited: dropped
+        self.assertIn(404, written.stats["removed"])
+
+    def test_the_repair_picks_the_latest_visit_that_stood_near_the_giver_with_the_quest_offered(self):
+        pl = self.three(0.0)
+        a, b, c = self.hubs(pl)
+        raw = self.raw_route(pl, (a, c, b, a))
+        # Q3 needs Q1, which is handed in at the first visit: at the start of the route (before that visit) there is no earlier visit to move it to
+        self.assertEqual(pl._moves(raw, {self.Q3}), {0: {self.Q3}})  # the state after the first visit has Q1 done
+        first = pl.start(a)
+        self.assertFalse(pl.offered(pl.quests[self.Q3], first.level, first.done, first.active, first.gone))
+
+    def test_a_moved_pickup_that_is_still_not_finished_is_dropped_for_good(self):
+        pl = self.three(0.0)
+        a, b, c = self.hubs(pl)
+        real = pl._moves
+        pl._moves = lambda plan, candidates: {0: {self.Q3}} if self.Q3 in candidates else {}
+        st = pl.start(a)
+        for hub in (a, b, a):  # the kill area is never visited, and the route ends at the cap: moving the pick-up cannot help
+            st = pl.visit(st, hub) or st
+        written = pl.tidy(pl._finish(pl._grind_to(st, pl.s.cap) or st), a)
+        pl._moves = real
+        self.assertNotIn(self.Q3, written.final.done)
+        self.assertEqual(written.final.active, {})  # nothing is left in the log of the written route
+        self.assertIn(self.Q3, written.stats["removed"])
+
+    def synthetic(self, pl, steps, picked=None, done_final=()):
+        """A route made of states by hand: `steps` is [(hub, quests done after the visit)], `picked` the index of the visit that picks Q3 up."""
+        chain, parent = [], None
+        for index, (hub, done) in enumerate(steps):
+            st = engine.PState()
+            st.hub, st.zone, st.level = hub, pl.hubs[hub].zone, 1
+            st.done, st.parent, st.depth = frozenset(done), parent, index + 1
+            actions = [engine.Action("accept", self.Q3, None, pl.quests[self.Q3].start_places[0])] if index == picked else []
+            st.visit = engine.Visit(hub, actions, 10.0, 0.0, False, 1)
+            chain.append(st)
+            parent = st
+        chain[-1].done = frozenset(chain[-1].done) | frozenset(done_final)
+        return engine.Plan(final=chain[-1], visits=[st.visit for st in chain])
+
+    def test_the_repair_chooses_the_latest_visit_next_to_the_giver_that_comes_before_the_work(self):
+        pl = self.three(0.0)
+        a, b, c = self.hubs(pl)
+        q1 = {self.Q1}
+        ok = [(a, set()), (a, q1), (c, q1), (b, q1), (a, q1)]  # A twice (the second after Q1 is done), the kill area, B (Q3 picked up), A
+        plan = self.synthetic(pl, [(h, d) for h, d in ok], picked=3)
+        self.assertEqual(pl._moves(plan, {self.Q3}), {1: {self.Q3}})  # not 0: Q1 was not done there; the latest of the visits that qualify
+        both = [(a, q1), (a, q1), (c, q1), (b, q1), (a, q1)]
+        self.assertEqual(pl._moves(self.synthetic(pl, both, picked=3), {self.Q3}), {1: {self.Q3}})  # two qualify (0 and 1): the later one holds it for less time
+
+    def test_the_repair_wants_the_route_to_go_on_to_the_objectives_and_the_hand_in(self):
+        pl = self.three(0.0)
+        a, b, c = self.hubs(pl)
+        q1 = {self.Q1}
+        none = {}
+        # the kill area comes before the visit: nothing to move the pick-up to that is followed by it
+        self.assertEqual(pl._moves(self.synthetic(pl, [(c, q1), (a, q1), (b, q1), (a, q1)], picked=2), {self.Q3}), none)
+        # the route never comes back to B to hand it in after the kill area
+        self.assertEqual(pl._moves(self.synthetic(pl, [(a, q1), (b, q1), (c, q1), (a, q1)], picked=1), {self.Q3}), none)
+        # ... and with a visit to B after the kill area it does
+        self.assertEqual(pl._moves(self.synthetic(pl, [(a, q1), (c, q1), (b, q1)], picked=2), {self.Q3}), {0: {self.Q3}})
+
+    def test_the_repair_moves_only_to_visits_next_to_the_giver_where_the_quest_is_offered(self):
+        pl = self.three(0.0)
+        a, b, c = self.hubs(pl)
+        q1 = {self.Q1}
+        # C is 240 yards from B's giver: not next to it
+        self.assertEqual(pl._moves(self.synthetic(pl, [(c, q1), (c, q1), (b, q1)], picked=2), {self.Q3}), {})
+        # Q3 needs Q1: a visit before Q1 is done is no place to pick it up
+        self.assertEqual(pl._moves(self.synthetic(pl, [(a, set()), (c, set()), (b, q1), (c, q1), (b, q1)], picked=2), {self.Q3}), {})
+
+    def test_the_repair_keeps_a_finished_quest_where_it_was_picked_up_and_leaves_alone_what_was_never_picked_up_and_has_no_way(self):
+        pl = self.three(0.0)
+        a, b, c = self.hubs(pl)
+        q1 = {self.Q1}
+        plan = self.synthetic(pl, [(a, q1), (c, q1), (b, q1)], picked=2, done_final={self.Q3})
+        self.assertEqual(pl._moves(plan, {self.Q3}), {2: {self.Q3}})  # finished last round: it stays where it is
+        never = self.synthetic(pl, [(a, q1), (c, q1), (b, q1)], picked=None)
+        self.assertEqual(pl._moves(never, {self.Q3}), {0: {self.Q3}})  # never picked up in this route: the latest visit that qualifies, wherever
 
     def test_the_third_quest_is_picked_up_before_the_trip_not_after(self):
         text = "\n".join(c.text("West") for c in (lambda pl: pl.emit(pl.plan("greedy", self.hubs(pl)[0]), "HUNTER"))(self.three()))

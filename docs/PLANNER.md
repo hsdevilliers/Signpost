@@ -87,17 +87,24 @@ beam compares its best finished routes as they would be written, and against the
   me to pick it up ... these two quests literally are completed in the same zone on the map"; the rule: a quest offered where the player stands, with its
   objectives in the area of the step in hand, should be taken). A quest has a *bundle* at a place it starts when a place to hand it in and a place for every
   objective (an objective with no position in the pack is worked where the quest starts) lie within 350 yards of that place, about 50 seconds of walking each
-  way (`Planner.bundles`). A quest picked up at such a place is worked and handed in before the visit ends, in the same visit; so is one that was picked up at
-  an earlier visit and held in the log because its level was too high to work it (the planner accepts up to 5 levels above the character and works up to 3),
-  when the route is next at its giver's hub and can work it. A hand-in or a follow-up the hand-in opens (a chain) is taken in the same visit. Group quests
-  (`optional`) are not asked for on the spot. Once a visit goes beyond its hub the walk between its places is priced by the map (a flat `local_walk` only
-  between two places of one hub), and the visit ends where its last action was.
+  way (`Planner.bundles`). In a visit:
+  - what starts in the hub, or in a hub next door (centres within a hub radius: `Planner.next_door`; hubs are cut by the order of their places, so two NPCs
+    70 yards apart can be in hubs of their own), and has a bundle, is picked up as soon as it is offered, if it can be worked now (a pick-up from next door is
+    only for that: a quest that must wait would be held in the log and dropped);
+  - then the work of everything picked up is done, the nearest place first across the quests (so two quests with work in one area share one trip to it), and
+    then the hand-ins, the nearest first; a follow-up that a hand-in opens (a chain) is taken in the same visit;
+  - a quest held in the log from an earlier visit with a bundle at this hub or next door (its level was too high to work it: the planner accepts up to 5
+    levels above the character and works up to 3) is finished the same way when the route is back and can work it;
+  - group quests (`optional`) are not asked for on the spot; the walk between places of two hubs is priced by the map (a flat `local_walk` only between two
+    places of one hub), and the visit ends where its last action was.
+
   Why: the search used to accept a free quest at a hub for nothing (an accept costs 12 seconds), never go back for its objective, and `tidy` then took it out
   of the written route as "accepted and never finished". On the Skyborne guide 92462 Infestation Investigation was in the log at the end of 13 of the 14
-  finalists the beam wrote out, and its follow-up 92463 The Cirrusfly Queen is never offered when 92462 is never handed in: no choice among finalists (the
-  Monte Carlo of `--install` included) could bring them back. The audit is `Planner.area_misses` and the `same area` line of THE QUESTS: the quests the route stood
-  next to (the hub it was visiting), that could be worked at that level, and left out. `--area-yards 0` turns the rule off and reproduces the planning before it
-  (and then lists what that planning left out). Measurements below.
+  finalists the beam wrote out (the routes cleared the kill area for Harmony in Balance before they passed Elatrell), and its follow-up 92463 The Cirrusfly
+  Queen is never offered when 92462 is never handed in: no choice among finalists (the Monte Carlo of `--install` included) could bring them back. The audit is
+  `Planner.area_misses` and the `same area` line of THE QUESTS: the quests the route stood next to (in the hub it was visiting or one next door), that could be
+  worked at that level, and left out. `--area-yards 0` turns the rule off and reproduces the planning before it (and then lists what that planning left out).
+  Measurements below.
 - **A grind step says how much to grind** (user, 2026-10-21: "I'm fine if you want to have certain points in the guide where you simply tell the player to
   grind a certain amount of experience"). When nothing can be done until a level opens something, the route grinds for it (the time is charged, nothing
   else). A grind is not a step of its own: it is two lines at the end of the step it follows, where the character stands when it begins (one that comes first
@@ -123,7 +130,13 @@ beam compares its best finished routes as they would be written, and against the
   again, so it steers the search harder than it constrains the guide (below). The report gives the most quests held at once, by the planner and counted again on
   the written route's own steps.
 - **No quest is left in the log**: a route that accepted something it never finished has it taken out and the same hubs are walked
-  again (the grinds too), more than once if that leaves others unfinished.
+  again (the grinds too), more than once if that leaves others unfinished. **Not every such quest is lost** (the repair, `--no-repair` turns it off): a search
+  accepts a free quest wherever it passes, and one it accepted *after* working the area of its objectives is never finished. `tidy` moves the pick-up of such
+  a quest to the latest earlier visit that stood near its giver (the visit's hub is the giver's, or a giver's place is within a hub radius of its centre), at
+  which the quest was offered and could be worked, when the route goes on from that visit to a hub of each of its objectives and then to a hub where it is
+  handed in (`Planner._moves`). The route is walked again with the pick-up there, and the quest is finished on a trip the route makes anyway. A quest moved and
+  still not finished is dropped for good; one whose objectives the route never goes to stays dropped (it would need a trip of its own, and most of what `tidy`
+  removes is that). The report says how many were saved (`repaired`).
 
 ## Reading the report
 

@@ -49,6 +49,7 @@ class Settings:
     profit_threshold: float = 1.0  # a quest must give this many times the experience per second of grinding
     detour: float = 1.0  # walking distance over straight-line distance
     local_walk: float = 8.0  # seconds between two NPCs of one hub
+    walk_by_map: bool = False  # charge the walk between the places of one hub by the map's distance (and from the hub's centre to the first), not local_walk
     ferry_seconds: float = 420.0  # the boat or zeppelin between continents, waiting included (the walks to and from it extra)
     gateways: tuple = (1454, 1458)  # the capitals whose hubs a trip between continents leaves and arrives by (Horde)
     branch: int = 8  # hubs tried from each node
@@ -287,6 +288,7 @@ class Planner:
         self.home: Coord | None = None  # where the character begins
         self.core: set[int] = set()  # the class quests and the quests they need: all that is done once the cap is reached
         self.forbidden: set[int] = set()  # quests a tidied route no longer accepts (it never turned them in)
+        self.lifted: frozenset = frozenset()  # ... except the ones tidy moved to the visit being replayed (`_moves`)
         self._bundles: dict[float, tuple] = {}  # radius -> ({quest: {starting place: Bundle}}, {hub: [(quest, starting place)]})
         self.bundled_at: dict[int, list] = {}  # hub -> [(quest, starting place)] with a Bundle there, for the setting's radius
         self.nearby: dict[int, list] = {}  # hub -> [(quest, starting place)] with a Bundle in a hub next to it (centres within a hub radius)
@@ -740,12 +742,12 @@ class Planner:
         return min(places, key=lambda c: self._yards(here, c))
 
     def _legs(self, actions: list) -> float:
-        """The walking between the places of a visit's actions, in turn: a flat `local_walk` between two places of one hub, the walk itself
-        (by the map's distance and the detour factor) between places of two hubs."""
+        """The walking between the places of a visit's actions, in turn: a flat `local_walk` between two places of one hub (unless
+        `Settings.walk_by_map`), the walk itself (by the map's distance and the detour factor) between places of two hubs."""
         total = 0.0
         for a, b in zip(actions, actions[1:]):
             if a.place != b.place:
-                if self.hub_of[(a.place.map, a.place.x, a.place.y)] == self.hub_of[(b.place.map, b.place.x, b.place.y)]:
+                if not self.s.walk_by_map and self.hub_of[(a.place.map, a.place.x, a.place.y)] == self.hub_of[(b.place.map, b.place.x, b.place.y)]:
                     total += self.s.local_walk
                 else:
                     total += self._yards(a.place, b.place) / guide_travel.WALK_SPEED * self.s.detour
@@ -838,7 +840,7 @@ class Planner:
         quest log has a free place. Every accept the searches make or predict goes through here (`visit`, `options`, `overdue_hubs`)."""
         if len(active) >= self.s.quest_log_limit:
             return False
-        if level < q.req or q.level > level + self.accept_over or q.id in self.forbidden:
+        if level < q.req or q.level > level + self.accept_over or (q.id in self.forbidden and q.id not in self.lifted):
             return False
         if level >= self.s.cap and q.id not in self.core:
             return False  # at the cap only the class quests (and what they need) are still worth the walk
@@ -948,6 +950,27 @@ class Planner:
                             active[q.id].discard(o.index)
                             changed = True
                     progressed = progressed or changed
+            for qid in sorted(self.lifted):  # a pick-up tidy moved to this visit: its giver is in a hub next door (one in this hub was taken above)
+                q = self.quests[qid]
+                if q.id in done or q.id in active or q.id in gone or not self.offered(q, progress.level, done, active, gone):
+                    continue
+                if not self.soon(q, progress.level) or (progress.level >= s.cap and q.id not in self.core):
+                    continue
+                centre = self.hubs[hub].center
+                starts = tuple(c for c in q.start_places if self.hub_of[(c.map, c.x, c.y)] != hub and self._near(centre, c, s.hub_radius))
+                if not starts:
+                    continue
+                place = self._nearest(actions[-1].place if actions else centre, starts)
+                gated = max(gated, q.req) if q.req > 1 else gated
+                if q.unknown_work:
+                    objective += s.unknown_work
+                interact += interact_s
+                actions.append(Action("accept", q.id, None, place))
+                active[q.id] = {o.index for o in q.objectives}
+                gone.update(x for x in q.excl if x not in done)
+                if q.bundle and (place.map, place.x, place.y) in q.bundle:
+                    fresh[q.id] = (q, q.bundle[(place.map, place.x, place.y)])
+                away = progressed = True
             # The user's rule (2026-10-21): a quest offered where the player stands, with its objectives in the area of the step in hand, is taken.
             # What starts in a hub next to this one and has all its work near is picked up from here (its giver is a short walk away) ...
             for q, key in near:
@@ -1015,10 +1038,13 @@ class Planner:
         if not actions:
             return None
         stand = hub
-        if away:  # some actions were taken away from the hub's own places: the walk between them is priced by the map, and the visit ends where the last one was
+        if away or s.walk_by_map:  # some actions were taken away from the hub's own places (or the walk is always priced by the map)
             walk = self.travel(st.hub, hub) + self._legs(actions)
-            last = actions[-1].place
-            stand = self.hub_of[(last.map, last.x, last.y)]
+            if s.walk_by_map:
+                walk += self._yards(self.hubs[hub].center, actions[0].place) / guide_travel.WALK_SPEED * s.detour
+            if away:  # the visit ends where the last action was
+                last = actions[-1].place
+                stand = self.hub_of[(last.map, last.x, last.y)]
         else:
             switches = sum(1 for a, b in zip(actions, actions[1:]) if a.place != b.place)
             walk = self.travel(st.hub, hub) + switches * s.local_walk
@@ -1247,33 +1273,100 @@ class Planner:
         return plan
 
     def tidy(self, plan: Plan, start_hub: int) -> Plan:
-        """A guide must not accept a quest it never turns in: the quests a search left in the log at the end (it reached the
-        cap first) are taken out of the route, and the same hubs are walked again without them (more than once if that
-        leaves others unfinished); a level that falls short is ground at the end."""
+        """A guide must not accept a quest it never turns in: the quests a search left in the log at the end (it reached the cap first) are taken
+        out of the route, and the same hubs are walked again without them (more than once if that leaves others unfinished); a level that falls
+        short is ground at the end.
+
+        Not every such quest is lost for good. A search accepts a free quest wherever it passes, and one it accepted *after* working the area of its
+        objectives is never finished. If an earlier visit stood near its giver and the route goes on to its objectives and to where it is handed in,
+        the repair (`Settings.repair`, `_moves`) moves the pick-up to that visit, and the route finishes the quest on a trip it makes anyway. A
+        quest moved and still not finished is dropped for good."""
         stats, trace, preset = dict(plan.stats), plan.trace, plan.preset
         alternatives, decisions = plan.alternatives, plan.decisions
         removed: set[int] = set()
-        for _ in range(4):
-            unfinished = set(plan.final.active) - removed if plan.final else set()
-            if not unfinished:
+        gave_up: set[int] = set()  # moved to an earlier visit, and the route still did not finish them
+        lifted_before: set[int] = set()
+        for _ in range(6 if self.s.repair else 4):
+            active = set(plan.final.active) if plan.final else set()
+            stuck = active & lifted_before
+            unseen = active - removed
+            if not (stuck or unseen):
                 break
-            removed |= unfinished
+            gave_up |= stuck
+            removed |= unseen | stuck
+            moves = self._moves(plan, removed - gave_up) if self.s.repair else {}
+            lifted_before = {qid for ids in moves.values() for qid in ids}
             self.forbidden = set(removed)
             st = self.start(start_hub)
-            for v in plan.visits:
+            for index, v in enumerate(plan.visits):
                 if v.hub is None:  # a level ground to open quests that waited for it: ground again, to the same level
                     target = v.actions[0].index
                     child = self._grind_to(st, target) if target > st.level else None
                 else:
+                    self.lifted = frozenset(moves.get(index, ()))
                     child = self.visit(st, v.hub)
+                    self.lifted = frozenset()
                 if child is not None:
                     st = child
             plan = self._finish(self.rollout(st))
-        self.forbidden = set()
+        self.forbidden, self.lifted = set(), frozenset()
+        moved = {qid for qid in lifted_before if plan.final and qid in plan.final.done}
         plan.stats, plan.trace, plan.preset = stats, trace, preset
         plan.alternatives, plan.decisions = alternatives, decisions
-        plan.stats["removed"] = sorted(removed | set(stats.get("removed", ())))  # a plan tidied twice still says what was taken out
+        plan.stats["removed"] = sorted((removed - moved) | set(stats.get("removed", ())))  # a plan tidied twice still says what was taken out
+        plan.stats["moved"] = sorted(moved | set(stats.get("moved", ())))  # and what was saved by moving its pick-up
         return plan
+
+    def _moves(self, plan: Plan, candidates: set) -> dict[int, set]:
+        """For each quest of `candidates` that this route did not finish, the visit at which to pick it up: {visit index: {quest}}. The latest visit
+        before the one that picked it up (any, if it was never picked up) such that the character stood near the giver (the visit's hub is a
+        giver's hub, or a giver's place is within a hub radius of its centre), the quest was offered and could be worked then, and the route goes
+        on, from that visit, to a hub of every objective and then to a hub where the quest is handed in. A quest this route did finish is kept
+        where it is picked up."""
+        path, st = [], plan.final
+        while st is not None and st.visit is not None:
+            path.append(st)
+            st = st.parent
+        path.reverse()
+        hubs = [v.hub for v in plan.visits]
+        moves: dict[int, set] = {}
+        self.lifted = frozenset(candidates)  # (they are forbidden by now: whether they were offered is the question)
+        try:
+            self._place_moves(plan, candidates, path, hubs, moves)
+        finally:
+            self.lifted = frozenset()
+        return moves
+
+    def _place_moves(self, plan: Plan, candidates: set, path: list, hubs: list, moves: dict) -> None:
+        for qid in sorted(candidates):
+            q = self.quests[qid]
+            picked = next((i for i, v in enumerate(plan.visits) if any(a.kind == "accept" and a.quest == qid for a in v.actions)), None)
+            if qid in plan.final.done:
+                if picked is not None:
+                    moves.setdefault(picked, set()).add(qid)
+                continue
+            for i in range((len(hubs) if picked is None else picked) - 1, -1, -1):
+                if hubs[i] is None:
+                    continue
+                state = path[i]
+                centre = self.hubs[hubs[i]].center
+                if hubs[i] not in q.start_hubs and not any(self._near(centre, c, self.s.hub_radius) for c in q.start_places):
+                    continue
+                if state.level >= self.s.cap and qid not in self.core:
+                    continue
+                if qid in state.done or qid in state.gone or not self.offered(q, state.level, state.done, state.active, state.gone) or not self.soon(q, state.level):
+                    continue
+                last = i
+                for o in q.objectives:
+                    at = next((k for k in range(i, len(hubs)) if hubs[k] in o.hubs), None)
+                    if at is None or (path[at].level >= self.s.cap and qid not in self.core):
+                        last = None
+                        break
+                    last = max(last, at)
+                if last is None or not any(hubs[k] in q.end_hubs for k in range(last, len(hubs))):
+                    continue
+                moves.setdefault(i, set()).add(qid)
+                break
 
     def _finish(self, final: PState) -> Plan:
         plan = Plan(final=final, seconds=final.clock, penalty=final.penalty, late=final.late)

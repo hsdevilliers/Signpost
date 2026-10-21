@@ -292,6 +292,8 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
         quest_log_limit=options.quest_log,
         chapter_min_steps=options.chapter_steps,
         area_yards=options.area_yards,
+        repair=not options.no_repair,
+        walk_by_map=options.walk_by_map,
         instant_quests=options.instant_quests,
         skip_unprofitable=not options.no_skip,
         profit_threshold=options.threshold,
@@ -569,6 +571,14 @@ def report_search(out: Out, pl: engine.Planner, outcome: Outcome) -> None:
         names = ", ".join(pl.quests[q].name for q in p["removed"][:6] if q in pl.quests)
         out(f"tidied        {len(p['removed'])} quests the search had accepted but never finished were taken out of the route (a guide may not leave them in the log): {names}"
             + (" ..." if len(p["removed"]) > 6 else ""))
+    if p.get("moved"):
+        names = ", ".join(pl.quests[q].name for q in p["moved"][:6] if q in pl.quests)
+        for line in labelled(
+            "repaired      ",
+            f"{len(p['moved'])} more quests the search had accepted too late to finish were saved: their pick-up was moved to an earlier visit that stood "
+            f"next to their giver, before the route went to their objectives, which it does anyway: {names}" + (" ..." if len(p["moved"]) > 6 else ""),
+        ):
+            out(line)
     if plan.trace:
         out("progress      best estimated total time as the search moved up the levels (level | routes kept | estimate):")
         picks = plan.trace[:: max(1, len(plan.trace) // 8)]
@@ -1026,6 +1036,8 @@ def write_outputs(job: Job, outcome: Outcome, pl: engine.Planner, out_dir: Path,
         quest_log_peak=outcome.plan.log_peak()[0],
         area_yards=pl.s.area_yards,
         area_misses=[dict(quest=qid, hub=pl.hubs[hub].label, level=level) for qid, hub, level in pl.area_misses(outcome.plan)],
+        removed_by_tidy=outcome.plan.stats.get("removed", []),
+        moved_by_tidy=outcome.plan.stats.get("moved", []),
         grinds=grinds_of(pl, outcome.plan),
         grains=outcome.plan.stats.get("grains", []),
         simulated_seconds=ev.sim.seconds,
@@ -1055,6 +1067,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--area-yards", type=float, default=engine.Settings.area_yards, metavar="YARDS",
                         help="a quest picked up with all its work (a place to hand it in and a place for each objective) within this many yards of "
                              "where it is picked up is done on the spot; 0 turns it off (default %(default)g; docs/PLANNER.md, same-area quests)")
+    parser.add_argument("--walk-by-map", action="store_true",
+                        help="charge the walk between the places of one hub by the map's distance, not a flat 8 s (Settings.local_walk) for each change of place "
+                             "(an experiment: docs/PLANNER.md, Measurements)")
+    parser.add_argument("--no-repair", action="store_true",
+                        help="when the route is written, drop every quest the search left unfinished (the repair would move a pick-up to an earlier visit "
+                             "that stood near its giver, when the route goes on to the quest's objectives and hand-in anyway)")
     parser.add_argument("--quest-log", type=int, default=engine.Settings.quest_log_limit, metavar="N",
                         help="quests the log holds at once; no quest is accepted while it is full (default %(default)s: Forever's, confirmed by the user "
                              "in the game; Classic's is 25)")
