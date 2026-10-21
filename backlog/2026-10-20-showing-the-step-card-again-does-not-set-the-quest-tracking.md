@@ -1,12 +1,14 @@
 ---
 title: Showing the step card again does not set the quest tracking for the current step until the next change
 kind: finding
-status: open
+status: done
 priority: low
 area: engine, ui
 source: claude
 raised: 2026-10-20
 raised_in: PR #39 review fixes (quest tracking)
+closed: 2026-10-21
+resolution: Batch 1 WP-D (branch feat/quest-tracking): showing the card again (/signpost show, the Journal's Show the step card, /signpost reset) sets the tracking for the current step at once, as a new start (Tracking:OnCardShown; the module wraps StepFrame:SetShown and Reset at DB_READY, UI/StepFrame.lua untouched). The Journal closing needed nothing: the card's transient hides never paused the module. Chosen without the user's word; if the next step is soon enough, remove OnCardShown and the wrapper.
 ---
 
 ## What

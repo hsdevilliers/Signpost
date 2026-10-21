@@ -1,12 +1,14 @@
 ---
 title: A reload forgets that the player took the quest tracker in hand: quest tracking sets it again once
 kind: finding
-status: open
+status: done
 priority: low
 area: engine
 source: claude
 raised: 2026-10-20
 raised_in: PR #39 review fixes (quest tracking)
+closed: 2026-10-21
+resolution: Batch 1 WP-D (branch feat/quest-tracking): the fact is saved per character with the step id (SignpostCharDB.tracking.handsOff), honoured by the first start after a reload for that step only, and forgotten at the next step, when the setting is toggled or the card is shown again; a change made just before a reload is noticed at PLAYER_LOGOUT (VERIFY(beta)).
 ---
 
 ## What

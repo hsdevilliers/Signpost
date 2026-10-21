@@ -441,6 +441,42 @@ section("apis", function()
 	return { types = types, missing = missing, unexpectedlyPresent = unexpected, wanted = wanted }
 end)
 
+-- The quest log's capacity and fill. Forever raised the limit from 25 to 40: confirmed by the user in game
+-- (2026-10-21). This records what the client itself says, as the evidence and a cross-check of that value.
+-- canAccept is C_QuestLog.GetMaxNumQuestsCanAccept() and canAcceptKind says whether that function exists;
+-- legacyGlobal is the Classic global MAX_QUESTLOG_QUESTS; entries is every line of the quest log (headers too) and
+-- quests the lines that are quests, counted by walking the log (a collapsed header hides its quests from the walk);
+-- numQuests is the client's own count, the second result of GetNumQuestLogEntries.
+local function plainNumber(value)
+	if type(value) == "number" and not Util.IsSecret(value) and value == value then
+		return value
+	end
+end
+
+section("questLogMax", function()
+	local log = C_QuestLog or {}
+	local entries, numQuests = call(log.GetNumQuestLogEntries)
+	entries = plainNumber(entries)
+	local quests
+	if entries then
+		quests = 0
+		for i = 1, entries do
+			local info = call(log.GetInfo, i)
+			if type(info) == "table" and not info.isHeader then
+				quests = quests + 1
+			end
+		end
+	end
+	return {
+		canAccept = plainNumber(call(log.GetMaxNumQuestsCanAccept)),
+		canAcceptKind = type(log.GetMaxNumQuestsCanAccept),
+		legacyGlobal = plainNumber(Util.Resolve("MAX_QUESTLOG_QUESTS")),
+		entries = entries,
+		quests = quests,
+		numQuests = plainNumber(numQuests),
+	}
+end)
+
 section("templates", function()
 	local getInfo = Util.Resolve("C_XMLUtil.GetTemplateInfo")
 	local result = { method = getInfo and "C_XMLUtil.GetTemplateInfo" or "CreateFrame", found = {} }
@@ -644,6 +680,10 @@ local function falseKeys(tbl)
 	return table.concat(names, ", ")
 end
 
+-- What other commands recorded in SignpostDB.probe (/signpost tracking test and the observations of the quest tracker)
+-- is not a section of this probe: a new run keeps it.
+Probe.keep = { "tracking", "trackingSeen" }
+
 function Probe:Run()
 	local result = { time = time(), version = ns.version }
 	local failed = {}
@@ -656,6 +696,12 @@ function Probe:Run()
 		else
 			result[entry.name] = { error = tostring(data) }
 			failed[#failed + 1] = entry.name
+		end
+	end
+	local previous = type(ns.db.probe) == "table" and ns.db.probe or {}
+	for _, key in ipairs(Probe.keep) do
+		if result[key] == nil then
+			result[key] = previous[key]
 		end
 	end
 	ns.db.probe = result
@@ -680,6 +726,13 @@ function Probe:PrintSummary(result, failed)
 		(apis.wanted or 0) - #missing,
 		apis.wanted or 0,
 		#missing > 0 and table.concat(missing, ", ") or L["none"]
+	)
+	local fill = result.questLogMax or {}
+	Util.Print(
+		L["  quest log: %s quests now; limit per GetMaxNumQuestsCanAccept: %s, per MAX_QUESTLOG_QUESTS: %s"],
+		tostring(fill.quests),
+		tostring(fill.canAccept),
+		tostring(fill.legacyGlobal)
 	)
 	local templates = result.templates and result.templates.found
 	local yes, total = countTrue(templates)
