@@ -213,7 +213,7 @@
         }
       ],
       "hardcore": true,
-      "planned": "the thorough alt 5 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)"
+      "planned": "the beam route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)"
     }
   ]
 }

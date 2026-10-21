@@ -1,27 +1,20 @@
--- PLANNED: the thorough alt 5 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the beam route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
 
 ns.Chapters:Register(
-	"windshaper-druid-22-thunder-bluff",
+	"windshaper-druid-21-thousand-needles",
 	[[
-#chapter 28-29 Thunder Bluff
+#chapter 27-28 Thousand Needles
 step
-  .goto 1456,54.14,47.05
-  .turnin 97538 -- Pigments for Paints
+  .goto 1441,39.34,41.53
+  .complete 5064 -- Grimtotem Spying
 step
-  .todo "travel from Thunder Bluff to The Barrens: the travel graph has no route yet"
-  .zone 1413 >> Go to The Barrens
+  .goto 1441,45.67,50.74
+  .turnin 5064 -- Grimtotem Spying
 step
-  .goto 1413,45.1,57.68
-  .accept 1153 -- A New Ore Sample
-step
-  .todo "border The Barrens/Thousand Needles: no crossing coordinates yet (record them in game or in Borders.lua)"
-  .zone 1441 >> Go into Thousand Needles
-step
-  .goto 1441,12.41,14.01
-  .complete 1153 -- A New Ore Sample
+  .level 28 -- reach it first: kill or grind on the way
 step
   .goto 1441,37.95,26.45
   .accept 4904 -- Free at Last
@@ -38,6 +31,7 @@ step
   .accept 4770 -- Homeward Bound
 step
   .goto 1441,21.54,32.35
+  .turnin 4865 -- Serpent Wild
   .turnin 4770 -- Homeward Bound
 step
   .goto 1441,44.93,48.92
@@ -45,7 +39,5 @@ step
 step
   .todo "border The Barrens/Thousand Needles: no crossing coordinates yet (record them in game or in Borders.lua)"
   .zone 1413 >> Go into The Barrens
-step
-  .level 29 -- reach it first: kill or grind on the way
 ]]
 )
