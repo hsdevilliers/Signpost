@@ -281,6 +281,51 @@ describe("the minimap button", function()
 			assert.are.equal(6, #texts)
 			assert.truthy(texts[3] == " " and texts[4]:find("Left-click", 1, true))
 		end)
+
+		-- Where() reads the engine's guide and step: a stand-in for a guide the chapter bounds of which are not known
+		describe("where the player is", function()
+			local function where(ns, guide, step)
+				ns.Progress.Guide = function()
+					return guide
+				end
+				ns.Progress.Current = function()
+					return step, step.index
+				end
+				return ns.Launcher:Where()
+			end
+
+			it("counts in the whole guide when the chapter has no bounds", function()
+				local ns = start()
+				local guide = { name = "Guide", chapters = { { name = "Chapter" } }, steps = { {}, {}, {}, {}, {} } }
+				assert.are.equal("Chapter" .. DOT .. "step 2/5", (where(ns, guide, { id = "x", chapter = 1, index = 2 })))
+			end)
+
+			it("counts in the whole guide when the step lies outside its chapter's bounds", function()
+				local ns = start()
+				local guide =
+					{ name = "Guide", chapters = { { name = "Chapter", first = 1, last = 3 } }, steps = { {}, {}, {}, {}, {} } }
+				assert.are.equal("Chapter" .. DOT .. "step 4/5", (where(ns, guide, { id = "x", chapter = 1, index = 4 })))
+			end)
+
+			it("names the guide when the step has no chapter", function()
+				local ns = start()
+				local guide = { name = "Guide", chapters = {}, steps = { {}, {}, {} } }
+				assert.are.equal("Guide" .. DOT .. "step 3/3", (where(ns, guide, { id = "x", chapter = 9, index = 3 })))
+			end)
+
+			it("gives just the name when the step has no place", function()
+				local ns = start()
+				local guide = { name = "Guide", chapters = { { name = "Chapter" } }, steps = {} }
+				assert.are.equal("Chapter", (where(ns, guide, { id = "x", chapter = 1 })))
+			end)
+
+			it("gives no first line for a step that says nothing", function()
+				local ns = start()
+				local guide = { name = "Guide", chapters = {}, steps = { {} } }
+				local _, line = where(ns, guide, { id = "x", index = 1, directives = {} })
+				assert.is_nil(line)
+			end)
+		end)
 	end)
 end)
 
@@ -307,6 +352,12 @@ describe("the quick menu", function()
 			"button",
 			"button",
 		}, kinds)
+	end)
+
+	it("opens on the UI when it is given no owner", function()
+		local ns, client = start()
+		assert.is_true(ns.Launcher:OpenMenu())
+		assert.are.equal(G.UIParent, client.lastMenu().owner)
 	end)
 
 	it("opens the Journal", function()

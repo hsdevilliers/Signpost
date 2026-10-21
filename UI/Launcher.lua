@@ -240,8 +240,8 @@ function Launcher:FillTooltip(tooltip)
 	end
 end
 
--- The compartment's hover functions. Blizzard's Menu has no tooltip helper for an add-on entry (MenuUtil.ShowTooltipEx
--- is for its own elements), so the tooltip is set up as the compartment's own icon does it. VERIFY(beta): the anchor.
+-- The compartment's hover functions. There is no MenuUtil.ShowTooltip (Blizzard's source has ShowTooltipEx and
+-- HideTooltipEx), so the tooltip is set up as the compartment's own icon does it. VERIFY(beta): the anchor.
 function Launcher:OnCompartmentEnter(buttonFrame)
 	local tooltip = GameTooltip
 	if not (tooltip and tooltip.SetOwner and buttonFrame) then
