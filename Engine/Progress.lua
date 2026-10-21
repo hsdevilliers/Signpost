@@ -1,7 +1,8 @@
 -- ns.Progress: where the character is in its guide. Starts the step engine at PLAYER_LOGIN (guide selection,
 -- profession plan, parse), keeps the current step with auto-advance and auto-skip, the sticky set and the per-step
--- directive state, applies the player's manual moves (which win for the session), skips dungeon chapters, saves
--- progress per character and registers /signpost next|back|skip|step. PLAN §3.3; contracts in docs/ENGINE.md.
+-- directive state, applies the player's manual moves (which win for the session), skips dungeon chapters, puts a
+-- character that is new to a guide where its level and its quests say it is (ns.Placement), saves progress per
+-- character and registers /signpost next|back|skip|step|place|reset progress. PLAN §3.3; contracts in docs/ENGINE.md.
 local ADDON_NAME, ns = ...
 local L = ns.L
 
@@ -19,12 +20,18 @@ local HOLD_WINDOW = 25
 -- How far above a dungeon chapter's maximum level the player must be for the one-time offer to skip it.
 local DUNGEON_OFFER_LEVELS = 5
 local MAX_PASSES = 5
+-- A first placement waits this many seconds for the quest history (the completed-quest list the client fills a moment
+-- after login) before it goes by the level alone.
+local PLACE_WAIT = 5
+-- /signpost reset progress is typed twice, at most this many seconds apart.
+local RESET_CONFIRM = 30
 
 -- SignpostCharDB.progress[guideId]. `current`, `skipped` and `done` are the docs/ENGINE.md contract; the rest belongs
 -- to this module: sticky[stepId][key] is true while that sticky directive is active and false once it was satisfied
--- (or dismissed), states[stepId] holds the directive state of the current step and of steps with active stickies, and
--- offered[first step id of a dungeon chapter] records the one-time skip offer. A directive's key is its source line,
--- which stays the same when the guide is parsed again.
+-- (or dismissed), states[stepId] holds the directive state of the current step and of steps with active stickies,
+-- offered[first step id of a dungeon chapter] records the one-time skip offer, and placed = { step, index, reason, mode,
+-- time } says that a placement ran (see "Placement"): a record with it, or with any done or skipped step, is not new to
+-- the guide. A directive's key is its source line, which stays the same when the guide is parsed again.
 local RECORD_DEFAULTS = { skipped = {}, done = {}, sticky = {}, states = {}, offered = {} }
 
 ns.SavedVars:RegisterDefaults("char", "progress", {})
@@ -506,6 +513,10 @@ function Progress:Commit(reason)
 	self:SaveStates()
 	if self.announced ~= step then
 		self.announced = step
+		-- the undo of a placement is for the step the placement ended on
+		if self.undo and self.undo.afterId ~= step.id then
+			self.undo = nil
+		end
 		self:Echo(
 			L["Step %d/%d (%s) [%s]: %s"],
 			self.index,
@@ -579,6 +590,7 @@ end
 function Progress:OnContextChanged(what)
 	if what == "quests" then
 		self.questEvent = true
+		self:CheckPlacement()
 	end
 	self:Evaluate()
 end
@@ -593,6 +605,7 @@ function Progress:Land(index, how)
 	local step = self.guide.steps[index]
 	local record = self.record
 	self.hold = nil
+	self.undo = nil
 	self.index = index
 	local hold = how ~= "forward"
 	if hold then
@@ -630,12 +643,13 @@ function Progress:Next()
 	return true
 end
 
--- `<`: the previous step becomes current again. False at the first step.
+-- `<`: the previous step becomes current again; right after "Find my place" it takes the placement back instead (the
+-- pointer and the marks as they were). False at the first step.
 function Progress:Back()
 	if not self:CurrentStep() then
 		return false
 	end
-	if self:UndoDecline() then
+	if self:UndoPlacement() or self:UndoDecline() then
 		return true
 	end
 	self.declined = nil
@@ -743,6 +757,7 @@ function Progress:SetChapterSkipped(chapterIndex, skipped)
 		end
 	end
 	self.stickyDirty = true
+	self.undo = nil
 	if skipped and self.index >= range.first and self.index <= range.last and range.last < #steps then
 		self.declined = nil
 		self:Land(range.last + 1, "forward")
@@ -798,10 +813,309 @@ function Progress:UndoDecline()
 	return true
 end
 
+-- Placement (docs/ENGINE.md "Engine/Placement.lua") ---------------------------------------------------------------------
+-- Where in the guide the character is, from its level and the quests it has done or has in its log: ns.Placement works it
+-- out, this puts the pointer and the marks there. It runs by itself the first time a guide runs for a character with no
+-- progress in it, when the saved step is not in the guide any more, and once more when the quest history turns up late;
+-- the player runs it with the Journal's "Find my place" and /signpost place.
+
+-- fn(questID) -> boolean from a Context query; a stand-in without that query knows nothing.
+local function asker(context, name)
+	local fn = type(context) == "table" and context[name]
+	return function(questID)
+		if type(fn) ~= "function" then
+			return false
+		end
+		local ok, answer = ns.SafeCall(fn, context, questID)
+		return ok and answer and true or false
+	end
+end
+
+local function liveLevel()
+	local context = ns.Context
+	if type(context) == "table" and type(context.Level) == "function" then
+		local ok, value = ns.SafeCall(context.Level, context)
+		return ok and tonumber(value) or nil
+	end
+end
+
+-- The player's state as ns.Placement takes it: the level, and which quests are done, in the log, and ready to hand in.
+local function liveSnapshot()
+	local context = ns.Context
+	return {
+		level = liveLevel(),
+		done = asker(context, "QuestCompleted"),
+		active = asker(context, "QuestInLog"),
+		ready = asker(context, "QuestReady"),
+	}
+end
+
+-- Whether the quest history can be read: the completed-quest list has loaded and holds something, or the quest log does.
+-- An empty list is a character with nothing done or a list the client has not filled yet, so above the first levels a
+-- first placement waits a few seconds for it.
+-- VERIFY(beta): when C_QuestLog.GetAllCompletedQuestIDs is filled (docs/FOREVER-API-NOTES.md, Open probes).
+local function historyReady(level)
+	local context = ns.Context
+	if type(context) ~= "table" or type(context.QuestLog) ~= "function" then
+		return true -- a stand-in without a history: there is nothing to wait for
+	end
+	if (level or 0) <= ns.Placement.NO_EVIDENCE_LEVEL then
+		return true
+	end
+	local ok, log = ns.SafeCall(context.QuestLog, context) -- this also loads the completed-quest list
+	if ok and type(log) == "table" and next(log) ~= nil then
+		return true
+	end
+	return context.completedEmpty == false
+end
+
+-- Whether the record says the character has never been in the guide: no step done or skipped, no placement, and at most
+-- the first step as its place (what a placement that was still waiting for the quest history left behind).
+function Progress:IsFresh()
+	local record, first = self.record, self.guide.steps[1]
+	if record.placed ~= nil or next(record.done) ~= nil or next(record.skipped) ~= nil then
+		return false
+	end
+	return record.current == nil or (first ~= nil and record.current == first.id)
+end
+
+-- Puts the marks and the pointer where `result` (ns.Placement:Find) says. A step before the pointer is done when its
+-- quests are (or it holds none) and skipped when they are not; the pointer's step and every step after it are clear. A
+-- skip the player made by hand on a step with no quest of its own stays. The flags are set here and not through
+-- Progress:Skip, which would decline a profession; the stickies of a step passed are not started, those of a step
+-- skipped are dismissed. `prune` also drops marks of steps the guide does not have (ids from an older install).
+function Progress:ApplyPlacement(result, prune)
+	local record, pointer = self.record, result.index
+	if prune then
+		for _, marks in ipairs({ record.done, record.skipped }) do
+			for id in pairs(marks) do
+				if not self.positions[id] then
+					marks[id] = nil
+				end
+			end
+		end
+	end
+	for i, step in ipairs(self.guide.steps) do
+		local id, label = step.id, result.labels[i]
+		if i >= pointer then
+			record.done[id], record.skipped[id] = nil, nil
+		elseif label == "open" or (label == "neutral" and record.skipped[id]) then
+			record.skipped[id], record.done[id] = true, nil
+			if record.sticky[id] then
+				record.sticky[id] = nil
+				self.stickyDirty = true
+			end
+		else
+			record.done[id], record.skipped[id] = true, nil
+		end
+	end
+	self.index, self.hold, self.declined = pointer, nil, nil
+end
+
+-- The chat lines of a placement: where, why in numbers, how to put it right. A character with nothing to go on and no
+-- reason to expect more hears nothing.
+function Progress:Announce(result, reason)
+	local say = ns.Util.Print
+	local n, index = #self.guide.steps, result.index
+	if reason == "lost" then
+		say(L["The guide was updated and your saved place is not in it any more."])
+	elseif reason == "refine" then
+		say(L["Your quest history has loaded: placing you again."])
+	end
+	if result.mode == "none" then
+		if reason == "manual" or reason == "lost" then
+			say(
+				L["Your place: step 1. None of this guide's quests are done and you are level %d, so there is nothing to go on yet."],
+				result.level or 1
+			)
+		end
+		return
+	elseif result.mode == "end" then
+		if result.top and result.level and result.level > result.top then
+			say(
+				L["This guide ends at level %d and you are level %d: your place is its last step, %d/%d."],
+				math.floor(result.top),
+				result.level,
+				n,
+				n
+			)
+		else
+			say(L["All of this guide's quests are done: your place is its last step, %d/%d."], n, n)
+		end
+	elseif result.mode == "level" then
+		say(
+			L["Your place: step %d/%d (%s). None of this guide's quests are done yet, so this is a guess from your level (%d)."],
+			index,
+			n,
+			self:ChapterName(index),
+			result.level
+		)
+	elseif result.level then
+		say(
+			L["Your place: step %d/%d (%s). %d of this guide's %d quests are done, %d are in your quest log, and you are level %d."],
+			index,
+			n,
+			self:ChapterName(index),
+			result.done,
+			result.total,
+			result.active,
+			result.level
+		)
+	else
+		say(
+			L["Your place: step %d/%d (%s). %d of this guide's %d quests are done and %d are in your quest log."],
+			index,
+			n,
+			self:ChapterName(index),
+			result.done,
+			result.total,
+			result.active
+		)
+	end
+	local hint = L["Wrong? Click a step in the Journal, or type /signpost place to try again."]
+	if result.confidence == "low" then
+		hint =
+			L["Not sure about this one: click the step you are at in the Journal, or type /signpost place to try again."]
+	end
+	if result.skipped > 0 then
+		hint = string.format(L["%d earlier steps you have not done are marked skipped."], result.skipped) .. " " .. hint
+	end
+	say(hint)
+end
+
+-- Places the character: the pointer on the step its level and quests say, the marks before it set (ApplyPlacement), one
+-- record.placed so that it never happens by itself again, the chat lines, GUIDE_PLACED(result, reason). opts.reason is
+-- "first" (a character new to the guide), "lost" (its saved step is not in the guide), "refine" (the quest history came
+-- late) or "manual" (the player asked; the default: `<` right afterwards takes it back); opts.evaluate = false leaves
+-- the evaluation and the step change to the caller (SetGuide); opts.quiet prints nothing. Returns the result, or nil
+-- without a guide.
+function Progress:Place(opts)
+	opts = opts or {}
+	local guide, record, placement = self.guide, self.record, ns.Placement
+	if not (guide and record and placement and #guide.steps > 0) then
+		return nil
+	end
+	local reason = opts.reason or "manual"
+	local snapshot = liveSnapshot()
+	local ok, result = ns.SafeCall(placement.Find, placement, guide, snapshot)
+	if not (ok and result) then
+		return nil
+	end
+	local before, undo = self:CurrentStep(), nil
+	if reason == "manual" and before then
+		undo = {
+			stepId = before.id,
+			frontier = self.frontier,
+			done = ns.Util.CopyTable(record.done),
+			skipped = ns.Util.CopyTable(record.skipped),
+			sticky = ns.Util.CopyTable(record.sticky),
+		}
+	end
+	self.placing, self.refining, self.undo = nil, nil, nil
+	self:ApplyPlacement(result, reason == "lost")
+	local step = guide.steps[result.index]
+	record.placed = { step = step.id, index = result.index, reason = reason, mode = result.mode, time = time() }
+	-- Placed before the quest history was there: look again when it turns up, if the player has not moved on.
+	if (reason == "first" or reason == "lost") and not historyReady(snapshot.level) then
+		self.refining = { id = guide.id, step = step.id }
+	end
+	if not opts.quiet then
+		self:Announce(result, reason)
+	end
+	ns.Events:Fire("GUIDE_PLACED", result, reason)
+	if opts.evaluate ~= false then
+		self:EvaluateNow("place")
+		local now = self:CurrentStep()
+		if undo and now then
+			undo.afterId = now.id
+			self.undo = undo
+		end
+	end
+	return result
+end
+
+-- `<` right after a manual placement: the pointer, the marks and the furthest step as they were before it.
+function Progress:UndoPlacement()
+	local undo, step = self.undo, self:CurrentStep()
+	if not (undo and step and undo.afterId == step.id) then
+		return false
+	end
+	local index = self.positions[undo.stepId]
+	if not index then
+		self.undo = nil
+		return false
+	end
+	local record = self.record
+	record.done, record.skipped, record.sticky = undo.done, undo.skipped, undo.sticky
+	self.frontier = undo.frontier
+	self.stickyDirty = true
+	self:Land(index, "back")
+	return true
+end
+
+-- First use of a guide (or a lost place): place now when the quest history is there, else wait for it a few seconds.
+function Progress:BeginPlacement(reason)
+	if historyReady(liveLevel()) then
+		self:Place({ reason = reason, evaluate = false })
+		return
+	end
+	local token = { id = self.guide.id, reason = reason }
+	self.placing = token
+	C_Timer.After(PLACE_WAIT, function()
+		ns.SafeCall(Progress.OnPlaceTimer, Progress, token)
+	end)
+end
+
+-- The wait is over and the quest history has not come: go by what there is (the level).
+function Progress:OnPlaceTimer(token)
+	if self.placing == token and self.guide and self.guide.id == token.id then
+		self:Place({ reason = token.reason })
+	end
+end
+
+-- CONTEXT_CHANGED("quests"): the quest history may have arrived. A placement that was waiting for it goes ahead; one
+-- made without it is made once more, if the player has not moved on from where it put them.
+function Progress:CheckPlacement()
+	local guide, token, refining = self.guide, self.placing, self.refining
+	if not (guide and self.record) then
+		return
+	end
+	if token and token.id == guide.id then
+		if historyReady(liveLevel()) then
+			self:Place({ reason = token.reason })
+		end
+	elseif refining and refining.id == guide.id then
+		local step = self:CurrentStep()
+		if not (step and step.id == refining.step) then
+			self.refining = nil
+		elseif historyReady(liveLevel()) then
+			self:Place({ reason = "refine" })
+		end
+	end
+end
+
+-- /signpost reset progress: forgets this character's progress in the guide and places it again, as on first use.
+function Progress:Reset()
+	local guide = self.guide
+	if not guide then
+		return false
+	end
+	local char = type(ns.char) == "table" and ns.char or self.unsaved
+	if type(char) == "table" and type(char.progress) == "table" then
+		char.progress[guide.id] = nil
+	end
+	self.resetAsked = nil
+	self.guide = nil -- SetGuide then takes the guide for one that was just chosen
+	self:SetGuide(guide)
+	return true
+end
+
 -- Guide loading ---------------------------------------------------------------------------------------------------
 
 -- The index the pointer resumes at: the saved step; after a re-parse that dropped it, the next step of the previous
--- parse that is still there (else the one before it); otherwise the step after the furthest done or skipped one.
+-- parse that is still there (else the one before it); otherwise the step after the furthest done or skipped one. The
+-- second result is true when the record has progress that matches nothing in this guide (an install changed the step
+-- ids): the caller then places the character instead of taking the first step.
 function Progress:Resume(previous, previousIndex)
 	local steps, record, positions = self.guide.steps, self.record, self.positions
 	if #steps == 0 then
@@ -828,7 +1142,8 @@ function Progress:Resume(previous, previousIndex)
 			last = i
 		end
 	end
-	return math.min(last + 1, #steps)
+	local lost = last == 0 and (record.current ~= nil or next(record.done) ~= nil or next(record.skipped) ~= nil)
+	return math.min(last + 1, #steps), lost
 end
 
 -- Steps that a re-parse inserted behind the pointer (the track of a profession just learned) are never walked: their
@@ -854,6 +1169,7 @@ function Progress:SetGuide(guide)
 	self.guide, self.views, self.announced = guide, {}, nil
 	if not guide then
 		self.index, self.record, self.hold, self.declined = nil, nil, nil, nil
+		self.placing, self.refining, self.undo = nil, nil, nil
 		self:Index({ steps = {} })
 		return
 	end
@@ -871,10 +1187,18 @@ function Progress:SetGuide(guide)
 			end
 		end
 		self.hold, self.frontier, self.declined, self.chapterKey = nil, nil, nil, nil
+		self.placing, self.refining, self.undo = nil, nil, nil
 	end
-	self.index = self:Resume(previous, previousIndex)
+	local fresh = not sameGuide and self:IsFresh()
+	local lost
+	self.index, lost = self:Resume(previous, previousIndex)
 	if previous and self.index then
 		self:StartInserted(previous)
+	end
+	-- A character new to this guide, or whose saved place is not in it, starts where its level and quests say. The same
+	-- guide parsed again (a profession plan change) never does.
+	if self.index and (fresh or lost) then
+		self:BeginPlacement(lost and "lost" or "first")
 	end
 	self.stickyDirty = true
 	self:Echo(
@@ -1058,3 +1382,35 @@ ns.Slash:Register("step", function(args)
 		ns.Util.Print(L["There is no step '%s' in this guide."], args)
 	end
 end, L["show the current step, or go to step <number> or <step id>"])
+
+ns.Slash:Register("place", function()
+	if not needGuide() then
+		return
+	end
+	Progress:Place({ reason = "manual" })
+end, L["move to the step your level and your quests say you are at (the Journal's Find my place); < takes it back"])
+
+-- Typed twice, RESET_CONFIRM seconds apart at most: it throws the character's place in the guide away.
+ns.Slash:Register(
+	"reset progress",
+	function()
+		if not needGuide() then
+			return
+		end
+		local guide, now = Progress.guide, GetTime()
+		local name = tostring(guide.name or guide.id)
+		local asked = Progress.resetAsked
+		if not (asked and asked.id == guide.id and now - asked.time <= RESET_CONFIRM) then
+			Progress.resetAsked = { id = guide.id, time = now }
+			ns.Util.Print(
+				L["This forgets your progress in %s (every step marked done or skipped, and your place) and places you again from your quest history. To do it, type /signpost reset progress again within %d seconds."],
+				name,
+				RESET_CONFIRM
+			)
+			return
+		end
+		ns.Util.Print(L["Your progress in %s was cleared."], name)
+		Progress:Reset()
+	end,
+	L["forget this guide's progress for this character and place it again (type it twice to confirm; 'reset' alone is the step frame's)"]
+)

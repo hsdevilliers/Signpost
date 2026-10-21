@@ -70,7 +70,6 @@ while arg[index] do
 		find.bias = tonumber(value())
 	elseif name == "--top" then
 		options.top = tonumber(value())
-
 	else
 		io.stderr:write("unknown option " .. tostring(name) .. "\n")
 		os.exit(2)
@@ -325,7 +324,16 @@ if options.tune then
 end
 
 local results = run(find)
-print(string.format("truth: %s; seed %d; every %d. step, %d draws each; %s", options.truth, options.seed, options.stride, options.replicates, constantsText(find)))
+print(
+	string.format(
+		"truth: %s; seed %d; every %d. step, %d draws each; %s",
+		options.truth,
+		options.seed,
+		options.stride,
+		options.replicates,
+		constantsText(find)
+	)
+)
 local ids = {}
 for id in pairs(results) do
 	ids[#ids + 1] = id
@@ -339,7 +347,9 @@ for _, id in ipairs(ids) do
 		end
 	end
 	print(string.format("\n%s (%d steps, %d quests)", id, #entry.guide.steps, #entry.order))
-	print("  scenario       runs | steps: median  p90  max | quest steps: median  p90 within5 | levels: median  p90  max | >=3 levels")
+	print(
+		"  scenario       runs | steps: median  p90  max | quest steps: median  p90 within5 | levels: median  p90  max | >=3 levels"
+	)
 	for _, scenario in ipairs(scenarios) do
 		local stats = results[id][scenario.name]
 		print(
