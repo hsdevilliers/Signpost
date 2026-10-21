@@ -9,11 +9,6 @@ ns.Guides:Register({
 	levels = { 1, 30 },
 	text = [[
 #guide Skyborne Druid (HARDCORE)
-#chapter 1 Read this first
-step
-  .note HARDCORE route made from quest data (QuestieDB's Classic baseline plus its Forever layers), not yet from play. It leaves out dungeons, group quests, escorts and elite or named targets the data can show, but it cannot know every danger: heal up, keep an escape ready and skip a step that looks too hard.
-  .note Leaving Zephras Isle (VERIFY(beta): from the quest data and fan guides, nothing seen in the game): this route finishes the island story first. It ends with the finale at the Shrine of Akir (a scripted boss fight: go in healed and buffed), then The Fate of Zephras, What Comes Next and The Earthen Ring from Ayessa Dawnsinger, and you leave by airship from Valanaar's southwest dock (a wait of about 7 to 8 minutes) for Skywatcher Plateau beside Thunder Bluff. If the airship is not where this says, trust what you see.
-  .note Not in the data: where a Windshaper learns Cure Poison (14) and Aquatic Form (16), because the Tauren quest chains are not open to a Skyborne (ask your druid trainer), and how to reach Moonglade (the Cat Form quests open at level 20; this route goes there once, near level 25).
 #skipquest 235 >> alternative to quest 6382, which is routed
 #skipquest 354 >> not finished by this route: its objectives are 149 s of walking away (the route walks up to 45 s for one)
 #skipquest 358 >> not finished by this route: its objectives are 60 s of walking away (the route walks up to 45 s for one)

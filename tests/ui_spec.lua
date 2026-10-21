@@ -339,13 +339,12 @@ describe("step frame", function()
 					"Train Spell #1494",
 					"Buy Item #4540 (3/5)",
 					"Raise skinning to 75 (now 40)",
-					"Reach level 5",
 					"Craft Spell #2152 (1/3)",
 					"Go to Ratchet 63.9, 38.6",
 					"To do: pick a profession",
 				}
 				engine.info["barrens:1"] = {}
-				for i, name in ipairs({ "train", "train", "buy", "skill", "level", "craft", "goto", "todo" }) do
+				for i, name in ipairs({ "train", "train", "buy", "skill", "craft", "goto", "todo" }) do
 					engine.info["barrens:1"][i] = { name = name, directive = i, done = i % 2 == 0 }
 				end
 			end,
@@ -353,7 +352,7 @@ describe("step frame", function()
 		go(ns, engine, 4)
 		assert.are.equal(
 			"Train your class spells\nTrain Spell #1494\nBuy Item #4540 (3/5)\nRaise skinning to 75 (now 40)\n"
-				.. "Reach level 5\nCraft Spell #2152 (1/3)\nGo to Ratchet 63.9, 38.6\nTo do: pick a profession",
+				.. "Craft Spell #2152 (1/3)\nGo to Ratchet 63.9, 38.6\nTo do: pick a profession",
 			ns.StepFrame.frame.body:GetText()
 		)
 		noErrors(ns, mock)
@@ -374,16 +373,19 @@ describe("step frame", function()
 			end,
 		})
 		local step = engine.guide.steps[2]
+		assert.are.same({
+			TODO .. 'Accept "A"',
+			DONE .. 'Turn in "B"',
+			TODO .. 'Accept "C"',
+			TODO .. "Reach level 5",
+			"Up the ramp.",
+		}, ns.StepFrame.DescribeLines(step))
 		assert.are.same(
-			{ TODO .. 'Accept "A"', DONE .. 'Turn in "B"', TODO .. 'Accept "C"', "Reach level 5", "Up the ramp." },
-			ns.StepFrame.DescribeLines(step)
-		)
-		assert.are.same(
-			{ TODO .. 'Accept "A"', "Reach level 5", "Up the ramp." },
+			{ TODO .. 'Accept "A"', TODO .. "Reach level 5", "Up the ramp." },
 			ns.StepFrame.DescribeLines(step, { [101] = true })
 		)
 		assert.are.same(
-			{ DONE .. 'Turn in "B"', TODO .. 'Accept "C"', "Reach level 5", "Up the ramp." },
+			{ DONE .. 'Turn in "B"', TODO .. 'Accept "C"', TODO .. "Reach level 5", "Up the ramp." },
 			ns.StepFrame.DescribeLines(step, { [102] = true, [103] = true })
 		)
 		-- what Progress:Current() hands over (the step, then its index) is no filter
@@ -1419,14 +1421,14 @@ describe("pins", function()
 				end
 			end
 		end
-		assert.are.same({ 'Accept "A"', TODO .. 'Accept "A"', "Reach level 5" }, tooltipOf(43.3))
+		assert.are.same({ 'Accept "A"', TODO .. 'Accept "A"', TODO .. "Reach level 5" }, tooltipOf(43.3))
 		assert.are.same(
-			{ 'Accept "B"\nAccept "C"', TODO .. 'Accept "B"', DONE .. 'Accept "C"', "Reach level 5" },
+			{ 'Accept "B"\nAccept "C"', TODO .. 'Accept "B"', DONE .. 'Accept "C"', TODO .. "Reach level 5" },
 			tooltipOf(42.1)
 		)
 		-- a pin that names no quest keeps the whole step
 		assert.are.same(
-			{ "Go here", TODO .. 'Accept "A"', TODO .. 'Accept "B"', DONE .. 'Accept "C"', "Reach level 5" },
+			{ "Go here", TODO .. 'Accept "A"', TODO .. 'Accept "B"', DONE .. 'Accept "C"', TODO .. "Reach level 5" },
 			tooltipOf(40.5)
 		)
 		noErrors(ns, mock)

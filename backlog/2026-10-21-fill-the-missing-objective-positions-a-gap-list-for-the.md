@@ -35,3 +35,5 @@ The planner plans such an objective as done at the quest giver with no walking (
 
 - Wowhead is off-limits to Claude Code: the user runs the exporter, and Claude works from ids and structure-only diagnostics.
 - Related: the item about objectives with no position being planned as done at the giver (the interim charge), and the item about the recorder dropping the experience a turned-in quest paid (same recorder).
+
+Open reading (2026-10-21): the user wrote "WowEd" for the database where entities can be searched; this item reads it as Wowhead, which was not confirmed. Wowhead stays off-limits to Claude Code either way: the gap list is for the user's own exporter run.

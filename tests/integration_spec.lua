@@ -149,6 +149,33 @@ describe("Wave 1 integration", function()
 		assert.are.same({ "[ ] Accept the first quest" }, ns.StepFrame.DescribeLines(ns.Progress:Current()))
 	end)
 
+	it("gives a .level line its done mark and ticks it when the level is reached", function()
+		local ns, world, mock = start(nil, {
+			chapters = {
+				valley = [[
+#chapter 1-6 Valley
+step
+  .goto 1411,43.35,68.70
+  .level 2
+  .accept 4641 >> Accept the first quest
+step
+  .turnin 4641
+  .hub valley
+]],
+			},
+		})
+		assert.are.same(
+			{ "[ ] Reach level 2", "[ ] Accept the first quest" },
+			ns.StepFrame.DescribeLines(ns.Progress:Current())
+		)
+		world.level = 2
+		event(world, mock, "PLAYER_LEVEL_UP", 2)
+		assert.are.same(
+			{ ns.UI.MARK.done .. " Reach level 2", "[ ] Accept the first quest" },
+			ns.StepFrame.DescribeLines(ns.Progress:Current())
+		)
+	end)
+
 	it("walks the route on quest log, profession, position and level changes only", function()
 		local ns, world, mock = start()
 
