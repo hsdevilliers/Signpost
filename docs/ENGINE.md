@@ -257,7 +257,7 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
   `:QuestLogLoaded()` → true once the client has told us about the log (a `QUEST_LOG_UPDATE` arrived, or the walk of the log
   found a quest; it stays true): before that an empty log may be a log not sent yet. The turn to loaded is a change
   (`CONTEXT_CHANGED("quests")`) even when the log is empty, and `/signpost context` saves it (`questLogLoaded`).
-  VERIFY(beta): the client sends `QUEST_LOG_UPDATE` once the log is there, also for a character with an empty one;
+  VERIFY(beta): the client sends `QUEST_LOG_UPDATE` once the log is there, also for a character with an empty one.
 - `:SpellKnown(spellID)` (any of `IsPlayerSpell`, `C_SpellBook.IsSpellKnown`, `IsSpellKnown`); `:Skill(skillLineID)` →
   rank, max or nil (from `ns.Player.professions`); `:ItemCount(itemID)` (bags only); `:Level()`;
 - `:Position()` → `{ map, x, y, wx, wy, instance, taxi }` or nil (any field but `taxi` may be nil in instances and on
