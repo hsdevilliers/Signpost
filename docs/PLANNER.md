@@ -13,6 +13,7 @@ python tools/route_planner.py skyborne --preset thorough --parts 1,2,3,4,6,8 --n
 python tools/route_planner.py troll --cap 20 --friction 5 --steps 60 --decisions 20
 python tools/route_planner.py troll --quest-log 25 --chapter-steps 4
 python tools/route_planner.py skyborne --completeness 0.6 --completeness-trip 45    finish the quests picked up on the way whose work is a short walk away
+python tools/route_planner.py windshaper --require 95349    the route must do this quest and the quests it needs (the manifest's `require` does the same)
 python tools/route_planner.py troll --preset all --install    plan, compare, and make the best route that passes its checks the guide
 ```
 
@@ -121,6 +122,29 @@ beam compares its best finished routes as they would be written, and against the
   finished by a short walk or named as left out. F is a *rate relative to the route's pace*, so it is the same number on every guide and level: 0.6 finishes a quest
   that pays at least 60% of what the route makes there. It is not a promise of the best route (the table shows what it costs). The design note below says what would
   make the search itself choose the shared hunting ground.
+- **Required quests** (`--require ID[,ID...]`, repeatable, or `"require": [questID, ...]` in the guide's entry of `tools/drafts.json`; both are used and a quest
+  named twice is one; asked 2026-10-21 for the Skyborne island's exit chain, whose finale and the quest that takes the player out must end the island part of the route,
+  HARDCORE or not). A required quest is **done whatever it costs**, with the quests it needs:
+  - It is mandatory like a class quest: the route is not complete without it, and nothing makes the search give it up. The profitability filter keeps it, `tidy` leaves it in
+    the log (a route that ends with one undone is *incomplete* and says so, instead of being written without it), a full quest log never keeps it out and the wait for the
+    level it opens at goes on, `skipquests` never lists it, the report's `unfinished` list never has it, and a quest that would close it (an exclusive alternative) is never taken.
+  - **The quests it needs are required too** (`Planner._expand_required`): every quest of a group of prerequisites, the quest that has to be in the log (`parent`), and of a set
+    of alternatives (any one of `preSingle`) the one that pays best. They are routed, not only kept: requiring the Skyborne's 95349 *The Earthen Ring* makes the 30 quests of the
+    island's story chain required, from *Welcome to Shen'dar Village* on.
+  - **An error before anything is planned** (exit code 2) when one cannot be offered to the character, naming each quest and the rule: not in the data pack, another class,
+    race or faction, above the level cap, excluded by the guide's rules, a HARDCORE route's elite or boss rule, a prerequisite that cannot be routed (which one, and why), a level
+    it cannot be accepted from below the cap (a HARDCORE route takes a quest one level above it, not five), two required quests that exclude each other. The HARDCORE rules and the
+    guide's exclusions are not overridden: a guide that requires such a quest changes its rules first.
+  - **It is scheduled by two rules, not pushed.** A class quest costs `--class-push` minutes for each level it waits past the one it opens at, up to 6 levels; for 30 required
+    quests that open long before the character can take them (the island's chain opens at level 4 to 7, and its quests are level 6 to 13, so a HARDCORE character takes them from level 5 to 12) the charge is saturated and
+    hides the real time (73 hours of it on the Skyborne, and the beam fell back to the greedy route), so a required quest has no lateness charge; its work still counts in the
+    estimate of the time to go. Instead: **the zone lock**, the route does not leave a zone while a required quest has work there (one the game would offer that starts in
+    the zone, one with an open objective in it, one whose hand-in is in it; it may do anything else there first, and grinds there for a level a required quest waits for), and
+    **the exit**, a required quest that only has to be handed in, and only in another zone, is handed in next: the route leaves for it, and nothing else is an option, not even a
+    grind. Together they end the island part of the route with the exit chain: the finale, *What Comes Next*, the pick-up of *The Earthen Ring*, the ride, and its hand-in
+    in Mulgore.
+  - A required quest the game scripts (an escort or an event) is priced as the work it is (`SCRIPTED_NOTES`), as any quest, not as a class quest's five minutes.
+  - The report lists them (`required`: the level each was done at, the level it opens at, how many quests they needed) and `plan.json` has `required` and `required_needed`.
 - **A grind step says how much to grind** (user, 2026-10-21: "I'm fine if you want to have certain points in the guide where you simply tell the player to
   grind a certain amount of experience"). When nothing can be done until a level opens something, the route grinds for it (the time is charged, nothing
   else). A grind is not a step of its own: it is two lines at the end of the step it follows, where the character stands when it begins (one that comes first
@@ -155,7 +179,7 @@ beam compares its best finished routes as they would be written, and against the
 baseline greedy route against this one, for a search of several grains of progress `grains`: each grain's best route as it would be
 written, the work it took and how far apart they are; `tidied`: the quests taken out; and, with a completeness setting, `completed`: the quests finished instead) - `THE ROUTE AS A GRAPH` (zones with the time spent, the
 travel between them, one row per leg) - `TIME AND EXPERIENCE` (where the time goes, the time at each level, and `grinding`: every grind
-step with its amount and the share of the route it makes) - `THE QUESTS` (done, the most quests held at once, `unfinished`: the quests the search picked up and the route does not hold, with the reason, left out as
+step with its amount and the share of the route it makes) - `THE QUESTS` (done, the most quests held at once, `unfinished`: the quests the search picked up and the route does not hold, with the reason, `required`: the quests the guide requires and the level each was done at, left out as
 slow, the class quests with the level each is done at against the level it opens at) - `THE DECISIONS` (each change of
 zone and the best route held in other zones at that step) - `CHECKED BY THE SAME SIMULATOR AND LINT` (the route written as guide
 steps with the travel steps added, walked by `guide_sim` and `guide_lint`: availability errors, the most quests the written route
@@ -218,6 +242,11 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   picked up, with no walk (backlog `objectives-with-no-position-in-the-data-are-planned-as-done`): such a quest looks free to finish, and the report
   counts them (`completed`, `unfinished`, `completed_unplaced` and `unplaced` in `plan.json`). It does not look at the quests of one hunting ground together
   (design note below).
+- **Required quests are scheduled by rules, not by cost**: the zone lock and the exit say *when in the route*, not *how soon*. The route does a required chain before it leaves
+  the zone, and it does it last there (after the side quests that pay as well as the mainland), so the Skyborne leaves the island at level 14 to 16 where players leave at 12 to
+  14 ("Measurements"); nothing in the model asks for an early exit. A required quest in a zone the route never goes to is done where the search finds it cheapest (often at
+  the end of the route); the alternative of a set of prerequisites that stands for the others is the one that pays best, not the author's pick; the lock keys on the zone of a
+  hub, so a zone that is split in two by the map data is two zones; and a quest that closes a required quest only through a prerequisite is not looked at.
 - **The quest log limit counts what the search holds**, which is more than the written route holds ("Measurements"): 40 is Forever's capacity (confirmed by
   the user in the game, 2026-10-21; Classic's is 25).
 - **The escort and event times are assumptions** (`escort_seconds`, `event_seconds`): Classic's escorts take about 5 to 12 minutes with their
@@ -329,6 +358,35 @@ What the table says:
   has such an objective.
 - The raw search does not change with F or T (only the tidy that follows does, and the ranking of the finalists as written), so the rows of a guide are comparable with one
   another; a different guide, width or data pack is not (the search is rough: "What it cannot see").
+
+**Required quests: the Skyborne island's exit chain** (`--require 95349`; HARDCORE; data pack of 2026-10-21, commit ca4420f; `--preset beam`, and `thorough --runs 10`; each run
+is deterministic). *Play* time is what to read: the totals carry the class-quest charge, which moves by hours with the order of the class quests and is not comparable. The island is
+the first leg of the route (Zephras Isle); 95349 *The Earthen Ring* is the quest that takes the player out, accepted from Ayessa Dawnsinger on the island and handed in to Alaana
+Stormwalker in Mulgore, the end of a chain of 30 quests.
+
+| run | play, planner | play, full simulation | leaves the island | quests done on it | planner total |
+| --- | --- | --- | --- | --- | --- |
+| beam, nothing required | 25h45 | 25h30 | level 11 after 3h03 | 37 | 31h09 |
+| beam, `--require 95349` | 27h11 (+5.6%) | 26h51 (+5.3%) | level 16 after 6h31 | 83 | 35h37 |
+| thorough, nothing required | 24h48 | 24h32 | level 12 after 3h00 | 38 | 28h58 |
+| thorough, `--require 95349` | 24h32 (-1.1%) | 24h55 (+1.6%) | level 15 after 5h35 | 72 | 36h31 |
+
+- **The island part ends with the exit chain, in both routes** (checked in the written chapters): the finale (*Prepare for Battle* to *Confront Lorthuna*), *The Fate of Zephras*,
+  *What Comes Next*, the pick-up of *The Earthen Ring*, the ride to Mulgore (`.zone`), and its hand-in there. The beam does the finale at level 15, 5h56 into the route, and the pick-up
+  of 95349 at 6h29; the next leg is Mulgore. Both routes pass the availability check and the lint with no error and no warning.
+- **Grinding at level gates: none on the island.** The beam grinds 3 minutes there (430 experience, level 14 to 15); the thorough route none. The other grinds come later (level 17 and up in the beam, 20 and up in the thorough route).
+- **The level gate on 95349** is the HARDCORE rule, not a grind: the quest is level 13 and a HARDCORE character takes a quest one level above it, so it opens at level 12 (the finale
+  quests, level 12, at level 11). Its required level, 7, is no gate.
+- **Why the island is left at 14 to 16 and not at 12 to 14.** In the model the island pays 5.8 to 6.9 experience a second at levels 11 to 14, the mainland route without the requirement
+  3.2 to 4.1 at levels 11 to 13 (6.6 at 14): the island's quests are dense and their experience is a guess (the pack has none for them: 10% of the quest level's bar, about 1,000 for
+  a level 12 quest). The guess decides the exit: with half of it (`--param quest_xp_fraction_of_level=0.05`) the beam leaves at level 14 (6h15, 76 quests), with 0.075 at 15, with 0.1 at
+  16. And the exit chain comes *last* on the island (the zone lock), after the side quests; at levels 15 and 16 the island pays 2.5 and 4.2 against the mainland's 4.7 and 5.7, so
+  the two levels after 14 are the rough beam's, not the model's preference. Nothing in the model asks for an early exit (backlog
+  `the-skyborne-island-is-left-at-level-14-to-16-when-its-exit`).
+- **Earlier versions of the option, for the record** (beam): with only 95349 mandatory like a class quest the character left the island at level 13 (4h24) and came back at level 29
+  to do the chain (1h47), handing 95349 in at level 30 (play 33h58). With the whole chain mandatory and pushed like a class chain (30 quests) the class-quest charge was 73 hours, the
+  beam finished no route better than the greedy one, and that route went back to the island at the end (total 106h54, play 31h57). An earlier measurement of 28h52 to 41h13 with the island
+  until level 15 was of this second kind: the total is the charge. The lock and the exit replace the push.
 
 **The hub radius and the walk inside a hub** (`--hub-radius`, `--walk-by-map`; the beam with nothing else changed, the full checks). The radius was looked at as a possible cause of
 the missing 92462 because the user's first idea was a bigger "area" (he called it a shot in the dark), and it is not the cause: a separate `thorough` run of the Skyborne at 300
