@@ -48,6 +48,7 @@ local function newEngine(guide)
 		sticky = {},
 		lines = {},
 		info = {}, -- the second result of Conditions:Describe: one { name, done, ... } per line
+		optional = {}, -- [stepId] = what Conditions:OptionalOnly says of an optional-only step
 		targets = {},
 		items = {},
 		transport = {},
@@ -84,6 +85,9 @@ local function stubEngine(ns, engine)
 	ns.Conditions = {
 		Describe = function(_, step)
 			return engine.lines[step.id] or {}, engine.info[step.id]
+		end,
+		OptionalOnly = function(_, step)
+			return engine.optional[step.id]
 		end,
 		Targets = function(_, step, _, states)
 			engine.statesSeen = engine.statesSeen or {}
@@ -273,20 +277,22 @@ describe("step frame", function()
 		noErrors(ns, mock)
 	end)
 
-	it("starts a quest line with its done mark and leaves every other line alone", function()
+	it("starts every quest line (accept, complete, turn in) with its done mark and no other line", function()
 		local ns, mock, _, engine = load({
 			setup = function(engine)
 				engine.lines["valley:2"] = {
 					'Complete "Cutting Teeth"',
 					'Complete "Sarkoth"',
 					'Accept "Sting of the Scorpid"',
+					'Turn in "Lazy Peons"',
 					"Up the ramp.",
 				}
 				engine.info["valley:2"] = {
 					{ name = "complete", directive = 1, done = true },
 					{ name = "complete", directive = 2, done = false },
-					{ name = "accept", directive = 3, done = false },
-					{ name = "note", directive = 4 },
+					{ name = "accept", directive = 3, done = true },
+					{ name = "turnin", directive = 4, done = false },
+					{ name = "note", directive = 5 },
 				}
 			end,
 		})
@@ -296,21 +302,89 @@ describe("step frame", function()
 			DONE
 				.. 'Complete "Cutting Teeth"\n'
 				.. TODO
-				.. 'Complete "Sarkoth"\nAccept "Sting of the Scorpid"\nUp the ramp.',
+				.. 'Complete "Sarkoth"\n'
+				.. DONE
+				.. 'Accept "Sting of the Scorpid"\n'
+				.. TODO
+				.. 'Turn in "Lazy Peons"\nUp the ramp.',
 			frame.body:GetText()
 		)
 		-- the marks follow the quest log
 		engine.info["valley:2"][2].done = true
+		engine.info["valley:2"][4].done = true
 		ns.Events:Fire("CONTEXT_CHANGED", "quests")
 		mock.runTimers()
 		assert.are.equal(
 			DONE
 				.. 'Complete "Cutting Teeth"\n'
 				.. DONE
-				.. 'Complete "Sarkoth"\nAccept "Sting of the Scorpid"\nUp the ramp.',
+				.. 'Complete "Sarkoth"\n'
+				.. DONE
+				.. 'Accept "Sting of the Scorpid"\n'
+				.. DONE
+				.. 'Turn in "Lazy Peons"\nUp the ramp.',
 			frame.body:GetText()
 		)
 		noErrors(ns, mock)
+	end)
+
+	it("leaves the lines of a step that is not about quests as they are, though Describe says they are done", function()
+		local ns, mock, _, engine = load({
+			setup = function(engine)
+				engine.lines["barrens:1"] = {
+					"Train your class spells",
+					"Train Spell #1494",
+					"Buy Item #4540 (3/5)",
+					"Raise skinning to 75 (now 40)",
+					"Reach level 5",
+					"Craft Spell #2152 (1/3)",
+					"Go to Ratchet 63.9, 38.6",
+					"To do: pick a profession",
+				}
+				engine.info["barrens:1"] = {}
+				for i, name in ipairs({ "train", "train", "buy", "skill", "level", "craft", "goto", "todo" }) do
+					engine.info["barrens:1"][i] = { name = name, directive = i, done = i % 2 == 0 }
+				end
+			end,
+		})
+		go(ns, engine, 4)
+		assert.are.equal(
+			"Train your class spells\nTrain Spell #1494\nBuy Item #4540 (3/5)\nRaise skinning to 75 (now 40)\n"
+				.. "Reach level 5\nCraft Spell #2152 (1/3)\nGo to Ratchet 63.9, 38.6\nTo do: pick a profession",
+			ns.StepFrame.frame.body:GetText()
+		)
+		noErrors(ns, mock)
+	end)
+
+	it("lists only the lines of the quests it is asked for, for a pin's tooltip: no quest, every line", function()
+		local ns, _, _, engine = load({
+			setup = function(engine)
+				engine.lines["valley:2"] =
+					{ 'Accept "A"', 'Turn in "B"', 'Accept "C"', "Reach level 5", "Up the ramp." }
+				engine.info["valley:2"] = {
+					{ name = "accept", directive = 1, quest = 101, done = false },
+					{ name = "turnin", directive = 2, quest = 102, done = true },
+					{ name = "accept", directive = 3, quest = 103, done = false },
+					{ name = "level", directive = 4, done = false },
+					{ name = "note", directive = 5 },
+				}
+			end,
+		})
+		local step = engine.guide.steps[2]
+		assert.are.same(
+			{ TODO .. 'Accept "A"', DONE .. 'Turn in "B"', TODO .. 'Accept "C"', "Reach level 5", "Up the ramp." },
+			ns.StepFrame.DescribeLines(step)
+		)
+		assert.are.same(
+			{ TODO .. 'Accept "A"', "Reach level 5", "Up the ramp." },
+			ns.StepFrame.DescribeLines(step, { [101] = true })
+		)
+		assert.are.same(
+			{ DONE .. 'Turn in "B"', TODO .. 'Accept "C"', "Reach level 5", "Up the ramp." },
+			ns.StepFrame.DescribeLines(step, { [102] = true, [103] = true })
+		)
+		-- what Progress:Current() hands over (the step, then its index) is no filter
+		assert.are.equal(5, #ns.StepFrame.DescribeLines(step, 2))
 	end)
 
 	it("lists all the quests of a step: five read like one, each with its mark and no counters", function()
@@ -341,6 +415,169 @@ describe("step frame", function()
 		)
 		assert.is_true(frame.body:GetMaxLines() >= #lines)
 		noErrors(ns, mock)
+	end)
+
+	it("keeps the ten-line limit and its layout with the marks on a pick-up of ten quests", function()
+		local lines, marked, plain = {}, {}, {}
+		for i = 1, 10 do
+			lines[i] = string.format('Accept "Quest %d"', i)
+			marked[i] = { name = "accept", directive = i, done = i <= 4 }
+			plain[i] = { name = "note", directive = i }
+		end
+		local ns, mock, _, engine = load({
+			setup = function(engine)
+				engine.lines["valley:1"], engine.info["valley:1"] = lines, plain
+			end,
+		})
+		local frame = ns.StepFrame.frame
+		local plainHeight = frame:GetHeight()
+		assert.are.equal(10, frame.body:GetNumLines())
+		engine.info["valley:1"] = marked
+		go(ns, engine, 1)
+		-- a mark takes room along the line, never a line of its own: ten lines, the same height, none cut off
+		assert.are.equal(10, frame.body:GetNumLines())
+		assert.are.equal(plainHeight, frame:GetHeight())
+		assert.are.equal(10, frame.body:GetMaxLines())
+		local text = frame.body:GetText()
+		assert.are.equal(4, select(2, text:gsub("%[x%]", "")))
+		assert.are.equal(6, select(2, text:gsub("%[ %]", "")))
+		noErrors(ns, mock)
+	end)
+
+	describe("the group quests coming up", function()
+		local OPTIONAL = "|cffffd100Optional:|r "
+
+		-- the group quest (a quest's id) of the optional-only steps of the test guide, as Conditions:OptionalOnly says
+		local function group(engine, stepId, ...)
+			engine.optional[stepId] = { quests = { ... }, available = { ... } }
+		end
+
+		it("names the quest of an optional-only step among the next three, as a small line of its own", function()
+			local ns, mock = load({
+				setup = function(engine)
+					engine.lines["valley:1"] = { 'Accept "Cutting Teeth"' }
+					group(engine, "valley:3", 4641)
+				end,
+			})
+			local frame = ns.StepFrame.frame
+			assert.are.equal(OPTIONAL .. "Quest #4641 (group quest)", frame.optional:GetText())
+			assert.is_true(frame.optional:IsShown())
+			assert.are.equal("GameFontHighlightSmall", state(frame.optional).template)
+			-- not one of the body's lines
+			assert.are.equal('Accept "Cutting Teeth"', frame.body:GetText())
+			noErrors(ns, mock)
+		end)
+
+		local function shown(quests)
+			local out = {}
+			for i, questID in ipairs(quests) do
+				out[i] = string.format("%sQuest #%d (group quest)", OPTIONAL, questID)
+			end
+			return table.concat(out, "\n")
+		end
+
+		it("looks at the next three steps only: the fourth step ahead is not yet offered", function()
+			local ns, _, _, engine = load({
+				setup = function(engine)
+					group(engine, "barrens:2", 3) -- the fifth of five steps
+				end,
+			})
+			local frame = ns.StepFrame.frame
+			assert.are.equal("", frame.optional:GetText()) -- from the first step it is four steps ahead
+			go(ns, engine, 2)
+			assert.are.equal(shown({ 3 }), frame.optional:GetText()) -- from the second, three ahead
+			go(ns, engine, 4)
+			assert.are.equal(shown({ 3 }), frame.optional:GetText()) -- and one ahead
+		end)
+
+		it("never offers the quest of the current step or of a step the route has passed", function()
+			local ns, _, _, engine = load({
+				setup = function(engine)
+					group(engine, "valley:2", 1) -- the second of five steps
+					group(engine, "barrens:1", 2) -- the fourth
+				end,
+			})
+			local frame = ns.StepFrame.frame
+			assert.are.equal(shown({ 1, 2 }), frame.optional:GetText()) -- from the first step
+			go(ns, engine, 2) -- the second step's own quest is its body's business
+			assert.are.equal(shown({ 2 }), frame.optional:GetText())
+			go(ns, engine, 3) -- the second step is behind now
+			assert.are.equal(shown({ 2 }), frame.optional:GetText())
+			go(ns, engine, 4)
+			assert.are.equal("", frame.optional:GetText())
+			go(ns, engine, 5) -- the last step: nothing ahead
+			assert.are.equal("", frame.optional:GetText())
+		end)
+
+		it("shows two lines at most, each quest once", function()
+			local ns, _, _, engine = load({
+				setup = function(engine)
+					group(engine, "valley:2", 7)
+					group(engine, "valley:3", 7, 8) -- the 7 again: its other step, same quest
+					group(engine, "barrens:1", 9) -- a third quest: no room
+				end,
+			})
+			local frame = ns.StepFrame.frame
+			assert.are.equal(shown({ 7, 8 }), frame.optional:GetText())
+			assert.are.equal(2, frame.optional:GetMaxLines())
+			engine.optional["valley:3"], engine.optional["barrens:1"] = nil, nil
+			go(ns, engine, 1)
+			assert.are.equal(shown({ 7 }), frame.optional:GetText())
+		end)
+
+		it("goes when the engine no longer offers the quest: it is in the quest log, or done", function()
+			local ns, mock, _, engine = load({
+				setup = function(engine)
+					group(engine, "valley:2", 4641)
+				end,
+			})
+			local frame = ns.StepFrame.frame
+			assert.are.equal(OPTIONAL .. "Quest #4641 (group quest)", frame.optional:GetText())
+			engine.optional["valley:2"] = { quests = { 4641 }, available = {}, taken = true } -- accepted
+			ns.Events:Fire("CONTEXT_CHANGED", "quests")
+			mock.runTimers()
+			assert.are.equal("", frame.optional:GetText())
+			assert.is_false(frame.optional:IsShown())
+			engine.optional["valley:2"] = nil -- not an optional-only step any more
+			ns.Events:Fire("CONTEXT_CHANGED", "quests")
+			mock.runTimers()
+			assert.are.equal("", frame.optional:GetText())
+			noErrors(ns, mock)
+		end)
+
+		it("takes room below the body and the ongoing lines, and none of the body's ten lines", function()
+			local lines, info = {}, {}
+			for i = 1, 10 do
+				lines[i] = string.format('Accept "Quest %d"', i)
+				info[i] = { name = "accept", directive = i, done = false }
+			end
+			local ns, _, _, engine = load({
+				setup = function(engine)
+					engine.lines["valley:1"], engine.info["valley:1"] = lines, info
+					engine.guide.steps[1].sticky = { { name = "level", text = ">> Reach level 5" } }
+				end,
+			})
+			local frame = ns.StepFrame.frame
+			local bare = frame:GetHeight()
+			assert.are.equal(10, frame.body:GetNumLines())
+			group(engine, "valley:2", 5, 6)
+			go(ns, engine, 1)
+			assert.are.equal(10, frame.body:GetNumLines()) -- all ten, with the group quests beside them
+			assert.are.equal(2, frame.optional:GetNumLines())
+			-- the gap and the two lines (14 pixels each in the mock)
+			assert.are.equal(bare + 4 + 2 * 14, frame:GetHeight())
+			local _, _, _, _, ongoingY = frame.sticky:GetPoint(1)
+			local _, _, _, _, optionalY = frame.optional:GetPoint(1)
+			assert.is_true(optionalY < ongoingY) -- further down the frame
+		end)
+
+		it("shows nothing when the engine cannot say", function()
+			local ns, mock, _, engine = load()
+			ns.Conditions.OptionalOnly = nil
+			go(ns, engine, 2)
+			assert.are.equal("", ns.StepFrame.frame.optional:GetText())
+			noErrors(ns, mock)
+		end)
 	end)
 
 	it("says where the player is sailing to", function()
@@ -1072,6 +1309,62 @@ describe("pins", function()
 		assert.are.equal("50 yards", tooltip.lines[3])
 		pin:GetScript("OnLeave")(pin)
 		assert.is_false(tooltip:IsShown())
+		noErrors(ns, mock)
+	end)
+
+	it("lists under a pin the lines of the quests it names, not those of the step's other pins", function()
+		local ns, mock, _, engine = load({
+			setup = function(engine)
+				-- a joined pick-up: two NPCs, each pin with its own quests (Engine/Conditions.lua Targets)
+				engine.targets["valley:1"] = {
+					{
+						kind = "accept",
+						map = 1411,
+						x = 43.3,
+						y = 68.5,
+						label = 'Accept "A"',
+						questID = 101,
+						quests = { 101 },
+					},
+					{
+						kind = "accept",
+						map = 1411,
+						x = 42.1,
+						y = 68.3,
+						label = 'Accept "B"\nAccept "C"',
+						questID = 102,
+						quests = { 102, 103 },
+					},
+					{ kind = "goto", map = 1411, x = 40.5, y = 68 }, -- a pin that names no quest
+				}
+				engine.lines["valley:1"] = { 'Accept "A"', 'Accept "B"', 'Accept "C"', "Reach level 5" }
+				engine.info["valley:1"] = {
+					{ name = "accept", directive = 1, quest = 101, done = false },
+					{ name = "accept", directive = 2, quest = 102, done = false },
+					{ name = "accept", directive = 3, quest = 103, done = true },
+					{ name = "level", directive = 4, done = false },
+				}
+			end,
+		})
+		go(ns, engine, 1)
+		local function tooltipOf(x)
+			for _, item in ipairs(pinsOf(ns, "world")) do
+				if item.entry.target.x == x then
+					item.pin:GetScript("OnEnter")(item.pin)
+					return G.GameTooltip.lines
+				end
+			end
+		end
+		assert.are.same({ 'Accept "A"', TODO .. 'Accept "A"', "Reach level 5" }, tooltipOf(43.3))
+		assert.are.same(
+			{ 'Accept "B"\nAccept "C"', TODO .. 'Accept "B"', DONE .. 'Accept "C"', "Reach level 5" },
+			tooltipOf(42.1)
+		)
+		-- a pin that names no quest keeps the whole step
+		assert.are.same(
+			{ "Go here", TODO .. 'Accept "A"', TODO .. 'Accept "B"', DONE .. 'Accept "C"', "Reach level 5" },
+			tooltipOf(40.5)
+		)
 		noErrors(ns, mock)
 	end)
 

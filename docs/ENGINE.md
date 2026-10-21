@@ -184,7 +184,8 @@ else the client's `isPrimaryProfession`, else the slot.
     being called again on the same state, and a state restored from SavedVariables must keep working without it
     (Progress does not repeat it after a reload);
   - `kind` — `"quest"`, `"travel"`, `"profession"`, `"misc"` (icon hint; Progress reads `"quest"` for dungeon chapters);
-  - `pin` — the target kind the step's first `.goto` pin takes when the directive has no position of its own. Any kind but
+  - `pin` — the target kind the pin of the `.goto` before the directive takes when it has no position of its own (the first
+    `.goto` when none stands before it; Conditions `:Targets`). Any kind but
     `"objective"`, like `kind = "travel"`, makes the directive a *place directive* (Conditions "Step kinds");
   - `progress(args, context, state)` → extra lines under the directive's line (`.train`'s class quest line; `.complete` has
     none: the quest log shows the progress of a quest's objectives);
@@ -205,22 +206,33 @@ else the client's `isPrimaryProfession`, else the slot.
 
 - `:IsComplete(step, context, states)` → `complete, detail`: `detail[i]` is a boolean per completable
   `step.directives[i]`; `detail.manual = true` when only the player's `>` can complete it. A step with nothing but
-  sticky directives is complete at once.
+  sticky directives is complete at once. Directives about an `.optional` quest count only when nothing else does, and
+  then only those of the quests in the quest log: an **optional-only step** whose quests are none of them in the log is
+  complete at once (a group quest the player did not take never holds the route up; `detail[i]` stays false for its
+  directives), while a quest the player took decides it like any other (GUIDE-FORMAT "Optional-only steps").
+- `:OptionalOnly(step, context, states)` → `nil`, or for an optional-only step (its completable directives all belong
+  to `.optional` quests; a `.goto`, `.todo` or `.note` beside them do not count) `{ quests = { questID, ... } (each once,
+  in directive order), available = the quests neither in the quest log nor done, taken = one of them is in the log,
+  fulfilled = every one of its optional directives is satisfied }`. The step card, the Journal and `:IsComplete` read it.
 - `:Targets(step, context, states)` → targets of the step's directives (sticky ones marked `sticky = true`), without
   those of satisfied directives and without the **`.goto`s that have nothing left to ask**: a pick-up or hand-in step
   lists each NPC's `.goto` before that NPC's directives, so once every completable directive after a `.goto` (up to the
   next `.goto`) is satisfied, that place's pin goes (a marker shows where to go next, never where the player has been). A
   `.goto` with no such directive after it (a waypoint, a lone `.goto`, one beside notes) keeps its pin until the step is
-  done; sticky directives belong to no `.goto`. An NPC/object pin within a `.goto`'s radius merges into it, same-NPC pins
-  merge, a directive with a `pin` kind and no position marks the first `.goto` pin. A **doing step** has none: its
-  `.goto` and `.complete` are not asked for pins (a sticky place directive keeps its own).
+  done; sticky directives belong to no `.goto`. A directive with a `pin` kind and no position (no pack) marks **the
+  `.goto` before it** (the first `.goto` when none does), so a joined step (each NPC's `.goto` followed by its
+  directives) has one pin and one label for each NPC, naming that NPC's quests (a finished `.goto` has no pin: a claim of
+  a directive after it marks the first `.goto` pin left). An NPC/object pin within a `.goto`'s radius merges into it,
+  same-NPC pins merge. A **doing step** has none: its `.goto` and `.complete` are not asked for pins (a sticky place
+  directive keeps its own).
 - `:IsDoingStep(step)` → boolean: the step has a `.complete` and no place directive (any directive but `.goto` and
   `.complete` that is a travel directive, `def.kind == "travel"`, or whose def has a `pin` other than `"objective"`; only
   the step's own directives count, not its sticky ones). GUIDE-FORMAT "Step kinds" has the rule and the directives.
 - `:Describe(step, context, states)` → `lines, info`: the step's own lines (each followed by its progress lines), then
-  the sticky ones; `info[i] = { directive = index, name = the directive's name, sticky = true|nil, progress = true|nil,
-  done = bool }`. A `.complete` line is the quest (`Complete "<quest>"`) with no objective lines; `done` is whether the
-  quest is complete, for the step frame's done mark.
+  the sticky ones; `info[i] = { directive = index, name = the directive's name, quest = the directive's quest or nil,
+  sticky = true|nil, progress = true|nil, done = bool }`. A `.complete` line is the quest (`Complete "<quest>"`) with no
+  objective lines; `done` is whether the directive is satisfied (a quest accepted, complete, handed in), for the step
+  frame's done mark on `.accept`, `.complete` and `.turnin` lines; `quest` lets a pin's tooltip pick the lines of its quests.
 - `:StickyComplete(step, context, states)` → done, detail; `:Start(step, context, states)` → states (every `onStart`);
   `:Kind(step)` → icon-hint kind.
 - `states` is `ns.Progress:State(step.id)`: `states[i]` for `step.directives[i]`, `states.sticky[j]` for `step.sticky[j]`.
@@ -409,9 +421,12 @@ route touches.
 - React to `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED` (at once), `CONTEXT_CHANGED`, `TRANSPORT_STATE` (coalesced,
   0.2 s); read `ns.Progress:Current()`/`:Sticky()`/`:ActiveSticky()`/`:State()`, `ns.Conditions:Describe`/`:Targets`
   and `ns.Travel:TransportState`.
-- The step frame's body is Describe's non-sticky lines, up to ten (a step lists all of its quests); a `.complete` line
-  starts with its done mark (`ns.UI.MARK`: `[x]` done, `[ ]` not yet, the Journal's own marks), never with objective
-  counters; every active sticky directive (the current step's too) is an "Ongoing:" line; an in-transit line while
+- The step frame's body is Describe's non-sticky lines, up to ten (a step lists all of its quests); an `.accept`,
+  `.complete` or `.turnin` line starts with its done mark (`ns.UI.MARK`: `[x]` done, `[ ]` not yet, the Journal's own
+  marks), never with objective counters, and no other line has one; every active sticky directive (the current step's
+  too) is an "Ongoing:" line; below those, up to two "Optional: <quest> (group quest)" lines name the group quests
+  coming up (`StepFrame:OptionalLines(step)`: the quests of `ns.Conditions:OptionalOnly(...).available` of the next three
+  steps of the route, each once; a font string of its own, not counted in the ten body lines); an in-transit line while
   boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out of combat) uses the step's `.use` item
   (`args.itemID`).
 - Settings via `RegisterDefaults("account", "stepFrame", { shown, locked, scale, alpha, hideInCombat, hideWhenDead,
@@ -425,12 +440,14 @@ route touches.
   `reset` keeps the direction. The item button sits beside the card's top-left corner, so it is placed again after every layout.
 - `/signpost show|hide|lock [on|off]|grow [up|down]|reset|scale <n>|alpha <n>`. Pins through HereBeDragons-Pins-2.0 (minimap + world
   map, waypoint lines on zone maps); atlases per FOREVER-API-NOTES (there is no `Vendor` atlas).
-- APIs: `StepFrame:Render()`, `DescribeLines(step)`, `DescribeSticky(step)`, `DescribeActiveSticky(step)`,
-  `SetShown/SetLocked/SetGrowUp/SetScale/SetAlpha/Reset`; `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`,
-  `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`, `Collect()`, `IconFor(kind, override)`. Phase 4 hooks,
-  no-ops until the journal exists: right-click → `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`,
-  `ns.Journal:IsShown()` for `hideWithJournal`. A step with no targets (a doing step) draws nothing, and the pins and edge
-  arrows of the step before are cleared.
+- APIs: `StepFrame:Render()`, `DescribeLines(step[, quests])` (`quests = { [questID] = true }` leaves out the lines about
+  other quests: a pin's tooltip lists the lines of the quests the pin names), `DescribeSticky(step)`,
+  `DescribeActiveSticky(step)`, `OptionalLines(step)`, `SetShown/SetLocked/SetGrowUp/SetScale/SetAlpha/Reset`;
+  `Pins:Refresh(force)`, `RequestRefresh()`, `Clear()`, `SetEnabled("minimap"|"worldMap", on)`, `Targets(step, states)`,
+  `Collect()`, `IconFor(kind, override)`. Phase 4 hooks, no-ops until the journal exists: right-click →
+  `ns.Journal:Toggle(step)`, world-pin click → `ns.Journal:ShowStep(step)`, `ns.Journal:IsShown()` for `hideWithJournal`.
+  A step with no targets (a doing step) draws nothing, and the pins and edge arrows of the step before are cleared. A
+  joined step has one pin for each of its `.goto` lines that still has something to ask (`Conditions:Targets`).
 
 ### UI/Journal.lua — `ns.Journal`
 
@@ -438,7 +455,8 @@ The big window (PLAN §3.2), built on `UI:CreateDialogFrame` (UI/Widgets.lua: `B
 `UISpecialFrames`; `UIPanelWindows` is not used, to keep the panel manager untainted). A guide dropdown (`WowStyle1DropdownTemplate`, only the
 guides `ns.Guides:Compatible` accepts, choosing one calls `ns.Guides:Select`), a `SearchBoxTemplate`, three `PanelTabButtonTemplate` tabs:
 **Route** (a chapter list with done/total counts and the current chapter marked, the selected chapter's steps with `[x]` done, `[-]` skipped,
-`>` current; a click goes to the step through `Progress:JumpToId`, more than 20 steps away needs Shift; a dungeon chapter has a "Skip this
+`>` current; a step made only of group quests (`ns.Conditions:OptionalOnly`) is tagged "(group quest)" and reads `[-]` when the route passed it
+without its quest done; a click goes to the step through `Progress:JumpToId`, more than 20 steps away needs Shift; a dungeon chapter has a "Skip this
 dungeon" box (`Progress:SetChapterSkipped`); a search replaces the step list with matching steps of the whole guide; a "Current step" button),
 **the class tab** (the class module's `classQuests` for the character's race, each with its status from `Context:QuestTurnedIn/QuestInLog`; a
 `pending` chain reads "new in Forever: quest IDs not known yet"; hidden when the class has no chains) and **Settings** (the step card and pins

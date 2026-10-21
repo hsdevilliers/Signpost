@@ -3,10 +3,11 @@
 --
 -- A def (docs/ENGINE.md) is { parse, isSatisfied, targets, describe, onStart, kind, completable }. describe also gets
 -- the directive's state as a third argument. Optional fields Engine/Conditions.lua reads:
---   pin           the target kind of the directive's pins; when the data pack gives it none, the step's first .goto
---                 pin takes this kind instead (a quest giver is pinned at the step's .goto without the pack). Any kind
---                 but "objective" (and kind = "travel") makes the directive a place directive: a step that has one is
---                 not a doing step and keeps its markers (Engine/Conditions.lua "Step kinds");
+--   pin           the target kind of the directive's pins; when the data pack gives it none, the pin of the .goto
+--                 before the directive in the step (the first one when none does) takes this kind instead (a quest
+--                 giver is pinned at its .goto without the pack). Any kind but "objective" (and kind = "travel")
+--                 makes the directive a place directive: a step that has one is not a doing step and keeps its
+--                 markers (Engine/Conditions.lua "Step kinds");
 --   progress      fn(args, context, state) -> { line, ... }, shown under the directive's line (.train's class quest
 --                 line). .complete has none: the quest log shows the progress of its objectives;
 --   locationOnly  the line is shown only when the step has no other line (a bare .goto reads "Go to ...");

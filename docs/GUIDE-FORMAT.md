@@ -91,18 +91,18 @@ no profession plan, `.prof` sees an empty plan.
 
 Arguments are comma-separated unless noted; `<map>` is a uiMapID; `x`/`y` are percent (0–100) of that map; a
 `<key>` is a profession key (`skinning`, `firstaid`, ...). A step **completes** when every completable directive in it
-is satisfied (directives about a quest named by `.optional` don't count). A step with no completable directive
-completes only by the player's `>`.
+is satisfied (directives about a quest named by `.optional` don't count; a step made of nothing else never holds the
+player up: see "Optional-only steps"). A step with no completable directive completes only by the player's `>`.
 
 Core directives (`Engine/Directives.lua`):
 
 | Directive | Satisfied when | Pin |
 |---|---|---|
-| `.goto <map>,<x>,<y>[,<radius>]` | the player is within radius yards (default 10) — only if it is the step's only completable directive; otherwise it just places the pin | yes (none in a doing step: see "Step kinds") |
+| `.goto <map>,<x>,<y>[,<radius>]` | the player is within radius yards (default 10) — only if it is the step's only completable directive; otherwise it just places the pin | yes (none in a doing step; one for each NPC of a joined step: see "Step kinds") |
 | `.accept <questID>` | the quest is in the log, or flagged completed | quest giver (data pack) or the step's `.goto` |
 | `.turnin <questID>` | the quest is flagged completed | quest ender |
 | `.complete <questID>[,<objective>]` | that objective (its number in the quest log, from 1) or all are finished, or the quest is complete or turned in | objective area (none in a doing step: see "Step kinds") |
-| `.optional <questID>` | — (modifier: this quest's directives don't block completion) | |
+| `.optional <questID>` | — (modifier: this quest's directives don't count toward completion; a step made of nothing else is an optional-only step: see "Optional-only steps") | |
 | `.reward <questID>,<choice\|itemID>` | — (read by automation); a value up to 10 is a choice index, a larger one an item ID | |
 | `.train <spellID>` / `.train class` | the spell is known; `class` = every spell the class module lists at or below the player's level | trainer |
 | `.trainprof <key>` | the profession is learned, or its maximum skill rose since the step became current, or there is nothing to train (its top rank, or skill more than 25 below the maximum) | trainer |
@@ -149,9 +149,9 @@ changes: a step completes when every completable directive in it is satisfied.
 
 | Kind | What it holds | Done when | Markers (map pin, minimap pin, edge arrow) |
 |---|---|---|---|
-| **Pick up** | one area, N `.accept` (a `.goto` for each NPC when several stand in the area: each is a pin; without the data pack only the first pin is named for the quests) | every quest is in the log (or done already) | the quest givers |
+| **Pick up** | one area, N `.accept` (a `.goto` for each NPC when several stand in the area: each is a pin, named for its own NPC's quests: see "Joined steps") | every quest is in the log (or done already) | the quest givers |
 | **Doing** | N `.complete <questID>` (with `.goto`, `.use`, `.note`, ...) | every one of those quests is complete in the quest log | none |
-| **Hand in** | N `.turnin` (a `.goto` for each NPC when several stand in the area: each is a pin; without the data pack only the first pin is named for the quests) | every quest is turned in | the quest enders |
+| **Hand in** | N `.turnin` (a `.goto` for each NPC when several stand in the area: each is a pin, named for its own NPC's quests: see "Joined steps") | every quest is turned in | the quest enders |
 | **Hand in + pick up** | `.turnin` and `.accept` at one place | all of them | both |
 
 The guide's markers exist to steer the player **to a place**: where to pick up, where to hand in, and travel. A marker
@@ -174,10 +174,12 @@ log already marks, on the map and the minimap, where each quest's objectives are
 - Any other step keeps its markers as they always were, including an old hand-written step that mixes a `.complete`
   with a `.turnin` or an `.accept` (its `.complete` still pins the objective area).
 
-The step frame lists the quests of a doing step: one line per `.complete`, naming the quest, with a done mark (`[x]` or
-`[ ]`) and no objective counters. A step of one quest reads like a step of five. The step completes when every
-`.complete` quest in it is complete in the quest log (all its objectives finished, or the quest is ready to hand in, or it
-is handed in already); the `.goto` neither holds it up nor ends it.
+The step frame lists the quests of a step: one line per `.accept`, `.complete` and `.turnin`, naming the quest, with a
+done mark (`[x]` or `[ ]`: in the log or done already, complete, handed in) and no objective counters. A step of one quest
+reads like a step of five, and a pick-up or a hand-in of five says which of them are done. Every other line (travel,
+`.train`, `.buy`, `.skill`, notes, ...) has no mark. A doing step completes when every `.complete` quest in it is complete
+in the quest log (all its objectives finished, or the quest is ready to hand in, or it is handed in already); the `.goto`
+neither holds it up nor ends it.
 
 `.complete <questID>` is for a quest that is done within the step (all of its objectives). `.complete <questID>,<objective>`
 (the objective's number in the quest log) stays for a quest whose objectives are spread over several steps: each step
@@ -203,6 +205,66 @@ step's is untracked. The tracker is pointed once at the first quest of the step 
 When the player turns the setting off (or no guide is left) the module gives back what they were tracking before it first
 changed the tracker, without undoing anything they changed since, and says so in chat. `/signpost tracking` shows what the
 module is doing; `/signpost tracking test` checks the client's watch functions.
+
+### Joined steps
+
+The tools write one pick-up or hand-in step for the NPCs of an area, each NPC's `.goto` followed by what is done there:
+
+```
+step
+  .goto 1411,43.29,68.53
+  .accept 4641 -- A
+  .goto 1411,42.06,68.33
+  .turnin 4641 -- A
+  .accept 788 -- B
+```
+
+A directive that names a pin (`.accept`, `.turnin`, `.train`, `.buy`, a `.complete` outside a doing step, ...) stands
+behind the `.goto` before it, up to the next `.goto`; one that comes before the first `.goto` stands behind the first. The
+step draws **one pin for each `.goto`, named for the directives behind it** (`Engine/Conditions.lua`, `:Targets`):
+
+- With the data pack the pins are the NPCs, and an NPC's pin within a `.goto`'s radius merges into the `.goto`'s. Without
+  it the `.goto` is the pin, its kind and label coming from the directives behind it (a turn-in names the pin before a
+  pick-up does).
+- A directive that is satisfied (the quest is in the log, handed in, or complete, for `.accept`, `.turnin`, `.complete`)
+  stops being named, and a place whose directives are all satisfied draws no pin any more (the rule of a marker that
+  shows where to go next, above). So the pin of a place names only the quests still open there, and a place with
+  something else left to ask (a `.level`, say) keeps a bare "Go to ..." pin.
+- A pin's tooltip lists the lines of the quests it names, and the lines about no quest; the step card lists every line of
+  the step, each quest with its done mark, whichever NPC it belongs to.
+
+### Optional-only steps (group quests)
+
+A step whose completable directives all belong to quests named by `.optional` is an **optional-only step**. A `.goto`, a
+`.todo` or a `.note` beside them count for nothing; a `.level`, `.train`, `.buy`, `.skill` or any other completable
+directive of its own makes it an ordinary step again. The tools write each stage of a group (elite) quest of a normal
+route this way: one step to take it, one to do it, one to hand it in, or all three in one.
+
+```
+step
+  .goto 1421,65.71,23.67
+  .complete 442 -- Assault on Fenris Isle
+  .optional 442 -- group quest: Assault on Fenris Isle
+```
+
+An optional-only step **never holds the player up**:
+
+- While none of its quests is in the quest log the step is complete: auto-advance passes it, and the Journal's route list
+  shows it skipped (`[-]`, not done) unless its quest was done.
+- A quest the player took decides the step as in any other: its directives must be satisfied, so the route waits at "do
+  it" until the objectives are finished and at "hand it in" until the quest is handed in; a quest the player took is not
+  skipped under their feet. Of a step about several optional quests only the ones in the quest log count.
+- The group quest that is **coming up** is a line of the step card, beside the current step: `Optional: <quest> (group
+  quest)`, one line for each quest (each once) of the optional-only steps among the next three steps of the route that is
+  neither in the quest log nor done, at most two, in the small text of the `Ongoing:` lines and apart from the ten body
+  lines. It goes when the quest is in the log or done, or its step has been passed. The current step's own quests are its
+  lines as in any step.
+- The Journal's route list tags such a step `(group quest)`.
+
+Any other step that mentions an optional quest keeps the rule of the table above: the directives of the optional quest do
+not count while anything else in the step does, so a pick-up of an ordinary quest and a group quest at one NPC is done
+when the ordinary quest is. The engine does not know a quest's level, so the card cannot yet retire the line when the
+character is five levels above the quest (the user's wish, 2026-10-20): that needs the level in the guide (backlog).
 
 ## Display text
 

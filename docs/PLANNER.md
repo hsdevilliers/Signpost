@@ -130,7 +130,9 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
 - **The quest log is not limited** (25 in Classic); the route may hold more at a moment than the game allows (backlog: `limit-the-quest-log`).
 - **Data holes become `.todo` steps**: an objective with no position in the pack is worked where its quest starts, and the step
   says so; a border with no route yet gets a travel step the lint reports.
-- **Group quests** in a normal route are tagged `.optional`, not yet shown as a line beside the step.
+- **Group quests** in a normal route are tagged `.optional`. A step made only of such quests never holds the player up, and the step card shows
+  the quest as a line beside the steps before it (`Optional: <quest> (group quest)`, GUIDE-FORMAT "Optional-only steps"). The card cannot yet
+  retire the line five levels above the quest: that needs the quest's level in the guide (backlog: `a-group-questid-level-modifier`).
 - **Walking inside a doing step is not priced**: the planner adds a few seconds for each place of a hub; once the objective areas are joined into one
   doing step the simulator charges only the walk between steps (the step keeps one position). A pick-up and hand-in step keeps the position of
   each NPC, and the simulator walks them in order.

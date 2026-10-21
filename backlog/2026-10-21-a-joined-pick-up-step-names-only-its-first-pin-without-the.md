@@ -1,12 +1,14 @@
 ---
 title: A joined pick-up step names only its first pin: without the data pack the other NPCs' pins are bare
 kind: finding
-status: open
+status: done
 priority: normal
 area: engine, ui
 source: claude
 raised: 2026-10-21
 raised_in: final independent review of the beam rewrite (PR #38), 2026-10-21
+closed: 2026-10-21
+resolution: batch 1, branch feat/step-card-polish: a directive with a pin kind and no position marks the .goto before it (the first when none does), so each NPC of a joined step has its own pin and label; a satisfied directive stops being named and, in a step with two or more .goto lines, a .goto whose directives are all satisfied no longer draws (Engine/Conditions.lua :Targets; specs in tests/conditions_spec.lua, ui_spec.lua, integration_spec.lua and the real Troll Hunter steps in tests/shipped_guides_spec.lua; docs/GUIDE-FORMAT.md 'Joined steps', docs/ENGINE.md). A pin's tooltip lists the lines of its own quests (UI/Pins.lua).
 ---
 
 ## What
