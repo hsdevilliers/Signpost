@@ -64,4 +64,29 @@ ns.Classes:Register("DRUID", {
 		},
 		{ id = "torwa-pathfinder", name = "Torwa Pathfinder", level = 52, quests = { 9063, 9052, 9051, 9053 } },
 	},
+	-- Words for the travel steps tools/guide_travel.py writes in a druid's guide, by the uiMapID of the zone they go to or leave
+	-- (docs/ENGINE.md). Where the way to or from such a zone would be a walk across a border, the step says these words in place
+	-- of "find your own way" (a flight path or the hearthstone that the guide already has stands as it is). `to`, `back` and
+	-- `unsafe` are plain words for the player, each a string or a list of lines joined with a space; no coordinate, no ID.
+	-- Moonglade (1450 in the pack's maps): every Bear Form, Lessons Anew, Aquatic Form and Cat Form chain turns or ends there, and
+	-- the route in the data is only a walk. VERIFY(beta): that a Forever druid has Teleport: Moonglade, where it is learned, and the
+	-- way back (the hearthstone, a flight path from Nighthaven) are all unconfirmed (docs/CLASS-QUESTS.md, docs/FOREVER-API-NOTES.md,
+	-- Open probes: "Teleport: Moonglade"). The way overland is from Classic memory only, and a HARDCORE druid of level 10 to 30 must
+	-- never be sent along it.
+	travelHints = {
+		[1450] = {
+			to = {
+				"cast Teleport: Moonglade if you have it (VERIFY(beta): where a druid learns it),",
+				"else the way is not in the data",
+			},
+			back = {
+				"use your hearthstone or a flight path if you have one",
+				"(VERIFY(beta): the way back is not in the data)",
+			},
+			unsafe = {
+				"from Classic memory (not confirmed in Forever) the road overland runs through Felwood or Winterspring,",
+				"zones for levels 48 and up, so it is not safe at your level",
+			},
+		},
+	},
 })

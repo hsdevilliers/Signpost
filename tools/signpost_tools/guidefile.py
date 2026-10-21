@@ -269,6 +269,7 @@ class ClassModule:
     path: str
     quests: object = None  # classQuests as written, or None
     directives: list[str] = field(default_factory=list)
+    travel_hints: object = None  # travelHints as written ({ [uiMapID] = { to, back, unsafe } }), or None
 
 
 @dataclass
@@ -1006,6 +1007,46 @@ def read_text(path: Path) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+# The words of a class module's `travelHints` entry (tools/guide_travel.py writes them into the travel steps of that class's guides):
+# how to go there instead of walking, how to come back, and why the road is not one to walk. Each is plain words for the player,
+# written as a string or as a list of lines (wrapped).
+TRAVEL_HINT_WORDS = ("to", "back", "unsafe")
+
+
+def phrases(value: object) -> str:
+    """Words from a string, or from a list of phrases read as "a, b and c" (a long sentence of data stays on short lines)."""
+    if isinstance(value, str):
+        return value.strip()
+    items = [item.strip() for item in value if isinstance(item, str) and item.strip()] if isinstance(value, list) else []
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1] if items else ""
+
+
+def wrapped(value: object) -> str:
+    """A text written as one string, or as a list of strings that are its lines (joined with a space: a long sentence of data
+    stays within the line length of the Lua file it is in)."""
+    if isinstance(value, str):
+        return value.strip()
+    return " ".join(item.strip() for item in value if isinstance(item, str) and item.strip()) if isinstance(value, list) else ""
+
+
+def travel_hint_problems(hints: object) -> list[str]:
+    """What is wrong with a class module's `travelHints` (nothing, for a table of hints each with all of its words)."""
+    if hints is None:
+        return []
+    if not isinstance(hints, dict):
+        return ["travelHints must be a table keyed by the zone's uiMapID: { [1450] = { to = ..., back = ..., unsafe = ... } }"]
+    found = []
+    for key, entry in hints.items():
+        if type(key) is not int or key <= 0:
+            found.append(f"travelHints[{key!r}]: the key is the zone's uiMapID (a number)")
+        elif not isinstance(entry, dict):
+            found.append(f"travelHints[{key}] must be a table of words ({', '.join(TRAVEL_HINT_WORDS)})")
+        else:
+            found += [f"travelHints[{key}].{word} is missing or empty" for word in TRAVEL_HINT_WORDS if not wrapped(entry.get(word))]
+            found += [f"travelHints[{key}].{word} is not a known word" for word in sorted(set(entry) - set(TRAVEL_HINT_WORDS), key=str)]
+    return found
+
+
 def read_class_module(path: str, text: str) -> tuple[ClassModule, list[Problem]]:
     tokens = lua_tokens(text)
     token = _first_string_arg(tokens, "Classes", "Register") or Path(path).stem
@@ -1013,6 +1054,10 @@ def read_class_module(path: str, text: str) -> tuple[ClassModule, list[Problem]]
     quests, problem = _literal_after(text, tokens, "classQuests")
     module.quests = quests
     problems = [Problem("warning", "class-module", problem, path)] if problem else []
+    hints, problem = _literal_after(text, tokens, "travelHints")
+    module.travel_hints = hints
+    messages = [problem] if problem else travel_hint_problems(hints)
+    problems += [Problem("warning", "class-module", message, path) for message in messages]
     return module, problems
 
 
