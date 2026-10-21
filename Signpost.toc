@@ -100,6 +100,12 @@ Guides\HordeTaurenDruid.lua
 Guides\HordeTrollHunter.lua
 Guides\HordeWindshaperDruid.lua
 
+Guides\Professions\skinning.lua
+Guides\Professions\leatherworking.lua
+Guides\Professions\firstaid.lua
+Guides\Professions\cooking.lua
+Guides\Professions\fishing.lua
+
 UI\Widgets.lua
 UI\Contribute.lua
 UI\StepFrame.lua
