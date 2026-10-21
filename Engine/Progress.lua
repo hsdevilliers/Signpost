@@ -849,9 +849,12 @@ local function liveSnapshot()
 	}
 end
 
--- Whether the quest history can be read: the completed-quest list has loaded and holds something, or the quest log
--- does. An empty list is a character with nothing done or a list the client has not filled yet, so above the first
--- levels a first placement waits a few seconds for it.
+-- Whether the quest history can be read: the completed-quest list has loaded and holds something. An empty list is a
+-- character with nothing done or a list the client has not filled yet, so above the first levels a first placement
+-- waits a few seconds for it. A quest in the log does not say that the list has loaded (the two are separate reads, and
+-- the log is there first): a placement made on the log alone puts the quests the character has done behind it as
+-- skipped, and nothing would correct that when the list arrives, so the wait goes on, and a placement made without the
+-- list is made once more when it comes (Settle, CheckPlacement).
 -- VERIFY(beta): when C_QuestLog.GetAllCompletedQuestIDs is filled (docs/FOREVER-API-NOTES.md, Open probes).
 local function historyReady(level)
 	local context, placement = ns.Context, ns.Placement
@@ -861,10 +864,7 @@ local function historyReady(level)
 	if (level or 0) <= placement.NO_EVIDENCE_LEVEL then
 		return true
 	end
-	local ok, log = ns.SafeCall(context.QuestLog, context) -- this also loads the completed-quest list
-	if ok and type(log) == "table" and next(log) ~= nil then
-		return true
-	end
+	ns.SafeCall(context.QuestLog, context) -- this also loads the completed-quest list
 	return context.completedEmpty == false
 end
 

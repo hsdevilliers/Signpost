@@ -415,9 +415,11 @@ quest never taken.
     `placed`, the saved step absent or the first one; a different guide than the one loaded, never a re-parse of the same one after
     a profession plan change) places before the first evaluation, so the load is one `STEP_CHANGED("load")` on the right step. Above
     level 2 it first waits for the quest history, the completed-quest list the client fills a moment after login (`historyReady`: the
-    list is loaded and not empty, or something is in the quest log; VERIFY(beta), FOREVER-API-NOTES "Open probes"). It places on the
-    first `CONTEXT_CHANGED("quests")` that finds the history, or after 5 s on the level alone. A placement made without the history is
-    made once more, with `reason "refine"`, when it turns up, if the pointer is still on the step the first one ended on.
+    list is loaded and not empty; a quest in the quest log does not count as the list, because the log is read separately and a
+    placement by the log alone marks everything the character did before it as skipped; VERIFY(beta), FOREVER-API-NOTES "Open
+    probes"). It places on the first `CONTEXT_CHANGED("quests")` that finds the list, or after 5 s by what there is (the quest log
+    and the level). A placement made without the list is made once more, with `reason "refine"`, when it turns up, if the pointer is
+    still on the step the first one ended on.
   - *A lost place* (`reason "lost"`): the record has progress that matches nothing in the guide (an install changed the step ids;
     `Resume`'s second result), or it is for another text of the guide (the fingerprint above: the second chat line, and the whole
     record is dropped). The character is placed instead of sent to step 1, after a chat line that the guide was updated; the

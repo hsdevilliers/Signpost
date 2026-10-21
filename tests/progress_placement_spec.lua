@@ -351,6 +351,49 @@ describe("a placement that waits for the quest history", function()
 		assert.are.equal(1, #log.placed)
 	end)
 
+	-- A character that has done the whole valley and is working on a quest in the plains. The client has sent its quest
+	-- log and not its list of completed quests yet.
+	local function onThePlains()
+		return {
+			level = 7,
+			completed = {},
+			log = { quest(201, { objectives = { objective("Boars", 1, 4) } }) },
+			advance = 0.5,
+		}
+	end
+
+	it(
+		"does not take a quest in the log for the quest history: the list of completed quests has to be there",
+		function()
+			local ns, world, mock, log = start(onThePlains())
+			assert.are.equal("valley:1", current(ns)) -- still waiting
+			assert.are.equal(0, #log.placed)
+			assert.are.equal(0, count(mock, "Your place"))
+			historyArrives(world, mock, { 101, 102, 103 })
+			assert.are.equal("plains:2", current(ns))
+			assert.are.same({ { index = 10, reason = "first" } }, log.placed)
+			-- the valley is done, as the list says, and not "skipped", as the log alone would have it
+			assert.are.same({}, keys(record(ns).skipped))
+			for i = 1, 8 do
+				assert.is_true(ns.Progress:IsDone("valley:" .. i), i)
+			end
+		end
+	)
+
+	it("goes by the log and the level when the list never comes, and puts it right when it does", function()
+		local ns, world, mock, log = start(onThePlains())
+		world.advance(6) -- the wait is over
+		assert.are.equal("plains:2", current(ns))
+		assert.are.equal("history", record(ns).placed.mode) -- the quest in the log is a history of its own
+		assert.are.equal(8, #keys(record(ns).skipped)) -- the valley, as far as anyone knows
+		historyArrives(world, mock, { 101, 102, 103 })
+		assert.are.equal("plains:2", current(ns))
+		assert.are.equal("refine", record(ns).placed.reason)
+		assert.are.same({}, keys(record(ns).skipped))
+		assert.are.equal(1, count(mock, "Your quest history has loaded: placing you again."))
+		assert.are.same({ "first", "refine" }, { log.placed[1].reason, log.placed[2].reason })
+	end)
+
 	it("goes by the level when the history does not come, and says it is a guess", function()
 		local ns, world, mock = start({ level = 4, advance = 0.5 })
 		assert.are.equal("valley:1", current(ns))
