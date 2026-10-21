@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 1 route for Troll Hunter: tools/route_planner.py troll --preset all --install --force --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 4 route for Troll Hunter: tools/route_planner.py troll --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -6,47 +6,67 @@ local ADDON_NAME, ns = ...
 ns.Chapters:Register(
 	"troll-hunter-18-the-barrens",
 	[[
-#chapter 27-28 The Barrens
+#chapter 26-26 The Barrens
 step
-  .goto 1413,47.51,85.38
-  .complete 843 -- Gann's Reclamation
+  .goto 1413,48.12,5.42
+  .accept 6543 -- The Warsong Reports
+  .todo "The Warsong Reports: objective 1 has no position in the pack"
+  .complete 6543,1 -- The Warsong Reports
+  .todo "The Warsong Reports: objective 2 has no position in the pack"
+  .complete 6543,2 -- The Warsong Reports
+  .todo "The Warsong Reports: objective 3 has no position in the pack"
+  .complete 6543,3 -- The Warsong Reports
+  .turnin 6543 -- The Warsong Reports
 step
-  .goto 1413,48.97,86.31
-  .accept 857 -- The Tear of the Moons
+  .goto 1413,62.37,37.62
+  .accept 1221 -- Blueleaf Tubers
+  .todo "Blueleaf Tubers: objective 1 has no position in the pack"
+  .complete 1221,1 -- Blueleaf Tubers
 step
-  .goto 1413,49.13,84.25
-  .complete 857 -- The Tear of the Moons
+  .goto 1413,62.59,37.47
+  .accept 92706 -- WANTED: Bruuz
+  .goto 1413,62.98,37.22
+  .turnin 1094 -- Further Instructions
+  .accept 1095 -- Further Instructions
 step
-  .goto 1413,45.89,77.0
-  .turnin 843 -- Gann's Reclamation
-  .accept 846 -- Revenge of Gann
+  .goto 1413,62.34,37.6
+  .complete 1221,4 -- Blueleaf Tubers
+  .complete 1221,3 -- Blueleaf Tubers
+  .complete 1221,2 -- Blueleaf Tubers
 step
-  .goto 1413,48.97,86.31
-  .turnin 857 -- The Tear of the Moons
+  .goto 1413,62.37,37.62
+  .turnin 1221 -- Blueleaf Tubers
 step
-  .todo "border The Barrens/Thousand Needles: no crossing coordinates yet (record them in game or in Borders.lua)"
-  .zone 1441 >> Go into Thousand Needles
+  .goto 1413,64.3,39.13
+  .complete 92706 -- WANTED: Bruuz
 step
-  .goto 1441,37.95,26.45
-  .level 25
-  .accept 4904 -- Free at Last
+  .goto 1413,62.68,36.23
+  .turnin 92706 -- WANTED: Bruuz
 step
-  .goto 1441,44.93,48.92
-  .accept 4767 -- Wind Rider
-  .goto 1441,44.64,50.29
-  .accept 4821 -- Alien Egg
-  .goto 1441,46.0,50.86
-  .accept 5147 -- Wanted - Arnak Grimtotem
-  .goto 1441,46.21,51.51
-  .level 27
-  .accept 98069 -- Stolen Freewind Supplies
-  .accept 98070 -- Stop the Screeching
-  .goto 1441,45.97,51.61
-  .turnin 4904 -- Free at Last
+  .goto 1413,65.84,43.86
+  .turnin 874 -- Mahren Skyseer
+  .accept 873 -- Isha Awak
 step
-  .goto 1441,46.21,51.51
-  .todo "Stolen Freewind Supplies: objective 1 has no position in the pack"
-  .complete 98069,1 -- Stolen Freewind Supplies
-  .turnin 98069 -- Stolen Freewind Supplies
+  .goto 1413,63.53,53.85
+  .complete 873 -- Isha Awak
+step
+  .goto 1413,65.84,43.86
+  .turnin 873 -- Isha Awak
+step
+  .goto 1413,44.86,59.14
+  .accept 1130 -- Melor Sends Word
+step
+  .goto 1413,44.45,59.15 >> Go to the flight master
+  .fly Thunder Bluff
+step
+  .goto 1456,61.54,80.92
+  .turnin 1130 -- Melor Sends Word
+step
+  .goto 1456,71.06,34.19
+  .level 24
+  .accept 98823 -- Earthen Echo
+step
+  .todo "Walk from Thunder Bluff to Mulgore: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Mulgore."
+  .zone 1412 >> Go to Mulgore
 ]]
 )

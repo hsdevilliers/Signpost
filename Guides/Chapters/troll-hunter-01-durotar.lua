@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 1 route for Troll Hunter: tools/route_planner.py troll --preset all --install --force --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 4 route for Troll Hunter: tools/route_planner.py troll --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -90,6 +90,8 @@ step
   .goto 1411,52.02,47.3
   .turnin 96604 -- The Great Outdoors
   .accept 96655 -- Camping 101: Cooking
+  .goto 1411,51.13,42.63
+  .accept 96825 -- This Fruit Could Bite Back
   .goto 1411,51.11,42.45
   .complete 96655,1 -- Camping 101: Cooking
   .turnin 96655 -- Camping 101: Cooking
@@ -102,8 +104,8 @@ step
 step
   .goto 1411,49.88,40.39
   .turnin 791 -- Carry Your Weight
-step
   .level 7 -- reach it first: kill or grind on the way
+  .note Grind about 19 experience before you go on: about 1 kill of creatures near your level (an estimate)
 step
   .goto 1411,46.37,22.94
   .accept 834 -- Winds in the Desert
@@ -171,8 +173,12 @@ step
   .accept 837 -- Encroachment
   .goto 1411,52.24,43.15
   .turnin 823 -- Report to Orgnil
+  .accept 806 -- Dark Storms
   .level 9
   .accept 99048 -- A Missing Hand
+step
+  .goto 1411,50.33,49.07
+  .complete 837,1 -- Encroachment
 step
   .goto 1411,58.6,45.6
   .turnin 99048 -- A Missing Hand
@@ -190,9 +196,10 @@ step
 step
   .goto 1411,52.24,43.15
   .turnin 99051 -- Threat from Below
-step
-  .goto 1411,50.33,49.07
-  .complete 837,1 -- Encroachment
+  .level 10
+  .accept 99052 -- Threat from Below
+  .goto 1411,50.84,43.59
+  .accept 840 -- Conscript of the Horde
 step
   .goto 1411,43.24,40.5
   .complete 837,4 -- Encroachment
@@ -202,8 +209,13 @@ step
   .complete 837,2 -- Encroachment
 step
   .goto 1411,42.84,69.33
-  .level 10
   .accept 6068 .class HUNTER -- The Hunter's Path
+step
+  .goto 1411,46.8,49.0
+  .complete 96825 -- This Fruit Could Bite Back
+step
+  .goto 1411,51.11,42.45
+  .turnin 96825 -- This Fruit Could Bite Back
 step
   .goto 1411,51.85,43.49
   .turnin 6068 .class HUNTER -- The Hunter's Path
@@ -220,10 +232,11 @@ step
 step
   .goto 1411,51.95,43.5
   .turnin 837 -- Encroachment
-  .goto 1411,50.84,43.59
-  .accept 840 -- Conscript of the Horde
 step
-  .todo "travel from Durotar to Orgrimmar: the travel graph has no route yet"
+  .goto 1411,54.07,27.33
+  .complete 835,1 -- Securing the Lines
+step
+  .todo "Walk from Durotar to Orgrimmar: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Orgrimmar."
   .zone 1454 >> Go to Orgrimmar
 ]]
 )

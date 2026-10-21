@@ -132,7 +132,7 @@
       ],
       "rewrites": [],
       "hardcore": false,
-      "planned": "the thorough alt 1 route for Troll Hunter: tools/route_planner.py troll --preset all --install --force --quiet (docs/PLANNER.md)"
+      "planned": "the thorough alt 4 route for Troll Hunter: tools/route_planner.py troll --preset all --install --quiet (docs/PLANNER.md)"
     },
     {
       "guide": "horde-windshaper-druid",
