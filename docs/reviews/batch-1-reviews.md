@@ -98,3 +98,14 @@ the quest log never holds more than 10 and ends empty; the race and class gates 
 | Zig-zags: the island's north camp twice, the Barrens four times | Backlog |
 | Same-area omissions on the island (92462, 92598, 92515, 92553, 93951, 92516, 92679) | A note on the user's item; the completeness default is the user's choice |
 | The walk report was stale | Refreshed for the final generation |
+
+## Placement after the reviews (WP-B, final)
+
+Two reviewers and the Skyborne worker found the same weakness: on the Skyborne guide (and in the long first chapters of the Troll and Tauren guides) a character who followed the guide exactly was put several steps
+ahead, because the level model was a straight line over a chapter that spans many levels, and one level of model error outweighed a clean history. B found two causes, each needed: the line was straight in level
+(1.68 levels low on average against the simulator, 3.18 at the 90th percentile, in chapters of nine or more levels), and the level term outweighed a history with no gap in it. The line now runs straight in
+experience (Classic's table, VERIFY(launch): backlog item), and in history mode the level gap gets a tolerance (0.3 plus 0.05 per level the chapter spans, scaled by the share of done steps before the candidate;
+a scattered or lagging character gets none). Result on the three final guides: the Skyborne follower is exact (0 quest steps at the 90th percentile, worst run 4 steps; it was 10 and 19); no-history tails against the
+simulator's levels are 1.9% (Skyborne), 0.2% (Troll), none (Tauren); with chapter headers one level wider at each end the followers stay within the bounds (two levels wider is beyond what the tolerance can take).
+60 mutants, all killed but one equivalent. **One bound changed, on the lead's decision:** `mixed.catastrophic == 0` is now at most 0.3% over a larger draw (measured 0.010% Tauren, 0.012% Troll, none Skyborne over about
+9,000 runs each; the old zero failed for 2 of 40 other seeds). `levelonly.catastrophic == 0` still holds (worst run 2.76 levels, limit 3). The tables are in docs/ENGINE.md.
