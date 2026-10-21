@@ -1,12 +1,14 @@
 ---
 title: Dungeon and raid quests are not recognized: the pack stores an instance's map id as the quest zone
 kind: finding
-status: open
+status: done
 priority: normal
 area: planner, drafter, data
 source: claude
 raised: 2026-10-21
 raised_in: review of the Skyborne Druid planner route (WP-A1), 2026-10-21
+closed: 2026-10-21
+resolution: Done in batch 1 (WP-E1): Planner._in_instance treats a quest whose pack zone is no map of the pack (all 19 such zone ids are dungeons or raids) as a dungeon quest: optional with a note in a normal route, dropped in a HARDCORE route (after the skip rules, so a rule keeps its own reason). Tests in tools/tests/test_planner.py. The drafter has the same gap: its own item.
 ---
 
 ## What
