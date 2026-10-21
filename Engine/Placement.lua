@@ -171,9 +171,18 @@ function Placement:Levels(guide)
 		end
 	end
 	local lv, level, gate = {}, nil, nil
+	local lastChapter, lastHigh
 	for i = 1, n + 1 do
 		local chapter = chapterOf[i] or chapterOf[n]
 		local low, high = chapterRange(chapters[chapter or 0])
+		if i <= n and chapter ~= lastChapter then
+			-- a new chapter starts, so the one before it is done and its top level reached (a dungeon chapter has no line of
+			-- its own to carry it on)
+			if lastHigh and (not level or lastHigh > level) then
+				level = lastHigh
+			end
+			lastChapter, lastHigh = chapter, high
+		end
 		if low then
 			local raw = low + (high - low) * (before[chapter] or 0) / count[chapter]
 			level = (not level or raw > level) and raw or level
@@ -303,11 +312,16 @@ function Placement:Fit(labels, stats, lv, top, snapshot, opts)
 		end
 	end
 
+	-- The pointer: the split, past the steps that are done already (the engine would pass those at once).
+	local index = math.min(split, n)
+	while index < n and labels[index] == "done" do
+		index = index + 1
+	end
 	local skipped, ahead = 0, 0
 	for i = 1, n do
-		if i < split and labels[i] == "open" then
+		if i < index and labels[i] == "open" then
 			skipped = skipped + 1
-		elseif i >= split and labels[i] == "done" then
+		elseif i >= index and labels[i] == "done" then
 			ahead = ahead + 1
 		end
 	end
@@ -325,7 +339,7 @@ function Placement:Fit(labels, stats, lv, top, snapshot, opts)
 		confidence = "low"
 	end
 	return {
-		index = math.min(split, n),
+		index = index,
 		split = split,
 		mode = mode,
 		confidence = confidence,
@@ -345,7 +359,7 @@ end
 -- Where the character is in `guide` (a parsed guide: steps, chapters, def), from snapshot = { level = , done = fn(questID),
 -- active = fn(questID), ready = fn(questID) (optional: in the log with every objective done) }. Returns nil for a guide
 -- without steps, else
---   index       the step the pointer goes on, 1 .. #steps
+--   index       the step the pointer goes on, 1 .. #steps: the split, past the steps that are done already
 --   split       the step at which everything before is behind the character, 1 .. #steps + 1 (#steps + 1: it is done
 --               with the guide; the pointer then goes on the last step)
 --   mode        "none" (nothing to go on: the first step), "history" (quests done or in the log), "level" (only the
@@ -354,7 +368,7 @@ end
 --               split); "level" is always low
 --   level, expected, top   the character's level, the guide's expected level at the split, the guide's top level
 --   done, active, total    distinct quests of the guide: done, in the log, in the guide
---   skipped, ahead         steps before the split not done ("skipped"), steps at or after it done ("ahead")
+--   skipped, ahead         steps before the pointer not done ("skipped"), steps at or after it done ("ahead")
 --   labels      the label of each step, "done", "open" or "neutral"
 -- `opts` overrides the constants (openWeight, doneWeight, levelWeight, bias) for the simulation that chose them.
 function Placement:Find(guide, snapshot, opts)

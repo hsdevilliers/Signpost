@@ -232,6 +232,42 @@ describe("Journal", function()
 			assert.is_true(ns.Progress:ChapterSkipped(2))
 		end)
 
+		it("has a Find my place button that places the character and shows the step it landed on", function()
+			local ns, world, mock = start()
+			ns.Journal:Show()
+			local button = ns.Journal.frame.route.place
+			assert.is_table(button)
+			assert.are.equal("Find my place", button:GetText())
+			assert.are.equal("valley:1", ns.Progress:Current().id)
+			-- the quest is done by now (the client says so) and the character is level 7: past the valley
+			world.level, world.completed = 7, { 4641 }
+			button.scripts.OnClick(button)
+			assert.are.equal("cave:1", ns.Progress:Current().id)
+			assert.are.equal(2, ns.Journal.chapter) -- the Journal shows the chapter of the pointer
+			assert.is_true(ns.Progress:IsDone("valley:3"))
+			local found = false
+			for _, line in ipairs(mock.printed) do
+				found = found or line:find("Your place: step 4/5 (Cave).", 1, true) ~= nil
+			end
+			assert.is_true(found)
+			assert.are.same({}, mock.errors)
+		end)
+
+		it("refreshes the route list when the character is placed", function()
+			local ns, world = start()
+			ns.Journal:Show()
+			local pane = ns.Journal.frame.route
+			assert.is_truthy(texts(pane.steps)[1]:find(">", 1, true)) -- the first step is current
+			world.level, world.completed = 7, { 4641 }
+			ns.Progress:Place({ reason = "manual" })
+			world.advance(0.5) -- the coalesced refresh
+			pane.chapters.rows[1].scripts.OnClick(pane.chapters.rows[1])
+			for _, text in ipairs(texts(pane.steps)) do
+				assert.is_truthy(text:find("[x]", 1, true), text) -- all of the valley is done now
+			end
+			assert.is_truthy(texts(pane.chapters)[1]:find("(3/3)", 1, true))
+		end)
+
 		it("jumps to a step on a click, and asks for Shift when it is far away", function()
 			local ns, world = start()
 			ns.Journal:Show()

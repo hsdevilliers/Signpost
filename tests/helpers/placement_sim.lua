@@ -421,13 +421,15 @@ function Sim.evaluate(ns, population, find)
 	for _, item in ipairs(population) do
 		local entry, scenario, t = item.entry, item.scenario, item.t
 		local result = ns.Placement:Fit(item.labels, item.stats, entry.lv, entry.top, item.snapshot, find)
+		-- where the player is put: the pointer's step, or just past the last one when all of the guide is behind them
+		local where = result.mode == "end" and result.split or result.index
 		local run = {
 			t = t,
 			split = result.split,
 			mode = result.mode,
-			steps = math.abs(result.split - t),
-			quests = math.abs(entry.questSteps[result.split] - entry.questSteps[t]),
-			levels = math.abs(item.levels[result.split] - item.levels[t]),
+			steps = math.abs(where - t),
+			quests = math.abs(entry.questSteps[where] - entry.questSteps[t]),
+			levels = math.abs(item.levels[where] - item.levels[t]),
 			level = item.snapshot.level,
 			result = result,
 		}

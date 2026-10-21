@@ -912,11 +912,11 @@ function Progress:ApplyPlacement(result, prune)
 	self.index, self.hold, self.declined = pointer, nil, nil
 end
 
--- The chat lines of a placement: where, why in numbers, how to put it right. A character with nothing to go on and no
--- reason to expect more hears nothing.
+-- The chat lines of a placement: where (the step the engine settled on), why in numbers, how to put it right. A
+-- character with nothing to go on and no reason to expect more hears nothing.
 function Progress:Announce(result, reason)
 	local say = ns.Util.Print
-	local n, index = #self.guide.steps, result.index
+	local n, index = #self.guide.steps, self.index or result.index
 	if reason == "lost" then
 		say(L["The guide was updated and your saved place is not in it any more."])
 	elseif reason == "refine" then
@@ -984,11 +984,11 @@ function Progress:Announce(result, reason)
 end
 
 -- Places the character: the pointer on the step its level and quests say, the marks before it set (ApplyPlacement), one
--- record.placed so that it never happens by itself again, the chat lines, GUIDE_PLACED(result, reason). opts.reason is
--- "first" (a character new to the guide), "lost" (its saved step is not in the guide), "refine" (the quest history came
--- late) or "manual" (the player asked; the default: `<` right afterwards takes it back); opts.evaluate = false leaves
--- the evaluation and the step change to the caller (SetGuide); opts.quiet prints nothing. Returns the result, or nil
--- without a guide.
+-- record.placed so that it never happens by itself again, GUIDE_PLACED(result, reason), the evaluation (the engine passes
+-- what is done already) and then Settle. opts.reason is "first" (a character new to the guide), "lost" (its saved step
+-- is not in the guide), "refine" (the quest history came late) or "manual" (the player asked; the default: `<` right
+-- afterwards takes it back); opts.evaluate = false leaves the evaluation, and Settle, to the caller (SetGuide);
+-- opts.quiet prints nothing. Returns the result, or nil without a guide.
 function Progress:Place(opts)
 	opts = opts or {}
 	local guide, record, placement = self.guide, self.record, ns.Placement
@@ -1015,23 +1015,40 @@ function Progress:Place(opts)
 	self:ApplyPlacement(result, reason == "lost")
 	local step = guide.steps[result.index]
 	record.placed = { step = step.id, index = result.index, reason = reason, mode = result.mode, time = time() }
-	-- Placed before the quest history was there: look again when it turns up, if the player has not moved on.
-	if (reason == "first" or reason == "lost") and not historyReady(snapshot.level) then
-		self.refining = { id = guide.id, step = step.id }
-	end
-	if not opts.quiet then
-		self:Announce(result, reason)
-	end
+	self.settle = {
+		result = result,
+		reason = reason,
+		quiet = opts.quiet,
+		undo = undo,
+		-- placed before the quest history was there: look again when it turns up, if the player has not moved on
+		refine = (reason == "first" or reason == "lost") and not historyReady(snapshot.level),
+	}
 	ns.Events:Fire("GUIDE_PLACED", result, reason)
 	if opts.evaluate ~= false then
 		self:EvaluateNow("place")
-		local now = self:CurrentStep()
-		if undo and now then
-			undo.afterId = now.id
-			self.undo = undo
-		end
+		self:Settle()
 	end
 	return result
+end
+
+-- What follows a placement once the engine has taken the pointer past the steps that are done already: the chat lines
+-- (they name the step the player sees), the undo for `<`, the second look when the quest history was missing.
+function Progress:Settle()
+	local pending, step = self.settle, self:CurrentStep()
+	self.settle = nil
+	if not (pending and step) then
+		return
+	end
+	if not pending.quiet then
+		self:Announce(pending.result, pending.reason)
+	end
+	if pending.undo then
+		pending.undo.afterId = step.id
+		self.undo = pending.undo
+	end
+	if pending.refine then
+		self.refining = { id = self.guide.id, step = step.id }
+	end
 end
 
 -- `<` right after a manual placement: the pointer, the marks and the furthest step as they were before it.
@@ -1169,7 +1186,7 @@ function Progress:SetGuide(guide)
 	self.guide, self.views, self.announced = guide, {}, nil
 	if not guide then
 		self.index, self.record, self.hold, self.declined = nil, nil, nil, nil
-		self.placing, self.refining, self.undo = nil, nil, nil
+		self.placing, self.refining, self.undo, self.settle = nil, nil, nil, nil
 		self:Index({ steps = {} })
 		return
 	end
@@ -1187,7 +1204,7 @@ function Progress:SetGuide(guide)
 			end
 		end
 		self.hold, self.frontier, self.declined, self.chapterKey = nil, nil, nil, nil
-		self.placing, self.refining, self.undo = nil, nil, nil
+		self.placing, self.refining, self.undo, self.settle = nil, nil, nil, nil
 	end
 	local fresh = not sameGuide and self:IsFresh()
 	local lost
@@ -1208,10 +1225,12 @@ function Progress:SetGuide(guide)
 		#(guide.errors or EMPTY)
 	)
 	ns.Events:Fire("GUIDE_LOADED", guide)
-	-- VERIFY(beta): whether the completed-quest list is already filled at PLAYER_LOGIN (open probe). If not, this
-	-- auto-skip finds nothing and the first CONTEXT_CHANGED("quests") does it, as an "auto" step change.
+	-- VERIFY(beta): whether the completed-quest list is already filled at PLAYER_LOGIN (open probe). If not, a character
+	-- new to the guide is placed once the list is there (BeginPlacement), and for any other the auto-skip finds nothing
+	-- and the first CONTEXT_CHANGED("quests") does it, as an "auto" step change.
 	if self.guide == guide then
 		self:EvaluateNow("load")
+		self:Settle()
 	end
 end
 
