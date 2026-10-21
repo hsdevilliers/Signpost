@@ -170,6 +170,10 @@ positions learned in game.
   up there first (a question nobody answered is an item of kind `question`); the PR description lists the items it adds and closes. Close an
   item in the PR that resolves it (`close --resolution`), never delete one, and drop one the user raised only with their agreement. Items
   follow this repository's data rules (no Wowhead-derived text, no pack tables). `python tools/backlog.py` shows what is open.
+- **Batch scope (user, 2026-10-21, standing): a running batch takes only minimum-viable-product work.** MVP is the Release 1 scope above.
+  What the user decides while a batch runs is applied after it, as backlog tasks (one follow-up PR), not added to it, unless the batch cannot
+  be merged without it. Anything that is not MVP lands on the backlog automatically (`--source user`, in their words), without asking again;
+  ask the user only for what the MVP needs from them (accounts, pushes, in-game checks).
 - **Game updates (user, 2026-10-20, standing): `docs/GAME-UPDATES.md` is the runbook.** When the user says a patch or a new build is out, or
   sends errors, open a backlog item from it and work compatibility first (confirm the client's Interface number with `/signpost status`,
   bump both TOCs, probe, errors), content second. Never write an Interface number from memory; never publish a release without the user's
