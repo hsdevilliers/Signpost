@@ -1,4 +1,4 @@
--- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --force --quiet --completeness 0.6 --completeness-trip 45 (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -37,7 +37,7 @@ step
   .accept 79096 -- Ataeric: On Arcane Curiosities
   .turnin 78150 -- Friend of the Library
   .level 21 -- reach it first: kill or grind on the way
-  .note Grind about 3,100 experience before you go on: about 21 kills of creatures near your level (an estimate)
+  .note Grind about 99 experience before you go on: about 1 kill of creatures near your level (an estimate)
 step
   .goto 1458,46.31,71.91
   .accept 95216 -- The New Plague

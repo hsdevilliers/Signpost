@@ -12,7 +12,7 @@ python tools/route_planner.py skyborne --preset thorough
 python tools/route_planner.py skyborne --preset thorough --parts 1,2,3,4,6,8 --no-check    the grains of progress to compare, the search only
 python tools/route_planner.py troll --cap 20 --friction 5 --steps 60 --decisions 20
 python tools/route_planner.py troll --quest-log 25 --chapter-steps 4
-python tools/route_planner.py skyborne --completeness 0.6 --completeness-trip 45    finish the quests picked up on the way whose work is a short walk away
+python tools/route_planner.py skyborne --completeness 0    switch off finishing the quests picked up on the way (the default is 0.6 and 45 s: Completeness)
 python tools/route_planner.py windshaper --require 95349    the route must do this quest and the quests it needs (the manifest's `require` does the same)
 python tools/route_planner.py troll --preset all --install    plan, compare, and make the best route that passes its checks the guide
 ```
@@ -114,8 +114,10 @@ beam compares its best finished routes as they would be written, and against the
   and the next pick-up at one NPC are one step; the step keeps the `.goto` of every place in it, the player's pins when there is no data pack), one doing
   step for quests whose objectives are close to each other (the addon draws no marker for it; it keeps its first `.goto` for the tools). A quest whose
   objectives all fall in one doing step is `.complete <quest>`, otherwise `.complete <quest>,<objective>`. A step with a gate or a `.hub` line of its own is never joined.
-- **A quest the route picks up is finished, or left out with the reason: completeness** (`--completeness F`, `--completeness-trip T`; **off by default** until the
-  user has chosen from the table in "Measurements"; user, 2026-10-21, from his early test of the Skyborne guide: "for step two, it tells me to complete the Harmony and
+- **A quest the route picks up is finished, or left out with the reason: completeness** (`--completeness F`, `--completeness-trip T`; **on by default, F = 0.6 and
+  T = 45 s**: the user's choice, 2026-10-21, from the table in "Measurements", with "a quest picked up beside its work should simply be finished", so it is the normal
+  behaviour and not an option; `--completeness 0` switches it off. The table: the Skyborne gains 92462, 92463 and Flutterfly Dust at 0.2% less play time, the Troll Hunter one
+  small quest, the Tauren Druid none. The user's words, 2026-10-21, from his early test of the Skyborne guide: "for step two, it tells me to complete the Harmony and
   Balance. And there is another quest available to pick up called Infestation Investigation, and it's not telling me to pick it up ... these two quests literally are
   completed in the same zone on the map"). What happened there, traced on the route before `tidy` ran: the search accepts every quest on offer where it passes (an accept
   costs it 12 seconds, so it is free), 92462 Infestation Investigation was picked up in hub 566 and its only kill spots are in hub 570, 21.9 seconds of walking east;
@@ -131,10 +133,10 @@ beam compares its best finished routes as they would be written, and against the
     `price` (its objectives are within the trip but it pays less than the route's pace asks), `far` (its objectives are farther than the trip), `handin` (the place to
     hand it in is), `level` (it could not be worked at the level it was picked up at, and the route did not come back when it could), `unfinished` (a stop was added
     and it still was not finished).
-  - **It finishes what is cheap to finish** (only with `--completeness F` above 0; `Planner._finishable`). A quest qualifies when it could be worked at the level it was
+  - **It finishes what is cheap to finish** (unless `--completeness 0`; `Planner._finishable`). A quest qualifies when it could be worked at the level it was
     picked up at, pays at least F of the route's pace at that level (`Planner.finish_ratio`: the quest's experience a second, the walk to its objectives and to the
     hand-in included, over the pace of the greedy walk the searches are calibrated with, which is never below grinding's), and its objectives are at most T seconds of walking
-    (`--completeness-trip`, default 30) from where it was picked up, and so is the place to hand it in unless the route goes on to a hub where it is handed in anyway. The
+    (`--completeness-trip`, default 45) from where it was picked up, and so is the place to hand it in unless the route goes on to a hub where it is handed in anyway. The
     replay of the route then lifts the block on the quest at its pick-up visit and inserts a stop at the hub of each of its objectives (nearest first) right after that visit,
     and one at the hand-in's hub unless the route passes it later. The visits after that are the route's own, and the walk ends as it always does. A quest still in the log
     after that is taken out for good (`unfinished`); a quest that finishing one opens (92463 after 92462) is a candidate in the next round.
@@ -318,7 +320,10 @@ for the limit applied everywhere (the replay that has to obey the limit throws a
 
 **Completeness** (`--completeness F --completeness-trip T`; the beam, data pack of 2026-10-20, quest log 40; each row is one deterministic run and `off` is the planning
 without the setting; in brackets the change against `off`; "quests added" are the quests the setting finished instead of taking out, "(+n)" the further quests the route then
-does that those opened). The default stays **off** until the user has chosen from this table (backlog `completeness-which-values-of-f-and-t-should-be-the-defaults`).
+does that those opened). The user chose **F = 0.6 and T = 45 s** from this table (2026-10-21) and they are the default; the rows below were measured with the setting given
+explicitly, and `off` is `--completeness 0`. Why those: T matters and F hardly does; 45 s is the smallest measured trip that brings 92462 and its follow-up 92463 into the Skyborne
+route (with Flutterfly Dust, at 0.2% less play time), the Troll Hunter gets one small quest and the Tauren Druid none, and the play time moves by less than 0.5% in every row
+(backlog `completeness-which-values-of-f-and-t-should-be-the-defaults`).
 
 **Troll Hunter (normal)** (planner totals with the class-quest charges; in brackets the change against `off`)
 

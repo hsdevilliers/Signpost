@@ -1,4 +1,4 @@
--- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --force --quiet --completeness 0.6 --completeness-trip 45 (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -96,6 +96,17 @@ step
   .goto 1413,56.52,7.45
   .turnin 858 -- Ignition
 step
+  .goto 1413,48.12,5.42
+  .level 17
+  .accept 6543 -- The Warsong Reports
+  .todo "The Warsong Reports: objective 1 has no position in the pack"
+  .complete 6543,1 -- The Warsong Reports
+  .todo "The Warsong Reports: objective 2 has no position in the pack"
+  .complete 6543,2 -- The Warsong Reports
+  .todo "The Warsong Reports: objective 3 has no position in the pack"
+  .complete 6543,3 -- The Warsong Reports
+  .turnin 6543 -- The Warsong Reports
+step
   .goto 1413,54.74,15.11
   .complete 903 -- Prowlers of the Barrens
 step
@@ -144,9 +155,6 @@ step
   .goto 1413,51.5,30.87
   .turnin 872 -- The Disruption Ends
   .turnin 5041 -- Supplies for the Crossroads
-  .level 19 -- reach it first: kill or grind on the way
-  .note Grind about 2,500 experience before you go on: about 19 kills of creatures near your level (an estimate)
-step
   .goto 1413,51.95,31.58
   .accept 899 -- Consumed by Hatred
   .accept 4921 -- Lost in Battle

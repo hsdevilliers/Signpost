@@ -1,4 +1,4 @@
--- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --force --quiet --completeness 0.6 --completeness-trip 45 (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -6,7 +6,7 @@ local ADDON_NAME, ns = ...
 ns.Chapters:Register(
 	"windshaper-druid-03-orgrimmar",
 	[[
-#chapter 15-16 Orgrimmar
+#chapter 16-16 Orgrimmar
 step
   .goto 1454,31.73,37.82
   .turnin 95350 -- Welcome to Azeroth

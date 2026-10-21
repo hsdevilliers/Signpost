@@ -115,23 +115,25 @@ class EndToEndTest(RouteCase):
         self.assertIn("reaches level 6", text)
         self.assertIn("greedy:", text.strip().splitlines()[-1])
 
-    def test_the_completeness_rule_is_stated_in_the_setup_and_switched_by_the_options(self):
+    def test_completeness_is_on_by_default_stated_in_the_setup_and_switched_off_by_the_option(self):
         args = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
         code, text = self.run_main(*args)
         self.assertEqual(code, 0, text)
         flat = " ".join(text.split())
-        self.assertIn("a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason "
-                      "(--completeness F finishes the ones that are a short walk away and pay at least F of the route's pace; off)", flat)
-        code, text = self.run_main(*args, "--completeness", "0.6", "--completeness-trip", "45")
+        self.assertIn("is finished when its objectives are at most 45 s of walking away and it pays at least 60% of the route's pace "
+                      "(--completeness, --completeness-trip); the rest are taken out and listed with the reason", flat)  # the user's choice, 2026-10-21
+        self.assertNotIn("is taken out when the route is written", flat)
+        code, text = self.run_main(*args, "--completeness", "0")
         self.assertEqual(code, 0, text)
         flat = " ".join(text.split())
-        self.assertIn("is finished when its objectives are at most 45 s of walking away and it pays at least 60% of the route's pace "
-                      "(--completeness, --completeness-trip); the rest are taken out and listed with the reason", flat)
-        self.assertNotIn("is taken out when the route is written", flat)
+        self.assertIn("a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason "
+                      "(completeness is off here: --completeness F finishes the ones that are a short walk away and pay at least F of the route's pace)", flat)
+        code, text = self.run_main(*args, "--completeness", "0.8", "--completeness-trip", "20")
+        self.assertIn("at most 20 s of walking away and it pays at least 80% of the route's pace", " ".join(text.split()))
 
     def test_what_the_route_leaves_unfinished_is_named_with_the_reason_in_the_report_the_plan_file_and_the_guide(self):
         with tempfile.TemporaryDirectory() as out_dir:
-            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "4", "--out", out_dir, "--steps", "0", "--decisions", "0")
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "4", "--completeness", "0", "--out", out_dir, "--steps", "0", "--decisions", "0")
             self.assertEqual(code, 0, text)
             flat = " ".join(text.split())
             self.assertIn("unfinished 3 quests the search picked up on the way and did not finish are not in the route "
@@ -140,7 +142,7 @@ class EndToEndTest(RouteCase):
             self.assertIn("229 Hub Rats (level 6, picked up at level 1, Giver): it could not be worked at level 1", flat)
             self.assertIn("tidied 3 quests the search had accepted but never finished", flat)
             data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
-            self.assertEqual((data["completeness"], data["completeness_trip"]), (0.0, 30.0))
+            self.assertEqual((data["completeness"], data["completeness_trip"]), (0.0, 45.0))  # (the trip is kept when the setting is off)
             self.assertEqual([(r["quest"], r["code"]) for r in data["left_out"]], [(202, "handin"), (211, "handin"), (229, "level")])
             self.assertEqual(data["completed"], [])
             record = data["left_out"][0]
