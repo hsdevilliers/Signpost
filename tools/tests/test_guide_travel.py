@@ -24,6 +24,7 @@ from tests.guide_fixtures import (
     TempProject,
     chapter_lua,
     guide_lua,
+    write_files,
     write_pack,
 )
 
@@ -394,6 +395,171 @@ class MoongladeRewriteTest(unittest.TestCase):
             self.assertTrue(
                 self.apply(old_back, guide_rules).startswith('.todo "Return from Moonglade to Thunder Bluff (VERIFY'), guide
             )
+
+
+# A ride as Guides/Travel/Borders.lua writes it: the zones only (the island Isle, map 40, is another world than Westland, 10).
+RIDE = {
+    "name": "Isle/Westland airship",
+    "from": [40],
+    "to": [10],
+    "side": "Horde",
+    "oneWay": True,
+    "ride": {
+        "kind": "zeppelin",
+        "label": "airship",
+        "wait": 450,
+        "waitText": "7 to 8 minutes",
+        "fromText": "the west dock",
+        "toText": "the plateau beside Towne",
+        "verify": ["the dock", "the airship's name", "whether it runs early"],
+    },
+}
+RIDE_STEP = [
+    ".zone 10 >> Take the airship from the west dock (Isle) to the plateau beside Towne (Westland)",
+    ".note Expect to wait about 7 to 8 minutes for it.",
+    '.todo "Not verified in the game: the dock, the airship\'s name and whether it runs early. '
+    'This step is done when you arrive in Westland."',
+]
+RIDE_LUA = """local ADDON_NAME, ns = ...
+ns.Travel:RegisterBorders({
+	{
+		name = "Isle/Westland airship",
+		from = { 40 },
+		to = { 10 },
+		side = "Horde",
+		oneWay = true,
+		ride = {
+			kind = "zeppelin",
+			label = "airship",
+			wait = 450,
+			waitText = "7 to 8 minutes",
+			fromText = "the west dock",
+			toText = "the plateau beside Towne",
+			verify = { "the dock", "the airship's name", "whether it runs early" },
+		},
+	},
+})
+"""
+
+
+class RideTest(unittest.TestCase):
+    """A ride in Guides/Travel/Borders.lua: a boat, zeppelin or airship between two zones whose docks nobody has recorded."""
+
+    def world(self, faction="Horde", travel=TRAVEL, entries=None):
+        pack = guide_travel.Pack(
+            guide_travel.Path("."), {"schema": 1}, {"maps": MAPS, "quests": QUESTS, "npcs": NPCS, "travel": travel}
+        )
+        listed = [RIDE] if entries is None else entries
+        return World(pack, [("Borders.lua", number, entry) for number, entry in enumerate(listed, 1)], faction)
+
+    @staticmethod
+    def trip(world, start, goal):
+        plan = guide_travel.plan_travel(world, Place(start, None, "start"), Place(goal, None, "goal"))
+        return plan, guide_travel.plan_steps(world, plan) if plan else guide_travel.no_route_steps(world, start, goal)
+
+    def test_a_ride_without_docks_is_one_real_step_with_the_wait_and_what_is_unverified(self):
+        plan, steps = self.trip(self.world(), 40, 10)
+        self.assertEqual([leg.kind for leg in plan.legs if leg.kind != "walk"], ["ride-todo"])
+        self.assertEqual(steps, [RIDE_STEP])
+        self.assertEqual(guide_travel.describe_cost(plan), "time unknown (a ride whose docks are not recorded)")
+        text = guide_travel.render_steps(steps)
+        self.assertEqual(coordinates_in(text), set())  # no dock position is made up
+        self.assertNotIn(".goto", text)
+        source = guidefile.Source("chapter", "x", "x", text, "x.lua", 1)
+        guidefile.parse_source(source, guidefile.registry())
+        self.assertEqual(source.problems, [])
+        todo = [d for step in source.steps() for d in step.directives if d.name == "todo"]
+        self.assertTrue(todo and todo[0].args["quoted"])
+
+    def test_the_guides_wait_is_priced_and_an_unrecorded_dock_costs_extra(self):
+        plan, _ = self.trip(self.world(), 40, 10)
+        walks = 2 * guide_travel.UNKNOWN_WALK  # to the dock and from it: neither position is known
+        self.assertEqual(plan.seconds, walks + 450 + guide_travel.TRANSPORT_ACROSS + guide_travel.TODO_PENALTY)
+        slow = {**RIDE, "ride": {**RIDE["ride"], "wait": 900}}
+        self.assertEqual(self.trip(self.world(entries=[slow]), 40, 10)[0].seconds - plan.seconds, 450)
+
+    def test_it_is_for_one_faction_and_one_way(self):
+        for world, start, goal in ((self.world("Alliance"), 40, 10), (self.world(), 10, 40)):
+            plan, steps = self.trip(world, start, goal)
+            self.assertIsNone(plan)
+            self.assertIn("different continents", steps[0][0])  # the generic placeholder, as before
+        self.assertEqual([t for t in self.world("Alliance").transports if not t.placed], [])  # the pack's boat is for both
+        self.assertEqual([t.zone_a for t in self.world().transports if not t.placed], [40])
+
+    def test_a_ride_someone_recorded_replaces_it_and_keeps_its_name_wait_and_direction(self):
+        recorded = {"kind": "zeppelin", "from": [40, 10, 10], "to": [10, 90, 50], "side": "Horde"}
+        world = self.world(travel=dict(TRAVEL, transports=[*TRAVEL["transports"], recorded]))
+        self.assertEqual(len(world.transports), 2)  # the fixture's boat and the one ride
+        plan, steps = self.trip(world, 40, 10)
+        self.assertEqual(steps, [[".zeppelin 40,10.0,10.0 > 10,90.0,50.0 >> Take the airship to Westland"]])
+        ride = next(t for t in world.transports if t.placed and t.zone_a == 40)
+        self.assertEqual((ride.wait, ride.oneway, ride.label), (450.0, True, "airship"))
+        self.assertIsNone(self.trip(world, 10, 40)[0])  # still one way: the recorded ride does not run back
+        # the fixture's boat is not touched
+        self.assertEqual(self.trip(world, 20, 40)[1], [[".boat 20,90.0,90.0 > 40,10.0,10.0 >> Take the boat to Isle"]])
+
+    def test_a_ride_with_docks_in_the_data_is_a_placed_transport(self):
+        placed = {**RIDE, "from": [40, 10, 10], "to": [10, 90, 50]}
+        world = self.world(entries=[placed])
+        self.assertTrue(world.transports[0].placed)
+        self.assertEqual(self.trip(world, 40, 10)[1], [[".zeppelin 40,10.0,10.0 > 10,90.0,50.0 >> Take the airship to Westland"]])
+
+    def test_a_ride_that_is_not_a_boat_or_zeppelin_is_left_out_and_is_never_a_crossing(self):
+        for ride in ({"kind": "carpet"}, {"label": "airship"}, "zeppelin"):
+            world = self.world(entries=[{**RIDE, "ride": ride}])
+            self.assertEqual(world.transports, self.world(entries=[]).transports, ride)  # only the pack's own boat
+            self.assertEqual(len(world.crossings), 0, ride)
+
+    def test_nothing_else_changes(self):
+        with_ride, without = self.world(), self.world(entries=[])
+        self.assertEqual(with_ride.crossings, without.crossings)
+        self.assertEqual(with_ride.nodes, without.nodes)
+        self.assertEqual(with_ride.inns, without.inns)
+        self.assertEqual(with_ride.transports[:-1], without.transports)
+        self.assertEqual([t.zone_a for t in with_ride.transports[-1:]], [40])
+        for start, goal in ((10, 20), (10, 40), (20, 40), (40, 20), (20, 30)):  # none of these trips leaves the island by the ride
+            a, b = self.trip(with_ride, start, goal), self.trip(without, start, goal)
+            self.assertEqual(b[1], a[1], (start, goal))
+
+    def test_the_tool_proposes_it_where_a_route_leaves_the_island(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, pack = Path(tmp) / "Signpost", Path(tmp) / "pack"
+            files = {
+                "Guides/Test.lua": guide_lua("#include isle-1-5\n"),
+                "Guides/Chapters/isle-1-5.lua": chapter_lua(
+                    "isle-1-5", "#chapter 1-5 Isle\nstep\n  .goto 40,50,50\nstep\n  .goto 10,60,50\n"
+                ),
+                "Guides/Travel/Borders.lua": RIDE_LUA,
+            }
+            write_files(root, files)
+            write_pack(pack)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                guide_travel.main(["--root", str(root), "--pack", str(pack)])
+        self.assertIn("1 uncovered zone change(s)", out.getvalue())
+        self.assertIn("time unknown (a ride whose docks are not recorded)", out.getvalue())
+        found = rebuild_drafts.PROPOSAL.findall(out.getvalue())  # the form tools/rebuild_drafts.py and the planner insert
+        self.assertEqual([lines.rstrip("\n") for _, _, lines in found], [guide_travel.render_steps([RIDE_STEP])])
+
+    def test_the_repos_ride_has_the_zones_and_no_dock_position(self):
+        project = guidefile.load_project(guide_travel.REPO_ROOT)
+        rides = [entry for _, _, entry in project.borders if isinstance(entry, dict) and "ride" in entry]
+        self.assertEqual([entry["name"] for entry in rides], ["Zephras Isle/Mulgore airship"])
+        ride = rides[0]
+        # VERIFY(beta): from fan guides, nothing seen in the game; map IDs only until a ride is recorded
+        self.assertEqual((ride["from"], ride["to"], ride["side"], ride["oneWay"]), ([2521], [1412], "Horde", True))
+        self.assertEqual((ride["ride"]["kind"], ride["ride"]["wait"]), ("zeppelin", 450))
+        self.assertEqual(ride["ride"]["waitText"], "7 to 8 minutes")
+        pack_dir = guide_travel.default_pack_dir(guide_travel.REPO_ROOT)
+        if pack_dir is None:
+            self.skipTest("no data pack: the Skyborne's islands are in the pack's maps")
+        pack = guide_travel.load_pack(pack_dir)
+        horde = World(pack, project.borders, "Horde")
+        plain = World(pack, [b for b in project.borders if not (isinstance(b[2], dict) and "ride" in b[2])], "Horde")
+        self.assertEqual(horde.crossings, plain.crossings)  # the ride is no crossing
+        self.assertEqual([(t.zone_a, t.zone_b) for t in horde.transports], [(2521, 1412)])
+        self.assertEqual(plain.transports, [])
+        self.assertEqual(World(pack, project.borders, "Alliance").transports, [])
 
 
 class SimulateTest(TempProject):

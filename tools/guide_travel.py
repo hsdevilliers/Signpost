@@ -23,7 +23,7 @@ import heapq
 import math
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -418,12 +418,37 @@ def flight_nodes(pack: Pack, geo: Geo) -> list[FlightNode]:
     return nodes
 
 
+def phrases(value: object) -> str:
+    """Words from a string, or from a list of phrases read as "a, b and c" (a long sentence of data stays on short lines)."""
+    if isinstance(value, str):
+        return value
+    items = [item for item in value if isinstance(item, str) and item] if isinstance(value, list) else []
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1] if items else ""
+
+
 @dataclass(frozen=True)
 class Transport:
+    """A boat or zeppelin between two zones. Its docks are known (the pack's record: someone rode it) or not yet (a ride
+    in Guides/Travel/Borders.lua: hand-authored with the zones only, since a dock position is never made up)."""
+
     kind: str  # boat or zeppelin
-    a: Coord
-    b: Coord
+    a: Coord | None
+    b: Coord | None
     side: str
+    zone_a: int | None = None
+    zone_b: int | None = None
+    label: str = ""  # what the guides call it ("airship"); the step says it instead of the kind
+    wait: float = TRANSPORT_WAIT  # seconds at the dock
+    wait_text: str = ""  # the wait in the player's words ("7 to 8 minutes")
+    from_text: str = ""  # where it leaves, in words ("Valanaar's southwest dock")
+    to_text: str = ""  # where it lands
+    verify: str = ""  # what nobody has confirmed in the game, in words
+    oneway: bool = False  # only from a to b is known
+    origin: str = ""
+
+    @property
+    def placed(self) -> bool:
+        return self.a is not None and self.b is not None
 
 
 @dataclass(frozen=True)
@@ -466,7 +491,9 @@ class World:
                 continue
             a, b, side = coord_of(entry.get("from")), coord_of(entry.get("to")), side_of(entry.get("side"))
             if a and b and entry.get("kind") in ("boat", "zeppelin") and usable(side, faction):
-                self.transports.append(Transport(entry["kind"], a, b, side))
+                self.transports.append(
+                    Transport(entry["kind"], a, b, side, zone_a=self.zone(a.map), zone_b=self.zone(b.map), origin="data pack")
+                )
         self.inns = []
         listed = _keyed(travel.get("inns"))
         for npc, entry in listed.items():
@@ -480,7 +507,15 @@ class World:
                 self.inns.append(Inn(npc, coord, side_of(record.get("side"))))
         learned = [self._crossing(entry, "data pack") for entry in travel.get("crossings") or []]
         learned = [crossing for crossing in learned if crossing and usable(crossing.side, faction)]
-        hand = [self._crossing(entry, f"{path}:{line}") for path, line, entry in borders or []]
+        hand, rides = [], []
+        for path, line, entry in borders or []:
+            if isinstance(entry, dict) and entry.get("ride") is not None:  # a ride is no walkable crossing, valid or not
+                ride = self._ride(entry, entry["ride"], f"{path}:{line}") if isinstance(entry["ride"], dict) else None
+                if ride and usable(ride.side, faction):
+                    rides.append(ride)
+            else:
+                hand.append(self._crossing(entry, f"{path}:{line}"))
+        self._add_rides(rides)
         # Learned crossings replace hand-authored ones of the same name, and coordinate-less ones for the same zones.
         for crossing in [c for c in hand if c and usable(c.side, faction)]:
             pair = {crossing.zone_a, crossing.zone_b}
@@ -505,6 +540,49 @@ class World:
         if isinstance(entry.get("src"), str):
             origin = f"{origin} ({entry['src']})"
         return Crossing(name, a, b, self.zone(map_a), self.zone(map_b), origin, side_of(entry.get("side")))
+
+    def _ride(self, entry: dict, ride: dict, origin: str) -> Transport | None:
+        """A hand-authored ride (Guides/Travel/Borders.lua): the zones, the kind, and words for the player. Its docks are
+        read as coordinates only if the entry holds them; the tools never make one up."""
+        map_a, map_b = map_of(entry.get("from")), map_of(entry.get("to"))
+        if ride.get("kind") not in ("boat", "zeppelin") or map_a is None or map_b is None:
+            return None
+
+        def words(key: str) -> str:
+            return phrases(ride.get(key))
+
+        wait = ride.get("wait")
+        usable_wait = isinstance(wait, (int, float)) and not isinstance(wait, bool) and wait >= 0
+        return Transport(
+            ride["kind"],
+            coord_of(entry.get("from")),
+            coord_of(entry.get("to")),
+            side_of(entry.get("side")),
+            zone_a=self.zone(map_a),
+            zone_b=self.zone(map_b),
+            label=words("label"),
+            wait=float(wait) if usable_wait else TRANSPORT_WAIT,
+            wait_text=words("waitText"),
+            from_text=words("fromText"),
+            to_text=words("toText"),
+            verify=words("verify"),
+            oneway=entry.get("oneWay") is True,
+            origin=origin,
+        )
+
+    def _add_rides(self, rides: list[Transport]) -> None:
+        """A ride someone recorded (the pack's transports, docks and all) replaces the hand-authored one between the same two
+        zones, as a learned crossing does; it keeps the hand-authored name, wait and direction, which the record lacks."""
+        for ride in rides:
+            pair = {ride.zone_a, ride.zone_b}
+            found = next((n for n, t in enumerate(self.transports) if t.placed and {t.zone_a, t.zone_b} == pair), None)
+            if found is None:
+                self.transports.append(ride)
+            else:
+                recorded = self.transports[found]
+                self.transports[found] = replace(
+                    recorded, label=ride.label, wait=ride.wait, wait_text=ride.wait_text, oneway=ride.oneway
+                )
 
     def inn_in(self, zone: int | None) -> Coord | None:
         """An innkeeper's position in that zone (the data pack's), when there is exactly one."""
@@ -769,7 +847,7 @@ class Place:
 
 @dataclass
 class Leg:
-    kind: str  # walk, cross, cross-todo, fly, boat, zeppelin, hearth
+    kind: str  # walk, cross, cross-todo, fly, boat, zeppelin, ride-todo (a ride whose docks are not recorded), hearth
     a: Place
     b: Place
     seconds: float
@@ -830,12 +908,16 @@ def plan_travel(
                 seconds = FLIGHT_OVERHEAD + distance / FLIGHT_SPEED if distance is not None else UNKNOWN_FLIGHT
                 link(i, j, "fly", seconds, b.ref)
     for transport in world.transports:
-        i = add(Place(world.zone(transport.a.map), transport.a, "dock", transport.kind, transport))
-        j = add(Place(world.zone(transport.b.map), transport.b, "dock", transport.kind, transport))
+        i = add(Place(transport.zone_a, transport.a, "dock", transport.kind, transport))
+        j = add(Place(transport.zone_b, transport.b, "dock", transport.kind, transport))
         distance = world.geo.distance(transport.a, transport.b)
-        seconds = TRANSPORT_WAIT + (distance / TRANSPORT_SPEED if distance is not None else TRANSPORT_ACROSS)
-        link(i, j, transport.kind, seconds, transport)
-        link(j, i, transport.kind, seconds, transport)
+        seconds = transport.wait + (distance / TRANSPORT_SPEED if distance is not None else TRANSPORT_ACROSS)
+        kind = transport.kind
+        if not transport.placed:  # the zones are linked, the docks are not known: a `.todo` step, priced high
+            seconds, kind = seconds + TODO_PENALTY, "ride-todo"
+        link(i, j, kind, seconds, transport)
+        if not transport.oneway:
+            link(j, i, kind, seconds, transport)
     if bind is not None and hearth_ready and bind.zone is not None:
         link(0, add(bind), "hearth", HEARTH_SECONDS, bind)
     by_zone: dict[int, list[int]] = {}
@@ -904,6 +986,25 @@ def placeholder_lines(world: World, from_zone: int | None, to_zone: int) -> list
     return [f'.todo "{what} This step is done when you arrive in {there}."', f".zone {to_zone} >> Go to {there}"]
 
 
+def ride_lines(world: World, leg: Leg) -> list[str]:
+    """The step for a ride whose docks nobody has recorded (a hand-authored ride, Guides/Travel/Borders.lua): what to take,
+    from where to where, how long to wait, and in plain words what nobody has confirmed in the game. It is still a `.todo`
+    (the dock position is missing) and a `.zone` (the step is done on arrival), and carries no coordinate."""
+    ride = leg.ref
+    forward = leg.a.zone == ride.zone_a
+    here, there = _plain(world.geo.name(leg.a.zone)), _plain(world.geo.name(leg.b.zone))
+    start, end = (ride.from_text, ride.to_text) if forward else (ride.to_text, ride.from_text)
+    label = _plain(ride.label or ride.kind)
+    origin = f"{_plain(start)} ({here})" if start else here
+    target = f"{_plain(end)} ({there})" if end else there
+    lines = [f".zone {leg.b.zone} >> Take the {label} from {origin} to {target}"]
+    if ride.wait_text:
+        lines.append(f".note Expect to wait about {_plain(ride.wait_text)} for it.")
+    unverified = _plain(ride.verify) if ride.verify else "where the dock is"
+    lines.append(f'.todo "Not verified in the game: {unverified}. This step is done when you arrive in {there}."')
+    return lines
+
+
 def plan_steps(world: World, plan: Plan) -> list[list[str]]:
     """The plan as DSL steps (each a list of directive lines). Coordinates come only from the graph's data; a run of
     borders whose crossing points are not known yet is one `.todo` step for the whole walk."""
@@ -939,9 +1040,12 @@ def plan_steps(world: World, plan: Plan) -> list[list[str]]:
                 lines.append(f".goto {leg.a.coord.dsl()} >> Go to the flight master{origin}")
             lines.append(f".fly {fly_name(world, leg.ref)}")
             steps.append(lines)
+        elif leg.kind == "ride-todo":
+            steps.append(ride_lines(world, leg))
         elif leg.kind in ("boat", "zeppelin"):
             route = f"{leg.a.coord.dsl()} > {leg.b.coord.dsl()}"
-            steps.append([f".{leg.kind} {route} >> Take the {leg.kind} to {world.geo.name(zone)}"])
+            label = _plain(leg.ref.label) if getattr(leg.ref, "label", "") else leg.kind
+            steps.append([f".{leg.kind} {route} >> Take the {label} to {world.geo.name(zone)}"])
         elif leg.kind == "hearth":
             steps.append([f".home >> Hearth to {leg.b.label}"])
     flush()
@@ -962,6 +1066,8 @@ def describe_cost(plan: Plan | None) -> str:
         return "no route"
     if any(leg.kind == "cross-todo" for leg in plan.legs):
         return "time unknown (a border without coordinates)"
+    if any(leg.kind == "ride-todo" for leg in plan.legs):
+        return "time unknown (a ride whose docks are not recorded)"
     return f"about {max(1, round(plan.seconds / 60))} min"
 
 
