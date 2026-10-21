@@ -590,6 +590,29 @@ describe("step frame", function()
 			assert.is_true(optionalY < ongoingY) -- further down the frame
 		end)
 
+		it(
+			"draws the rest of the card when the check for group quests raises an error, and the error is logged",
+			function()
+				local ns, mock, _, engine = load({
+					setup = function(engine)
+						engine.lines["valley:2"] = { "Kill Mottled Boars" }
+					end,
+				})
+				ns.Conditions.OptionalOnly = function()
+					error("broken group check")
+				end
+				go(ns, engine, 2)
+				local frame = ns.StepFrame.frame
+				assert.are.equal("Kill Mottled Boars", frame.body:GetText())
+				assert.are.equal("", frame.optional:GetText())
+				assert.is_true(frame.back:IsEnabled()) -- the card was filled to its end: this comes after the group quests
+				assert.truthy(ns.db.errors[1].msg:find("broken group check", 1, true))
+				wipe(ns.db.errors) -- seen; noErrors is for the unexpected ones
+				wipe(mock.errors)
+				noErrors(ns, mock)
+			end
+		)
+
 		it("shows nothing when the engine cannot say", function()
 			local ns, mock, _, engine = load()
 			ns.Conditions.OptionalOnly = nil
