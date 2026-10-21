@@ -9,7 +9,8 @@
 -- goes on: every step before it is behind the character. It is the k that minimises
 --
 --     OPEN_WEIGHT * (open steps before k) + DONE_WEIGHT * (done steps at or after k) + LEVEL_WEIGHT * (levels between
---     the character's level and the level the guide expects at step k)
+--     the character's level and the level the guide expects at step k, less a tolerance while the quests show the
+--     character playing the guide)
 --
 -- a changepoint fit: one quest skipped, or done early, moves the cost by a constant and not the answer. Ties go to the
 -- earliest k, so a trip between the last quest done and the next one open is the step shown (the engine passes it by
@@ -31,9 +32,25 @@ Placement.DONE_WEIGHT = 1
 -- is not put there on the strength of a few quests, little enough that a clean history wins over a level that is a
 -- level off.
 Placement.LEVEL_WEIGHT = 6
--- A chapter's levels are whole levels (the level at its start, the level at its end), so the straight line between them
--- runs about half a level under the level a character has at that step, fraction and all.
+-- A chapter's levels are whole levels (the level at its start, the level at its end), so the line between them runs
+-- about half a level under the level a character has at that step, fraction and all (measured against the simulator's
+-- levels: 0.48 in the short chapters).
 Placement.BIAS = 0.5
+-- The line through a chapter: "xp", straight in experience (see Experience below), or "linear", straight in level.
+-- The second is the first version, kept for the simulation to compare with; it is wrong in a chapter that spans many
+-- levels.
+Placement.CURVE = "xp"
+-- The level term's tolerance while the history shows the character playing the guide: the first TOL_BASE levels of
+-- difference are free, and TOL_SPAN more for each level the chapter spans. A chapter's line can be off by a level or
+-- more inside a long chapter (its quests do not give equal experience, the guide's headers are whole levels), and a
+-- character who has done the quests one after the other should not be pulled to where the line says its level
+-- belongs. The tolerance is whole only while nearly all the steps before the candidate are done: it falls to nothing
+-- as that share falls from GATE_HIGH to GATE_LOW, because a character who scatters over the guide, or has stopped
+-- playing it, is exactly the one the level is there for. With no history there is no tolerance.
+Placement.TOL_BASE = 0.3
+Placement.TOL_SPAN = 0.05
+Placement.GATE_LOW = 0.5
+Placement.GATE_HIGH = 0.8
 -- At or below this level a character with none of the guide's quests done or in the log is simply at its first step.
 Placement.NO_EVIDENCE_LEVEL = 2
 -- The boundary at the split: how many steps with a label are looked at on each side, and the sharpness from which the
@@ -131,6 +148,58 @@ function Placement:Labels(guide, snapshot)
 	return labels, stats
 end
 
+-- Experience ----------------------------------------------------------------------------------------------------------
+
+-- Experience to the next level, levels 1 to 59: Classic's table, which tools/sim_params.json assumes (VERIFY(launch):
+-- Forever's). Only its shape matters here: the first levels need little experience, so a character gains them fast, and
+-- the quests of a chapter that spans many levels give about the same experience each. Level is therefore not a straight
+-- line over the steps of such a chapter, experience is (the simulator's levels follow it to within a level or so where
+-- a straight line is off by three or four).
+-- stylua: ignore
+local XP_TO_NEXT = {
+	400, 900, 1400, 2100, 2800, 3600, 4500, 5400, 6500, 7600,
+	8800, 10100, 11400, 12900, 14400, 16000, 17700, 19400, 21300, 23200,
+	25200, 27300, 29400, 31700, 34000, 36400, 38900, 41400, 44300, 47400,
+	50800, 54500, 58600, 62800, 67100, 71600, 76100, 80800, 85700, 90700,
+	95800, 101000, 106300, 111800, 117500, 123200, 129100, 135100, 141200, 147500,
+	153900, 160400, 167100, 173900, 180800, 187900, 195000, 202300, 209800,
+}
+local XP_AT = { 0 } -- XP_AT[level]: the experience a character has on reaching that level
+for level, needed in ipairs(XP_TO_NEXT) do
+	XP_AT[level + 1] = XP_AT[level] + needed
+end
+local TOP_LEVEL = #XP_TO_NEXT + 1
+
+-- The experience of a (fractional) level, and the level of some experience: its inverse. Within a level it is a
+-- straight line; below level 1 and above the top level it stops.
+function Placement:ExperienceAt(level)
+	if level <= 1 then
+		return 0
+	elseif level >= TOP_LEVEL then
+		return XP_AT[TOP_LEVEL]
+	end
+	local whole = math.floor(level)
+	return XP_AT[whole] + (level - whole) * (XP_AT[whole + 1] - XP_AT[whole])
+end
+
+function Placement:LevelAt(experience)
+	if experience <= 0 then
+		return 1
+	elseif experience >= XP_AT[TOP_LEVEL] then
+		return TOP_LEVEL
+	end
+	local low, high = 1, TOP_LEVEL
+	while high - low > 1 do
+		local middle = math.floor((low + high) / 2)
+		if XP_AT[middle] <= experience then
+			low = middle
+		else
+			high = middle
+		end
+	end
+	return low + (experience - XP_AT[low]) / (XP_AT[low + 1] - XP_AT[low])
+end
+
 -- Expected levels -----------------------------------------------------------------------------------------------------
 
 -- The highest `.level N` of a step, or nil.
@@ -156,11 +225,14 @@ end
 
 -- lv[i] for i = 1 .. #steps + 1: the level the guide expects the character to have when it starts step i (the last
 -- entry: when it is done with the guide). Inside a chapter it is interpolated between the chapter's levels (its first
--- level at its first step, its last at the step after its last), and it never falls below an earlier step's or below a
--- `.level N` gate in an earlier step. A dungeon chapter's levels say where it is on offer, not where the route is, so
--- they add nothing. false where the guide says nothing. The second result is the guide's top level: the higher of
--- lv[#steps + 1] and the guide's declared levels.
-function Placement:Levels(guide)
+-- level at its first step, its last at the step after its last), along the curve `curve` (default: Placement.CURVE),
+-- and it never falls below an earlier step's or below a `.level N` gate in an earlier step. A dungeon chapter's levels
+-- say where it is on offer, not where the route is, so they add nothing. false where the guide says nothing. The second
+-- result is the guide's top level: the higher of lv[#steps + 1] and the guide's declared levels. The third is span[i],
+-- the number of levels the chapter of step i spans (0 where it has no line): the longer a chapter, the less the line
+-- through it can be trusted.
+function Placement:Levels(guide, curve)
+	curve = curve or self.CURVE
 	local steps, chapters = guide.steps or EMPTY, guide.chapters or EMPTY
 	local n = #steps
 	local count, before, chapterOf, current = {}, {}, {}, nil
@@ -171,11 +243,12 @@ function Placement:Levels(guide)
 			count[current] = (count[current] or 0) + 1
 		end
 	end
-	local lv, level, gate = {}, nil, nil
+	local lv, span, level, gate = {}, {}, nil, nil
 	local lastChapter, lastHigh
 	for i = 1, n + 1 do
 		local chapter = chapterOf[i] or chapterOf[n]
 		local low, high = chapterRange(chapters[chapter or 0])
+		span[i] = low and high - low or 0
 		if i <= n and chapter ~= lastChapter then
 			-- a new chapter starts, so the one before it is done and its top level reached (a dungeon chapter has no line of
 			-- its own to carry it on)
@@ -185,7 +258,14 @@ function Placement:Levels(guide)
 			lastChapter, lastHigh = chapter, high
 		end
 		if low then
-			local raw = low + (high - low) * (before[chapter] or 0) / count[chapter]
+			local fraction = (before[chapter] or 0) / count[chapter]
+			local raw
+			if curve == "linear" then
+				raw = low + (high - low) * fraction
+			else
+				local start = self:ExperienceAt(low)
+				raw = self:LevelAt(start + (self:ExperienceAt(high) - start) * fraction)
+			end
 			level = (not level or raw > level) and raw or level
 		end
 		if gate and (not level or gate > level) then
@@ -209,7 +289,7 @@ function Placement:Levels(guide)
 	if declared and (not top or declared > top) then
 		top = declared
 	end
-	return lv, top
+	return lv, top, span
 end
 
 -- Find ----------------------------------------------------------------------------------------------------------------
@@ -259,14 +339,18 @@ local function sharpness(labels, split, window)
 	end
 end
 
--- The fit itself, from what Labels and Levels computed (the simulation calls it again and again with other constants);
--- see Find for the arguments and the result.
-function Placement:Fit(labels, stats, lv, top, snapshot, opts)
+-- The fit itself, from what Labels and Levels computed (lv, top, span; the simulation calls it again and again with
+-- other constants); see Find for the arguments and the result.
+function Placement:Fit(labels, stats, lv, top, span, snapshot, opts)
 	local n = #labels
 	opts = opts or EMPTY
 	local doneWeight = opts.doneWeight or self.DONE_WEIGHT
 	local levelWeight = opts.levelWeight or self.LEVEL_WEIGHT
 	local bias = opts.bias or self.BIAS
+	local tolBase = opts.tolBase or self.TOL_BASE
+	local tolSpan = opts.tolSpan or self.TOL_SPAN
+	local gateLow = opts.gateLow or self.GATE_LOW
+	local gateHigh = opts.gateHigh or self.GATE_HIGH
 	local level = type(snapshot) == "table" and tonumber(snapshot.level)
 	if level and level < 1 then
 		level = nil
@@ -297,7 +381,19 @@ function Placement:Fit(labels, stats, lv, top, snapshot, opts)
 			local cost = openWeight * open + doneWeight * (doneTotal - done)
 			if level and lv[k] then
 				-- the character's level is a whole level: from `level` up to just short of the next
-				cost = cost + levelWeight * distance(lv[k] + bias, level, level + 1)
+				local gap = distance(lv[k] + bias, level, level + 1)
+				if mode == "history" and gap > 0 then
+					-- the history outweighs a level that is a little off: more in a long chapter, whose line is the less
+					-- certain, and only as far as the quests show the character playing the guide up to here
+					local tolerance = tolBase + tolSpan * (span[k] or 0)
+					if gateHigh > gateLow then
+						local labeled = open + done
+						local share = labeled > 0 and done / labeled or 0 -- nothing before k: nothing shows it
+						tolerance = tolerance * math.min(1, math.max(0, (share - gateLow) / (gateHigh - gateLow)))
+					end
+					gap = math.max(0, gap - tolerance)
+				end
+				cost = cost + levelWeight * gap
 			end
 			if cost < best - EPSILON then
 				best, split = cost, k
@@ -371,13 +467,14 @@ end
 --   done, active, total    distinct quests of the guide: done, in the log, in the guide
 --   skipped, ahead         steps before the pointer not done ("skipped"), steps at or after it done ("ahead")
 --   labels      the label of each step, "done", "open" or "neutral"
--- `opts` overrides the constants (openWeight, doneWeight, levelWeight, bias) for the simulation that chose them.
+-- `opts` overrides the constants (openWeight, doneWeight, levelWeight, bias, tolBase, tolSpan, gateLow, gateHigh and
+-- the curve of the levels) for the simulation that chose them.
 function Placement:Find(guide, snapshot, opts)
 	local steps = type(guide) == "table" and guide.steps
 	if type(steps) ~= "table" or #steps == 0 then
 		return nil
 	end
 	local labels, stats = self:Labels(guide, snapshot)
-	local lv, top = self:Levels(guide)
-	return self:Fit(labels, stats, lv, top, snapshot, opts)
+	local lv, top, span = self:Levels(guide, opts and opts.curve)
+	return self:Fit(labels, stats, lv, top, span, snapshot, opts)
 end

@@ -7,16 +7,21 @@
 --   lua tools/placement_report.lua --guide horde-troll-hunter --scenario mixed --scenario levelonly
 --   lua tools/placement_report.lua --truth sim --levels plans/placement_levels.lua     the simulator's levels as truth
 --   lua tools/placement_report.lua --open 0.5 --done 1 --level 8    other constants
+--   lua tools/placement_report.lua --tol 0.3,0.05 --gate 0.5,0.8    the level term's tolerance (base,per level of span)
+--                                                                   and its gate (low,high share of done steps)
+--   lua tools/placement_report.lua --curve linear                   the levels along a straight line, not experience
+--   lua tools/placement_report.lua --widen -1,1                     the chapter headers one level wider on each side
 --   lua tools/placement_report.lua --set 0.25,1,6 --set 0.5,1,6     several sets side by side (open,done,level[,bias])
 --   lua tools/placement_report.lua --tune                           a grid search over the constants
 --   lua tools/placement_report.lua --scenarios                      what each scenario does
 --
 -- The method and the numbers it gave are in docs/ENGINE.md ("Engine/Placement.lua"); tests/helpers/placement_sim.lua is
--- the simulation. --truth says what level a character really has at a step: "warp" (the default: each chapter's levels
--- reached on a curve, so the straight line the placement assumes is wrong inside a chapter), "model" (the placement's
--- own levels) or "sim" (the levels tools/guide_sim.py walks, from the private data pack: tools/placement_levels.py
--- writes them to a Lua file, which is passed as --levels). --also-sim <guide id> adds that guide under the simulator's
--- levels to any run, reported as "<guide id>/sim". Everything is deterministic for a given --seed.
+-- the simulation. --truth says what level a character really has at a step: "warp" (the default: the placement's own
+-- line, but off by a bump inside each chapter, as far as the line is off against the simulator in the worst chapters),
+-- "model" (the placement's own levels), "warp-linear" (the older stress) or "sim" (the levels tools/guide_sim.py walks,
+-- from the private data pack: tools/placement_levels.py writes them to a Lua file, which is passed as --levels).
+-- --also-sim <guide id> adds that guide under the simulator's levels to any run, reported as "<guide id>/sim".
+-- Constants not given are those of Engine/Placement.lua. Everything is deterministic for a given --seed.
 local Sim = dofile("tests/helpers/placement_sim.lua")
 
 local options = { truth = "warp", seed = 1, stride = 2, replicates = 3 }
@@ -52,6 +57,19 @@ while arg[index] do
 		find.levelWeight = tonumber(value())
 	elseif name == "--bias" then
 		find.bias = tonumber(value())
+	elseif name == "--curve" then
+		options.curve = value()
+	elseif name == "--tol" then
+		-- base,span: the tolerance of the level term
+		local base, span = value():match("^([%d.]+),([%d.]+)$")
+		find.tolBase, find.tolSpan = tonumber(base), tonumber(span)
+	elseif name == "--gate" then
+		local low, high = value():match("^([%d.]+),([%d.]+)$")
+		find.gateLow, find.gateHigh = tonumber(low), tonumber(high)
+	elseif name == "--widen" then
+		-- lo,hi: the chapter headers the placement is told about are widened by these (Sim.view)
+		local low, high = value():match("^(-?%d+),(-?%d+)$")
+		options.widen = { lo = tonumber(low), hi = tonumber(high) }
 	elseif name == "--set" then
 		local parts = {}
 		for item in (value() .. ","):gmatch("([^,]*),") do
@@ -124,6 +142,8 @@ local function population(only, truth, suffix)
 			guides = guides,
 			only = only,
 			truth = truth,
+			curve = options.curve,
+			widen = options.widen,
 			simLevels = simLevels,
 			seed = options.seed,
 			stride = options.stride,
@@ -142,9 +162,9 @@ local function run(constants)
 			populations[2] = population(options.alsoSim, "sim", "/sim")
 		end
 	end
-	for _, key in ipairs({ "bias", "openWeight", "doneWeight", "levelWeight" }) do
+	for key, item in pairs(find) do
 		if constants[key] == nil then
-			constants[key] = find[key]
+			constants[key] = item
 		end
 	end
 	local merged = {}
@@ -158,13 +178,29 @@ end
 
 local function constantsText(constants)
 	local P = ns.Placement
-	return string.format(
+	local text = string.format(
 		"open %s, done %s, level %s, bias %s",
 		tostring(constants.openWeight or P.OPEN_WEIGHT),
 		tostring(constants.doneWeight or P.DONE_WEIGHT),
 		tostring(constants.levelWeight or P.LEVEL_WEIGHT),
 		tostring(constants.bias or P.BIAS)
 	)
+	if constants == find then
+		-- the run's own figures (a row of --set or --tune varies only the four above)
+		text = text
+			.. string.format(
+				", curve %s, tolerance %s + %s per level, gate %s to %s",
+				tostring(options.curve or P.CURVE),
+				tostring(constants.tolBase or P.TOL_BASE),
+				tostring(constants.tolSpan or P.TOL_SPAN),
+				tostring(constants.gateLow or P.GATE_LOW),
+				tostring(constants.gateHigh or P.GATE_HIGH)
+			)
+			.. (
+				options.widen and string.format(", headers widened by %d, %d", options.widen.lo, options.widen.hi) or ""
+			)
+	end
+	return text
 end
 
 local groupOf = {}
@@ -211,7 +247,7 @@ local function digest(results)
 end
 
 local function guideEntry(id)
-	local plain = id:gsub("/sim$", "")
+	local plain = id:gsub("/sim$", ""):gsub("/w%-?%d+,%-?%d+$", "")
 	for _, candidate in ipairs(guides) do
 		if candidate.id == plain then
 			return candidate
