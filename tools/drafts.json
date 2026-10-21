@@ -94,7 +94,8 @@
           "with": ".todo \"Return from Moonglade to \\1 (VERIFY(beta): hearthstone or flight path; the way back is not in the data)\""
         }
       ],
-      "hardcore": true
+      "hardcore": true,
+      "planned": "the thorough alt 4 route for Tauren Druid (HARDCORE): tools/route_planner.py tauren --preset all --install --quiet (docs/PLANNER.md)"
     },
     {
       "guide": "horde-troll-hunter",
