@@ -1,4 +1,4 @@
--- PLANNED: the thorough alt 2 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -154,9 +154,8 @@ step
   .goto 2521,45.24,45.18
   .turnin 92551 -- Stolen Supplies
 step
-  .goto 2521,62.08,73.17
-  .accept 92679 -- Blood Tithe
-  .complete 92679,2 -- Blood Tithe
+  .goto 2521,60.55,73.06
+  .accept 93317 -- Crab Season
 step
   .goto 2521,66.14,76.67
   .turnin 92579 -- To Valanaar
@@ -177,60 +176,101 @@ step
   .goto 2521,58.13,78.32
   .accept 93736 -- Unwelcome Spirits
 step
-  .goto 2521,60.55,73.06
-  .accept 93317 -- Crab Season
   .goto 2521,59.06,72.98
   .turnin 93735 -- The Broken Construct
   .accept 93737 -- The Broken Construct
   .complete 93737,1 -- The Broken Construct
 step
-  .goto 2521,46.7,81.95
-  .complete 92679,1 -- Blood Tithe
-  .turnin 92679 -- Blood Tithe
-  .accept 92682 -- Make Yourself Useful
-  .accept 92683 -- Flutterfly Dust
-  .accept 92684 -- Ornery Ornery Galestriders
-  .goto 2521,48.65,78.42
-  .accept 92698 -- What Is My Purpose?
-step
-  .goto 2521,46.6,78.99
-  .complete 92682 -- Make Yourself Useful
-step
-  .goto 2521,46.7,81.95
-  .turnin 92682 -- Make Yourself Useful
-  .turnin 92698 -- What Is My Purpose?
-step
-  .goto 2521,50.21,82.72
-  .complete 92684 -- Ornery Ornery Galestriders
-  .complete 92683 -- Flutterfly Dust
+  .goto 2521,52.55,74.91
+  .complete 93317 -- Crab Season
 step
   .goto 2521,43.9,75.4
   .complete 93737,4 -- The Broken Construct
 step
-  .goto 2521,46.7,81.95
-  .turnin 92683 -- Flutterfly Dust
-  .turnin 92684 -- Ornery Ornery Galestriders
-  .accept 92685 -- The Hills Have Eyes
+  .goto 2521,51.9,67.1
+  .complete 93737,2 -- The Broken Construct
 step
-  .goto 2521,46.31,77.37
-  .complete 92685 -- The Hills Have Eyes
+  .goto 2521,53.5,50.4
+  .complete 93737,3 -- The Broken Construct
 step
-  .goto 2521,46.7,81.95
-  .turnin 92685 -- The Hills Have Eyes
-  .accept 92693 -- Standing Our Ground
-  .complete 92693,1 -- Standing Our Ground
+  .goto 2521,60.55,73.06
+  .turnin 93317 -- Crab Season
+  .goto 2521,59.06,72.98
+  .turnin 93737 -- The Broken Construct
+  .accept 93738 -- The Broken Construct
 step
-  .goto 2521,47.72,78.02
-  .complete 92693,2 -- Standing Our Ground
+  .goto 2521,59.15,79.77
+  .turnin 93738 -- The Broken Construct
+  .accept 93746 -- A Firm Response
 step
-  .goto 2521,46.7,81.95
-  .turnin 92693 -- Standing Our Ground
-  .accept 92703 -- Deliver the News
+  .goto 2521,59.79,57.31
+  .complete 93746 -- A Firm Response
+step
+  .goto 2521,59.15,79.77
+  .turnin 93746 -- A Firm Response
+  .accept 92871 -- In Service of Zephras
+  .accept 93740 -- Blood for Blood
+step
+  .goto 2521,63.99,75.08
+  .level 8
+  .accept 94484 -- Unnerving Silence
+  .level 10
+  .accept 94006 .class DRUID -- The Great Ursera Spirit
+  .goto 2521,66.14,76.67
+  .turnin 92871 -- In Service of Zephras
+  .accept 93320 -- Tower Defense
+step
+  .goto 2521,69.65,67.07
+  .turnin 93320 -- Tower Defense
+  .accept 92642 -- Disrupting Logistics
+  .accept 92645 -- Breaking the Breaker
+  .goto 2521,69.81,61.71
+  .turnin 94006 .class DRUID -- The Great Ursera Spirit
+  .accept 94638 .class DRUID -- Strength and Mercy
+  .note VERIFY(beta): the Bear Form trial; the data only says to kill Ur'endra (near 54,65). Go in at full health with your buffs up and leave if it goes badly: the Tauren Bear Form test (Lunaclaw) kills careless players.
+step
+  .goto 2521,53.66,65.02
+  .complete 94638 .class DRUID -- Strength and Mercy
+step
+  .goto 2521,56.81,61.11
+  .accept 98512 -- Al'Aketh Assassins
+step
+  .goto 2521,55.62,60.41
+  .complete 98512 -- Al'Aketh Assassins
+step
+  .goto 2521,56.81,61.11
+  .turnin 98512 -- Al'Aketh Assassins
+step
+  .goto 2521,69.81,61.71
+  .turnin 94638 .class DRUID -- Strength and Mercy
+step
+  .goto 2521,65.78,64.36
+  .complete 93740 -- Blood for Blood
+  .complete 92645 -- Breaking the Breaker
+  .complete 92642 -- Disrupting Logistics
+step
+  .goto 2521,69.65,67.07
+  .turnin 92642 -- Disrupting Logistics
+  .turnin 92645 -- Breaking the Breaker
+  .accept 92880 -- Return to Valanaar
+step
+  .goto 2521,66.14,76.67
+  .turnin 92880 -- Return to Valanaar
+  .accept 92881 -- The High Elder's Request
+  .goto 2521,66.17,76.51
+  .turnin 92881 -- The High Elder's Request
+  .accept 92643 -- The Turncoat
+step
+  .goto 2521,56.16,60.59
+  .complete 92643,1 -- The Turncoat
+step
+  .goto 2521,56.04,58.77
+  .complete 92643,2 -- The Turncoat
+  .turnin 92643 -- The Turncoat
+  .accept 92644 -- Unfortunate News
 step
   .goto 2521,61.72,39.22
-  .level 8
-  .accept 94493 -- A Sacrifice in Vain
-  .turnin 94493 -- A Sacrifice in Vain
+  .turnin 94484 -- Unnerving Silence
   .accept 94485 -- Tears of the Lady
   .accept 94486 -- Feathers for Binding
   .accept 94487 -- Unwanted and Unworthy
@@ -243,85 +283,6 @@ step
   .turnin 94485 -- Tears of the Lady
   .turnin 94486 -- Feathers for Binding
 step
-  .goto 2521,53.1,47.7
-  .complete 93737,3 -- The Broken Construct
-step
-  .goto 2521,52.99,58.05
-  .complete 93317 -- Crab Season
-step
-  .goto 2521,51.9,67.1
-  .complete 93737,2 -- The Broken Construct
-step
-  .goto 2521,59.06,72.98
-  .turnin 93737 -- The Broken Construct
-  .accept 93738 -- The Broken Construct
-  .goto 2521,60.55,73.06
-  .turnin 93317 -- Crab Season
-step
-  .goto 2521,59.15,79.77
-  .turnin 93738 -- The Broken Construct
-  .accept 93746 -- A Firm Response
-  .accept 92708 -- A Grand Adventure
-  .complete 92708,1 -- A Grand Adventure
-  .turnin 92708 -- A Grand Adventure
-step
-  .goto 2521,62.08,73.17
-  .turnin 92703 -- Deliver the News
-  .goto 2521,63.99,75.08
-  .level 10
-  .accept 94006 .class DRUID -- The Great Ursera Spirit
-step
-  .goto 2521,59.79,57.31
-  .complete 93746 -- A Firm Response
-step
-  .goto 2521,59.15,79.77
-  .turnin 93746 -- A Firm Response
-  .accept 92871 -- In Service of Zephras
-  .accept 93740 -- Blood for Blood
-step
-  .goto 2521,66.14,76.67
-  .turnin 92871 -- In Service of Zephras
-  .accept 93320 -- Tower Defense
-step
-  .goto 2521,69.65,67.07
-  .turnin 93320 -- Tower Defense
-  .accept 92642 -- Disrupting Logistics
-  .accept 92645 -- Breaking the Breaker
-step
-  .goto 2521,66.62,68.13
-  .complete 92642 -- Disrupting Logistics
-  .complete 92645 -- Breaking the Breaker
-  .complete 93740 -- Blood for Blood
-step
-  .goto 2521,69.65,67.07
-  .turnin 92642 -- Disrupting Logistics
-  .turnin 92645 -- Breaking the Breaker
-  .accept 92880 -- Return to Valanaar
-step
-  .goto 2521,66.04,74.41
-  .accept 94896 -- Aid For The Refugees
-  .accept 94897 -- The Fate of a Loved One
-  .goto 2521,66.14,76.67
-  .turnin 92880 -- Return to Valanaar
-  .accept 92881 -- The High Elder's Request
-  .goto 2521,66.17,76.51
-  .turnin 92881 -- The High Elder's Request
-  .accept 92643 -- The Turncoat
-step
-  .goto 2521,56.81,61.11
-  .accept 98512 -- Al'Aketh Assassins
-step
-  .goto 2521,56.16,60.59
-  .complete 92643,1 -- The Turncoat
-  .complete 98512 -- Al'Aketh Assassins
-step
-  .goto 2521,56.04,58.77
-  .complete 92643,2 -- The Turncoat
-  .turnin 92643 -- The Turncoat
-  .accept 92644 -- Unfortunate News
-  .goto 2521,56.81,61.11
-  .turnin 98512 -- Al'Aketh Assassins
-step
   .goto 2521,66.17,76.51
   .turnin 92644 -- Unfortunate News
   .accept 94568 -- The Cult's True Plans
@@ -332,51 +293,16 @@ step
   .goto 2521,66.14,76.67
   .complete 92640,1 -- Desperate Times
 step
-  .goto 2521,62.93,37.58
-  .complete 94487 -- Unwanted and Unworthy
-step
-  .goto 2521,63.81,36.01
-  .accept 93165 -- Mercy Falls on Deaf Ears
-step
-  .goto 2521,62.93,37.58
-  .complete 93165 -- Mercy Falls on Deaf Ears
-step
-  .goto 2521,63.81,36.01
-  .turnin 93165 -- Mercy Falls on Deaf Ears
-  .goto 2521,61.72,39.22
-  .turnin 94487 -- Unwanted and Unworthy
-  .accept 94488 -- The Ties That Bind
-  .accept 94489 -- The Wounds of Betrayal
-step
-  .goto 2521,65.53,36.32
-  .complete 94488 -- The Ties That Bind
-  .complete 94489 -- The Wounds of Betrayal
-step
-  .goto 2521,61.72,39.22
-  .turnin 94488 -- The Ties That Bind
-  .turnin 94489 -- The Wounds of Betrayal
-step
-  .goto 2521,57.99,33.64
-  .complete 93736 -- Unwelcome Spirits
-step
-  .goto 2521,53.96,38.9
-  .accept 93159 -- The Strange Hermit
-  .complete 93159,1 -- The Strange Hermit
-  .turnin 93159 -- The Strange Hermit
-step
-  .goto 2521,58.4,32.7
-  .complete 94896 -- Aid For The Refugees
-  .complete 94897 -- The Fate of a Loved One
-step
-  .goto 2521,58.13,78.32
-  .turnin 93736 -- Unwelcome Spirits
   .goto 2521,59.15,79.77
   .turnin 93740 -- Blood for Blood
+  .accept 92708 -- A Grand Adventure
   .complete 92640,2 -- Desperate Times
+  .complete 92708,1 -- A Grand Adventure
+  .turnin 92708 -- A Grand Adventure
 step
   .goto 2521,66.04,74.41
-  .turnin 94896 -- Aid For The Refugees
-  .turnin 94897 -- The Fate of a Loved One
+  .accept 94896 -- Aid For The Refugees
+  .accept 94897 -- The Fate of a Loved One
 step
   .goto 2521,66.61,80.02
   .complete 92640,3 -- Desperate Times
@@ -406,12 +332,67 @@ step
   .accept 92646 -- Confront Lorthuna
   .note VERIFY(beta): a scripted boss fight at the Shrine of Akir. Fan guides say Rohash is summoned and Kirin Tor and Earthen Ring reinforcements arrive. Go in fully healed and buffed with your escape ready, fight beside the reinforcements, and leave if it goes badly. It is part of the chain that takes you off the island, so there is no way round it that we know of.
 step
+  .goto 2521,63.63,37.28
+  .complete 94487 -- Unwanted and Unworthy
+step
+  .goto 2521,61.72,39.22
+  .turnin 94487 -- Unwanted and Unworthy
+  .accept 94488 -- The Ties That Bind
+  .accept 94489 -- The Wounds of Betrayal
+step
+  .goto 2521,53.96,38.9
+  .accept 93159 -- The Strange Hermit
+  .complete 93159,1 -- The Strange Hermit
+  .turnin 93159 -- The Strange Hermit
+  .accept 93160 -- The Forest's Bounty
+  .accept 93172 -- Free the Hollows
+step
+  .goto 2521,57.2,39.2
+  .complete 93160 -- The Forest's Bounty
+step
+  .goto 2521,53.96,38.9
+  .turnin 93160 -- The Forest's Bounty
+step
+  .goto 2521,57.99,33.64
+  .complete 93736 -- Unwelcome Spirits
+  .complete 93172 -- Free the Hollows
+step
+  .goto 2521,53.96,38.9
+  .turnin 93172 -- Free the Hollows
+step
+  .goto 2521,65.53,36.32
+  .complete 94488 -- The Ties That Bind
+  .complete 94489 -- The Wounds of Betrayal
+step
+  .goto 2521,61.72,39.22
+  .turnin 94488 -- The Ties That Bind
+  .turnin 94489 -- The Wounds of Betrayal
+step
+  .goto 2521,58.4,32.7
+  .complete 94896 -- Aid For The Refugees
+  .complete 94897 -- The Fate of a Loved One
+step
+  .goto 2521,63.81,36.01
+  .accept 93165 -- Mercy Falls on Deaf Ears
+step
+  .goto 2521,62.93,37.58
+  .complete 93165 -- Mercy Falls on Deaf Ears
+step
+  .goto 2521,63.81,36.01
+  .turnin 93165 -- Mercy Falls on Deaf Ears
+step
   .goto 2521,74.87,53.02
   .complete 92646 -- Confront Lorthuna
+step
+  .goto 2521,66.04,74.41
+  .turnin 94896 -- Aid For The Refugees
+  .turnin 94897 -- The Fate of a Loved One
 step
   .goto 2521,59.15,79.77
   .turnin 92646 -- Confront Lorthuna
   .accept 93836 -- The Fate of Zephras
+  .goto 2521,58.13,78.32
+  .turnin 93736 -- Unwelcome Spirits
 step
   .goto 2521,66.17,76.51
   .complete 93836,1 -- The Fate of Zephras
@@ -432,7 +413,7 @@ step
   .goto 1412,33.41,22.59
   .accept 94911 .class DRUID -- Child of Nature
 step
-  .todo "Walk from Mulgore to Orgrimmar: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Orgrimmar."
-  .zone 1454 >> Go to Orgrimmar
+  .todo "Walk from Mulgore to Thunder Bluff: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Thunder Bluff."
+  .zone 1456 >> Go to Thunder Bluff
 ]]
 )

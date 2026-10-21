@@ -1,12 +1,12 @@
--- PLANNED: the thorough alt 2 route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
 
 ns.Chapters:Register(
-	"windshaper-druid-07-moonglade",
+	"windshaper-druid-11-moonglade",
 	[[
-#chapter 24-25 Moonglade
+#chapter 25-26 Moonglade
 step
   .goto 1450,56.21,30.64
   .turnin 94913 .class DRUID -- Moonglade
@@ -29,10 +29,17 @@ step
   .goto 1450,56.21,30.64
   .turnin 98738 .class DRUID -- Blessings of the Great Windborne Cat Spirit
   .accept 98362 .class DRUID -- To Thunder Bluff
-  .level 25 -- reach it first: kill or grind on the way
-  .note Grind about 2,300 experience before you go on: about 14 kills of creatures near your level (an estimate)
 step
-  .todo "Walk from Moonglade to Stonetalon Mountains: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Stonetalon Mountains."
-  .zone 1442 >> Go to Stonetalon Mountains
+  .todo "Return from Moonglade to Thunder Bluff: use your hearthstone or a flight path if you have one (VERIFY(beta): the way back is not in the data). This step is done when you arrive in Thunder Bluff."
+  .note Do not walk it: from Classic memory (not confirmed in Forever) the road overland runs through Felwood or Winterspring, zones for levels 48 and up, so it is not safe at your level.
+  .zone 1456 >> Go to Thunder Bluff
+step
+  .goto 1456,76.48,27.22
+  .turnin 98362 .class DRUID -- To Thunder Bluff
+  .level 26 -- reach it first: kill or grind on the way
+  .note Grind about 3,400 experience before you go on: about 20 kills of creatures near your level (an estimate)
+step
+  .goto 1456,47.0,49.83 >> Go to the flight master
+  .fly Camp Taurajo
 ]]
 )
