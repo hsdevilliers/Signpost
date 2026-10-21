@@ -1,4 +1,4 @@
--- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --force --quiet --completeness 0.6 --completeness-trip 45 (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -13,6 +13,8 @@ step
   .goto 2521,42.05,23.49
   .turnin 92460 -- Coming of Age
   .accept 92461 -- Harmony in Balance
+  .goto 2521,43.44,24.79
+  .accept 92462 -- Infestation Investigation
 step
   .goto 2521,45.22,25.13
   .complete 92461 -- Harmony in Balance
@@ -27,6 +29,10 @@ step
   .accept 94414 -- The Anchors of Zephras
   .complete 94414,1 -- The Anchors of Zephras
   .turnin 94414 -- The Anchors of Zephras
+step
+  .goto 2521,45.17,27.55
+  .complete 92462 -- Infestation Investigation
+step
   .goto 2521,42.05,23.49
   .turnin 92461 -- Harmony in Balance
   .turnin 92474 -- Falling With Style
@@ -34,6 +40,7 @@ step
   .accept 92485 .class DRUID -- A Student of Nature
   .goto 2521,41.66,23.33
   .turnin 92485 .class DRUID -- A Student of Nature
+step
   .goto 2521,47.25,21.98
   .turnin 92464 -- Elemental Unrest
   .accept 92465 -- Agitators
@@ -47,12 +54,19 @@ step
   .accept 92469 -- Return to Rorian
   .goto 2521,43.37,23.98
   .accept 93552 -- Harvesting Windstones
+  .goto 2521,43.44,24.79
+  .turnin 92462 -- Infestation Investigation
+  .accept 92463 -- The Cirrusfly Queen
 step
   .goto 2521,43.82,25.43
   .complete 93552 -- Harvesting Windstones
 step
   .goto 2521,43.37,23.98
   .turnin 93552 -- Harvesting Windstones
+step
+  .goto 2521,48.41,28.53
+  .complete 92463 -- The Cirrusfly Queen
+step
   .goto 2521,42.05,23.49
   .turnin 92469 -- Return to Rorian
   .level 4
@@ -60,6 +74,8 @@ step
   .goto 2521,42.76,23.66
   .turnin 92471 -- Aetheen of the Gales
   .accept 92470 -- Foul Matriarch
+  .goto 2521,43.44,24.79
+  .turnin 92463 -- The Cirrusfly Queen
   .goto 2521,42.41,25.17
   .accept 92473 -- Aggressive Encroachment
 step
@@ -94,8 +110,18 @@ step
   .goto 2521,45.67,45.5
   .turnin 92514 -- Welcome to Shen'dar Village
   .accept 92517 -- The Criminal Element
+  .goto 2521,43.85,43.85
+  .accept 92553 -- Restocking the Larders
   .goto 2521,44.46,44.96
   .accept 93319 -- Pilfered Windstones
+  .goto 2521,44.68,44.53
+  .accept 92515 -- The Problem With Prideclaws
+step
+  .goto 2521,42.55,49.77
+  .complete 92515 -- The Problem With Prideclaws
+step
+  .goto 2521,39.49,43.34
+  .complete 92553 -- Restocking the Larders
 step
   .goto 2521,45.95,39.53
   .complete 94411 -- Meddlesome Mages
@@ -105,12 +131,16 @@ step
   .goto 2521,50.62,34.27
   .complete 92517,2 -- The Criminal Element
 step
+  .goto 2521,44.68,44.53
+  .turnin 92515 -- The Problem With Prideclaws
   .goto 2521,44.46,44.96
   .turnin 93319 -- Pilfered Windstones
   .goto 2521,45.67,45.5
   .turnin 92517 -- The Criminal Element
   .level 5
   .accept 93036 -- Infiltrating the Cult
+  .goto 2521,43.85,43.85
+  .turnin 92553 -- Restocking the Larders
   .goto 2521,43.51,44.77
   .turnin 94411 -- Meddlesome Mages
   .goto 2521,44.88,45.53
@@ -130,6 +160,11 @@ step
   .accept 93926 -- The Western Watch
   .goto 2521,45.24,45.18
   .accept 92551 -- Stolen Supplies
+  .goto 2521,43.38,45.82
+  .accept 93318 -- WANTED: Vulgara the Insatiable
+step
+  .goto 2521,42.66,52.8
+  .complete 93318 -- WANTED: Vulgara the Insatiable
 step
   .goto 2521,42.35,62.02
   .complete 93926,1 -- The Western Watch
@@ -139,6 +174,8 @@ step
   .goto 2521,42.37,62.07
   .complete 93927 -- A Last Request
 step
+  .goto 2521,45.24,45.18
+  .turnin 93318 -- WANTED: Vulgara the Insatiable
   .goto 2521,45.67,45.5
   .turnin 93927 -- A Last Request
 step
@@ -202,6 +239,10 @@ step
   .goto 2521,59.15,79.77
   .turnin 93738 -- The Broken Construct
   .accept 93746 -- A Firm Response
+  .level 7
+  .accept 92708 -- A Grand Adventure
+  .complete 92708,1 -- A Grand Adventure
+  .turnin 92708 -- A Grand Adventure
 step
   .goto 2521,59.79,57.31
   .complete 93746 -- A Firm Response
@@ -295,10 +336,7 @@ step
 step
   .goto 2521,59.15,79.77
   .turnin 93740 -- Blood for Blood
-  .accept 92708 -- A Grand Adventure
   .complete 92640,2 -- Desperate Times
-  .complete 92708,1 -- A Grand Adventure
-  .turnin 92708 -- A Grand Adventure
 step
   .goto 2521,66.04,74.41
   .accept 94896 -- Aid For The Refugees

@@ -200,7 +200,7 @@
         95349,
         94638
       ],
-      "planned": "the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --quiet (docs/PLANNER.md)"
+      "planned": "the thorough route for Skyborne Druid (HARDCORE): tools/route_planner.py windshaper --preset all --install --force --quiet --completeness 0.6 --completeness-trip 45 (docs/PLANNER.md)"
     }
   ]
 }
