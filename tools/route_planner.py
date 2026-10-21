@@ -539,7 +539,7 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         if s.completeness > 0
         else "a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason (--completeness F finishes the "
              "ones that are a short walk away and pay at least F of the route's pace; off)",
-        (f"{len(job.required)} quests are required (--require, \"require\" in tools/drafts.json): {', '.join(str(q) for q in job.required)}. Each is done "
+        (f"required quests (--require, \"require\" in tools/drafts.json): {', '.join(str(q) for q in job.required)}. Each is done "
          f"whatever it costs, with the quests it needs (all of them are pushed like a class chain's); none is left out for being slow, taken out when the "
          f"route is written, or kept out by a full quest log, and one that only has to be handed in, in another zone, is handed in next (the route leaves for it)")
         if job.required
@@ -827,7 +827,8 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
         needed = len(pl.required) - len(pl.asked)
         for line in labelled(
             "required      ",
-            f"{len(job.required)} required by the guide" + (f" and {needed} quests they need, all routed and none left out" if needed else "")
+            f"{len(job.required)} required by the guide"
+            + (f" and {needed} quest{'s' if needed != 1 else ''} {'they need' if needed != 1 else 'it needs'}, all routed and none left out" if needed else "")
             + "; done at level (the level it opens at): " + "; ".join(parts),
         ):
             out(line)

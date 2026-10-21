@@ -873,9 +873,7 @@ class Planner:
         found: list[int] = []
         for qid, open_ in st.active.items():
             if qid in self.required and not open_:
-                hubs = self.quests[qid].end_hubs
-                if hubs and all(self.hubs[h].zone != st.zone for h in hubs):
-                    found += hubs
+                found += self.quests[qid].end_hubs  # (none of them is in this zone: that would be work here)
         return sorted(set(found))
 
     def options(self, st: PState) -> dict[int, float]:

@@ -287,6 +287,76 @@ class EndToEndTest(RouteCase):
         self.assertIn("[normal route]", text)
 
 
+class RequiredOptionTest(RouteCase):
+    """The quests a guide requires: the manifest's `require` and --require (docs/PLANNER.md, Required quests)."""
+
+    ARGS = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+
+    def manifest(self, entries):
+        (self.root / "tools").mkdir(exist_ok=True)
+        (self.root / "tools" / "drafts.json").write_text(json.dumps({"guides": entries}), encoding="utf-8")
+
+    def test_the_manifest_names_the_required_quests_of_a_guide_and_what_is_not_an_id_is_ignored(self):
+        self.assertEqual(rp.manifest_requires(self.root, "test-guide"), [])  # no manifest
+        self.manifest([
+            {"guide": "test-guide", "require": [203, "x", True, 1.5, 202]},
+            {"guide": "test-hardcore"},
+            {"guide": "other", "require": [999]},
+        ])
+        self.assertEqual(rp.manifest_requires(self.root, "test-guide"), [203, 202])
+        self.assertEqual(rp.manifest_requires(self.root, "test-hardcore"), [])
+        self.manifest([{"guide": "test-guide", "require": "203"}])
+        self.assertEqual(rp.manifest_requires(self.root, "test-guide"), [])
+
+    def test_the_option_makes_the_route_do_the_quest_and_the_report_lists_it_with_the_level_it_was_done_at(self):
+        code, text = self.run_main(*self.ARGS)
+        self.assertEqual(code, 0, text)
+        self.assertIn("no quest is required", " ".join(text.split()))
+        self.assertNotIn("required by the guide", text)
+        code, text = self.run_main(*self.ARGS, "--require", "203")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn('required quests (--require, "require" in tools/drafts.json): 203. Each is done whatever it costs', flat)
+        self.assertRegex(flat, r"required 1 required by the guide; done at level \(the level it opens at\): 203 Boars at level \d+ \(opens 1, a level 2 quest\)")
+
+    def test_the_manifest_does_the_same_and_a_quest_named_twice_is_one(self):
+        self.manifest([{"guide": "test-guide", "require": [203]}])
+        code, text = self.run_main(*self.ARGS)
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertRegex(flat, r"1 required by the guide; done at level \(the level it opens at\): 203 Boars at level \d+")
+        code, text = self.run_main(*self.ARGS, "--require", "203", "--require", "203,202")
+        self.assertEqual(code, 0, text)
+        flat = " ".join(text.split())
+        self.assertIn("required quests (--require", flat)
+        self.assertRegex(flat, r"2 required by the guide and 1 quest it needs, all routed and none left out; done at level \(the level it opens at\): 203 Boars at level \d+ \(opens 1, a level 2 quest\); 202 Follows First")
+
+    def test_a_required_quest_the_character_cannot_have_stops_the_run_with_a_clear_message(self):
+        code, text = self.run_main(*self.ARGS, "--require", "204,99999")
+        self.assertEqual(code, 2, text)
+        self.assertIn("a required quest cannot be offered to this character", text)
+        self.assertIn("quest 204 (Warrior Only): other class", text)
+        self.assertIn("quest 99999: it is not in the data pack", text)
+        self.assertIn("--require", text.splitlines()[-1])
+        self.assertNotIn("THE SEARCH", text)  # nothing was planned
+
+    def test_the_plan_file_records_the_required_quests_and_the_ones_they_needed(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0", "--require", "202")
+            self.assertEqual(code, 0, text)
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            (record,) = data["required"]
+            self.assertEqual((record["quest"], record["name"], record["opens"], record["level"]), (202, "Follows First", 1, 1))
+            self.assertIsNotNone(record["done_at"])  # the level it was handed in at
+            self.assertEqual(data["required_needed"], [201])
+            self.assertIn(202, data["quests_done"])
+            self.assertIn("--require", " ".join(text.split()))
+        with tempfile.TemporaryDirectory() as out_dir:
+            self.run_main("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--steps", "0", "--decisions", "0")
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            self.assertEqual((data["required"], data["required_needed"]), ([], []))
+
+
 class SearchReportTest(unittest.TestCase):
     def report(self, settings=None, quests=None, **stats):
         plan = engine.Plan(complete=True, seconds=900.0, stats=stats, alternatives=[object()])

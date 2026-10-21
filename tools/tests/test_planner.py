@@ -17,13 +17,13 @@ HORDE = availability.Character("Horde", availability.race_bit("Orc", "Horde"), a
 
 
 class PlannerCase(TempProject):
-    def planner(self, quests=None, character=HORDE, mandatory=(), npcs=None, **settings):
+    def planner(self, quests=None, character=HORDE, mandatory=(), npcs=None, required=(), exclude=None, **settings):
         base = dict(cap=6, skip_unprofitable=False, hub_radius=150.0, instant_quests=True)  # the fixtures' quests have no objectives
         base.update(settings)
         pack_dir = write_pack(self.pack_dir, {"maps": MAPS, "quests": quests or QUESTS, "npcs": npcs or NPCS, "travel": TRAVEL, "items": ITEMS})
         pack = guide_travel.load_pack(pack_dir)
         world = guide_travel.World(pack, [], "Horde")
-        return engine.Planner.build(pack, world, character, engine.Settings(**base), mandatory=mandatory)
+        return engine.Planner.build(pack, world, character, engine.Settings(**base), mandatory=mandatory, required=required, exclude=exclude)
 
     def start(self, pl):
         return engine.start_hub_for(pl)
@@ -775,6 +775,10 @@ class ScriptedQuestTest(PlannerCase):
         self.assertEqual(pl.quests[303].scripted, "")  # its objectives say what it asks
         self.assertEqual([o.kind for o in pl.quests[303].objectives], ["kill"])
 
+    def test_a_required_quest_the_game_scripts_is_priced_as_work_even_when_it_is_a_class_quest(self):
+        pl = self.planner(required=(302,))  # a class quest flagged as a script: a class quest keeps unknown_work, a required one is work with a note
+        self.assertEqual((pl.quests[302].scripted, pl.quests[302].unknown_work, pl.quests[302].mandatory), ("event", False, True))
+
     def test_an_escort_that_is_not_worth_its_time_is_left_out(self):
         seed = Path(self.pack_dir) / guide_sim.XP_FILE  # quest 300 has an experience of its own, so it is judged by it
         seed.parent.mkdir(parents=True)
@@ -1292,6 +1296,226 @@ class CompletenessTest(PlannerCase):
         self.assertGreaterEqual(pl.xp_pace(3), grind)  # no level is paced slower than grinding
         q = pl.quests[self.QA]
         self.assertAlmostEqual(pl.finish_ratio(q, 3), pl._quest_rate(q, 3) / pl.xp_pace(3))
+
+
+class RequiredTest(PlannerCase):
+    """Quests the guide requires (`Planner.build(required=...)`, the manifest's `require`, --require): done whatever they cost, with the quests they need."""
+
+    HERMIT = {1020: {"n": "Hermit", "p": [[10, 95, 95]], "side": "Horde"}}
+    FAR = {"s": {"npc": [1020]}, "e": {"npc": [1020]}, "side": "Horde", "races": 178}  # the far corner of Westland: 1230 yards, 175 s of walking, from the giver
+
+    MORE = {  # quests that make others needed, kept out of the base fixture so that the far errand is free to be slow
+        344: {"n": "Either Or", "r": 1, "l": 2, "preSingle": [203, 340], **HOME},  # one of two quests first
+        345: {"n": "Both First", "r": 1, "l": 2, "preGroup": [203, 340], **HOME},  # two quests first
+        346: {"n": "Along The Way", "r": 1, "l": 2, "parent": 203, **HOME},  # offered while 203 is in the log
+        347: {"n": "Far Class Quest", "r": 1, "l": 1, "classes": 4, "s": {"npc": [1002]}, "e": {"npc": [1002]}, "side": "Horde", "races": 178},
+    }
+
+    def quests(self, more=False):
+        return {
+            **QUESTS,
+            340: {"n": "Distant Errand", "r": 1, "l": 1, "o": [{"k": "explore", "p": [[10, 95, 90]]}], **self.FAR},  # a long walk, no kills on the way
+            341: {"n": "After The Errand", "r": 1, "l": 1, "preSingle": [340], "o": [{"k": "explore", "p": [[10, 95, 90]]}], **self.FAR},
+            342: {"n": "Gated Story", "r": 5, "l": 5, **HOME},  # at the giver's, but the character needs level 5 for it
+            343: {"n": "Too Hard", "r": 1, "l": 9, **HOME},
+            350: {"n": "After A Warlock Quest", "r": 1, "l": 1, "preSingle": [204], **HOME},
+            **(self.MORE if more else {}),
+        }
+
+    def build(self, quest_xp=True, more=False, **kw):
+        """A planner that leaves out what is slower than grinding; the two far quests have an experience of their own, a small one, so they are judged by it."""
+        if quest_xp:
+            seed = Path(self.pack_dir) / guide_sim.XP_FILE
+            seed.parent.mkdir(parents=True, exist_ok=True)
+            seed.write_text("QuestXP.db = {\n  [340] = {1, 5},\n  [341] = {1, 5},\n}\n", encoding="utf-8")
+        kw.setdefault("skip_unprofitable", True)
+        return self.planner(quests=self.quests(more), npcs={**NPCS, **self.HERMIT}, **kw)
+
+    def state(self, pl, hub=None, **fields):
+        st = pl.start(hub if hub is not None else self.start(pl))
+        for name, value in fields.items():
+            setattr(st, name, value)
+        return st
+
+    def test_a_quest_slower_than_grinding_and_far_away_is_dropped_without_the_option_and_done_with_it(self):
+        plain = self.build()
+        self.assertIn(340, plain.dropped["slower than grinding"])
+        self.assertNotIn(340, plain.plan("greedy", self.start(plain)).final.done)
+        pl = self.build(required=(340,))
+        self.assertTrue(pl.quests[340].kept)
+        self.assertTrue(pl.quests[340].mandatory)
+        plan = pl.plan("greedy", self.start(pl))
+        self.assertIn(340, plan.final.done)
+        self.assertTrue(plan.complete)
+
+    def test_the_quests_a_required_quest_needs_are_required_too_and_done(self):
+        pl = self.build(required=(341,))
+        self.assertEqual((pl.asked, pl.required), ({341}, {340, 341}))
+        self.assertTrue(pl.quests[340].mandatory)  # not only kept: the search is made to do it
+        plan = pl.plan("greedy", self.start(pl))
+        self.assertTrue({340, 341} <= set(plan.final.done))
+        levels = plan.levels_done()
+        self.assertLessEqual(levels[340], levels[341])
+        self.assertNotIn(340, self.build(required=(341,)).skipquests(plan))  # and a required quest is never skipped
+
+    def test_the_alternatives_a_quest_takes_are_not_all_required_just_the_one_that_pays_best(self):
+        pl = self.build(required=(344,), more=True)
+        self.assertEqual(len(pl.required & {203, 340}), 1)  # one of them stands for the prerequisite
+        self.assertIn(203, pl.required)  # the near one pays best
+
+    def test_a_quest_that_needs_two_others_or_hangs_on_a_parent_brings_them_all(self):
+        self.assertEqual(self.build(required=(345,), more=True).required, {345, 203, 340})  # every quest of a group
+        self.assertEqual(self.build(required=(346,), more=True).required, {346, 203})  # the quest that has to be in the log
+
+    def test_a_required_quest_that_is_not_done_is_never_skipped_a_class_quest_is(self):
+        pl = self.build(required=(340,))
+        undone = pl._finish(pl.start(self.start(pl)))
+        self.assertNotIn(340, pl.skipquests(undone))
+        klass = self.build(mandatory=(340,))
+        self.assertEqual(klass.skipquests(klass._finish(klass.start(self.start(klass))))[340], "not reached by this route")
+
+    def test_a_required_quest_is_not_pushed_like_a_class_quest_the_zone_lock_schedules_it(self):
+        pl = self.build(required=(340,), mandatory=(217,), class_push=600.0)
+        self.assertEqual(pl.lateness(pl.quests[340], 30), 0.0)
+        self.assertGreater(pl.lateness(pl.quests[217], 30), 0.0)
+        st = self.state(pl, level=6)
+        self.assertEqual(pl.pending_charge(st), pl.pending_charge(self.state(pl, level=6, done=frozenset({340}))))  # only the class quest is charged
+
+    def test_a_required_quest_that_cannot_be_offered_is_an_error_that_names_it_and_says_why(self):
+        for ids, hardcore, reason in (
+            ((204,), False, "other class"),
+            ((99999,), False, "it is not in the data pack"),
+            ((209,), False, "above the level cap"),
+            ((220,), True, "HARDCORE: needs an elite or boss kill"),
+            ((350,), False, "a prerequisite is closed to this character"),
+            ((227,), False, "a prerequisite cannot be routed: 226 (needs a profession skill)"),
+        ):
+            with self.assertRaises(engine.RequiredQuestError) as caught:
+                self.build(required=ids, hardcore=hardcore)
+            message = str(caught.exception)
+            self.assertIn(f"quest {ids[0]}", message, ids)
+            self.assertIn(reason, message, ids)
+            self.assertIn("a required quest cannot be offered to this character", message)
+
+    def test_a_required_quest_the_guide_excludes_is_an_error_too_and_all_of_them_are_named(self):
+        with self.assertRaises(engine.RequiredQuestError) as caught:
+            self.build(required=(203, 204), exclude={203: "HARDCORE: boars"})
+        message = str(caught.exception)
+        self.assertIn("quest 203 (Boars): it is excluded (HARDCORE: boars)", message)
+        self.assertIn("quest 204", message)
+
+    def test_a_quest_that_is_too_high_to_accept_below_the_cap_is_an_error(self):
+        self.build(required=(343,))  # a normal route takes quests five levels above it: level 4 is enough
+        with self.assertRaises(engine.RequiredQuestError) as caught:
+            self.build(required=(343,), hardcore=True)  # a HARDCORE route needs level 8 for it, and the cap is 6
+        self.assertIn("it can be accepted from level 8, above the route's cap of 6", str(caught.exception))
+
+    def test_two_required_quests_that_exclude_each_other_are_an_error(self):
+        with self.assertRaises(engine.RequiredQuestError) as caught:
+            self.build(required=(212, 213))
+        self.assertIn("quests 212 (Either This) and 213 are exclusive alternatives: both cannot be required", str(caught.exception))
+
+    def test_the_alternative_to_a_required_quest_is_never_taken(self):
+        pl = self.build(required=(212,))
+        none = (1, frozenset(), {}, frozenset())
+        self.assertTrue(pl.offered(pl.quests[212], *none))
+        self.assertFalse(pl.offered(pl.quests[213], *none))  # taking it would close the required one
+        self.assertTrue(self.build().offered(self.build().quests[213], *none))  # (nothing else is touched)
+
+    def test_tidy_never_takes_a_required_quest_out_of_the_log(self):
+        pl = self.build(required=(203,))
+        hub = self.start(pl)
+        raw = pl._finish(pl.visit(pl.start(hub), hub))
+        raw.final.active = {203: frozenset({1})}  # as if a quest had been accepted and never finished
+        kept = pl.tidy(raw, hub)
+        self.assertIn(203, kept.final.active)  # the route is not complete, and it says so, instead of being written without the quest
+        self.assertEqual(kept.stats["removed"], [])
+        self.assertEqual(kept.stats["left_out"], [])
+        plain = self.build()
+        raw = plain._finish(plain.visit(plain.start(hub), hub))
+        raw.final.active = {203: frozenset({1})}
+        self.assertEqual(plain.tidy(raw, hub).stats["removed"], [203])  # (any other quest is)
+
+    def test_a_full_quest_log_does_not_keep_a_required_quest_out_nor_stop_the_wait_for_its_level(self):
+        pl = self.build(required=(342,), quest_log_limit=1)
+        full = {201: frozenset()}
+        self.assertTrue(pl.offered(pl.quests[342], 5, frozenset(), full, frozenset()))
+        self.assertFalse(pl.offered(pl.quests[203], 5, frozenset(), full, frozenset()))
+        waiting = pl.grind(self.state(pl, active=full))
+        self.assertEqual(waiting.level, 5)  # it grinds to the level the required quest opens at
+        plain = self.build(quest_log_limit=1)
+        self.assertEqual(plain.grind(self.state(plain, active=full)).level, 6)  # a full log waits for nothing else
+
+    def test_the_zone_lock_keeps_the_route_in_a_zone_while_a_required_quest_has_work_there(self):
+        pl = self.build(required=(342,))
+        hub = self.start(pl)
+        st = pl.visit(pl.start(hub), hub)  # picks up everything offered at the giver, among them 211, handed in in Eastland
+        east = pl.quests[211].end_hubs[0]
+        self.assertNotEqual(pl.hubs[east].zone, st.zone)
+        self.assertTrue(pl._work_here(st))  # 342 starts here and the game would offer it (the character is too low for it yet)
+        self.assertNotIn(east, pl.options(st))
+        self.assertTrue(all(pl.hubs[h].zone == st.zone for h in pl.options(st)))
+        free = self.build()
+        free_state = free.visit(free.start(hub), hub)
+        self.assertIn(east, free.options(free_state))  # (without it the route may go)
+        done = self.state(pl, hub, done=frozenset({342}), active=st.active)
+        self.assertFalse(pl._work_here(done))
+        self.assertIn(east, pl.options(done))  # the lock is lifted once the quest is done
+
+    def test_the_lock_holds_on_work_that_can_be_done_here_and_not_on_work_that_cannot(self):
+        pl = self.build(required=(341,))  # 340 first, then 341
+        self.assertTrue(pl._work_here(self.state(pl)))  # 340 can be picked up here
+        self.assertTrue(pl._work_here(self.state(pl, active={340: frozenset({1})})))  # its objective is here
+        self.assertTrue(pl._work_here(self.state(pl, active={340: frozenset()})))  # its hand-in is here
+        self.assertTrue(pl._work_here(self.state(pl, done=frozenset({340}))))  # 341 can be picked up here
+        self.assertFalse(pl._work_here(self.state(pl, done=frozenset({340, 341}))))  # nothing is left
+        self.assertFalse(pl._work_here(self.state(pl, gone=frozenset({340}))))  # 340 can no longer be had and 341 waits for it
+        self.assertFalse(pl._work_here(self.state(pl, zone=-1)))  # standing in another zone, nothing here is required
+
+    def test_the_lock_comes_before_the_exit_and_holds_the_overdue_class_quests_back_too(self):
+        pl = self.build(required=(211, 342), mandatory=(347,), more=True)
+        hub = self.start(pl)
+        st = pl.visit(pl.start(hub), hub)
+        east = pl.quests[211].end_hubs[0]
+        st.level = 3  # the class quest in Eastland is past the level it opens at
+        self.assertIn(211, st.active)
+        self.assertEqual(pl.leaving(st), [])  # 342 still has work here: the route does not leave for 211's hand-in yet
+        self.assertTrue(all(pl.hubs[h].zone == st.zone for h in pl.options(st)))
+        self.assertEqual(pl.overdue_hubs(st), [])
+        free = self.build(mandatory=(347,), more=True)
+        free_state = free.visit(free.start(hub), hub)
+        free_state.level = 3
+        self.assertTrue(free.overdue_hubs(free_state))  # (without the lock the class quest's hub is a candidate)
+        self.assertNotEqual(free.hubs[free.overdue_hubs(free_state)[0]].zone, free_state.zone)
+        done = self.state(pl, hub, done=frozenset({342}), active=st.active, level=3)
+        self.assertEqual(pl.leaving(done), [east])  # with 342 done the route leaves
+        self.assertEqual(pl.overdue_hubs(done), [])  # and nothing else is considered
+
+    def test_a_required_quest_that_only_has_to_be_handed_in_in_another_zone_is_handed_in_next(self):
+        pl = self.build(required=(211,))
+        hub = self.start(pl)
+        st = pl.visit(pl.start(hub), hub)
+        east = pl.quests[211].end_hubs[0]
+        self.assertEqual(pl.leaving(st), [east])
+        self.assertEqual(pl.options(st), {east: 1.0})
+        self.assertEqual(pl.overdue_hubs(st), [])
+        self.assertTrue(all(child.visit.hub == east for child in pl.children(st, 8)))  # nothing else is an option, not even a grind
+        plan = pl.plan("greedy", hub)
+        self.assertEqual([v.hub for v in plan.visits[:2]], [hub, east])
+        self.assertTrue(any(a.kind == "turnin" and a.quest == 211 for a in plan.visits[1].actions))
+        free = self.build()
+        self.assertEqual(free.leaving(free.visit(free.start(hub), hub)), [])  # (a quest nobody requires is not)
+        near = self.build(required=(202,))  # handed in at the Second Giver, in the same zone: not a ride out of it
+        st = near.visit(near.start(hub), hub)
+        self.assertIn(202, st.active)
+        self.assertEqual(near.leaving(st), [])
+
+    def test_a_route_with_no_required_quest_is_what_it_was(self):
+        pl = self.build()
+        st = self.state(pl)
+        self.assertEqual((pl.required, pl.leaving(st)), (set(), []))
+        self.assertFalse(pl._work_here(st))
+        self.assertEqual(pl.options(st), pl._options(st))
 
 
 class SettingsTest(unittest.TestCase):
