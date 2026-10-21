@@ -222,10 +222,9 @@ step draws **one pin for each `.goto`, named for the directives behind it** (`En
   it the `.goto` is the pin, its kind and label coming from the directives behind it (a turn-in names the pin before a
   pick-up does).
 - A directive that is satisfied (the quest is in the log, handed in, or complete, for `.accept`, `.turnin`, `.complete`)
-  stops being named, and a place whose directives are all satisfied draws no pin any more: the rule of a marker that
-  shows where to go next (above) is the engine's `finishedGotos`, and the pins are built on it. So the pin of a place
-  names only the quests still open there, and a place with something else left to ask (a `.level`, say) keeps a bare
-  "Go to ..." pin.
+  stops being named, and a place whose directives are all satisfied draws no pin any more (the rule of a marker that
+  shows where to go next, above). So the pin of a place names only the quests still open there, and a place with
+  something else left to ask (a `.level`, say) keeps a bare "Go to ..." pin.
 - A pin's tooltip lists the lines of the quests it names, and the lines about no quest; the step card lists every line of
   the step, each quest with its done mark, whichever NPC it belongs to.
 

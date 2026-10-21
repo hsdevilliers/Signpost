@@ -841,6 +841,34 @@ describe("pins of a joined step", function()
 		assert.are.same({ { "accept", 43.29, 787 }, { "accept", 42.06, 788 } }, summary(pins))
 	end)
 
+	it("a directive of a finished place that has no position of its own marks the first .goto pin left", function()
+		local ns = mocks.load()
+		-- what a class or profession module can register: it pins, has nothing to complete and no position without the pack
+		ns.Directives:Register("herd", {
+			parse = function()
+				return {}
+			end,
+			kind = "quest",
+			pin = "gather",
+			describe = function()
+				return "Herd the cattle"
+			end,
+		})
+		local step = mocks.step(
+			ns,
+			{ ".goto 1411,43.29,68.53", ".accept 787", ".herd", ".goto 1411,42.06,68.33", ".accept 788" }
+		)
+		local context = mocks.context({ log = { [787] = true } })
+		-- the first place is finished (its only completable directive is done), so it draws no pin to be marked: the
+		-- claim of its .herd goes to the second place's pin, which already names its own quest
+		local pins = ns.Conditions:Targets(step, context, {})
+		assert.are.same({ { "accept", 42.06, 788 } }, summary(pins))
+		assert.are.equal('Herd the cattle\nAccept "Quest #788"', pins[1].label)
+		-- with no pin left to mark it on, the claim is simply not drawn
+		context.log[788] = true
+		assert.are.same({}, ns.Conditions:Targets(step, context, {}))
+	end)
+
 	it("keeps the .goto's own '>>' text and adds the quests under it", function()
 		local ns = mocks.load()
 		local step = mocks.step(
