@@ -13,6 +13,8 @@ with each profession track merged in:
 - quests accepted but never turned in, turned in without (or before) an accept, accepted or turned in twice,
   .complete outside the quest's accept..turn-in; quest level requirements against the level the route expects;
 - chapter level ranges that go down; .todo steps (listed: they make a guide incomplete, not wrong);
+- a quest the data pack gives objectives that is accepted and turned in with no .complete for them (and no .todo that
+  names it): an error with none at all, a warning for some of them but not all (a generator dropped an objective);
 - zone changes between steps without travel steps (PLAN §3.6; tools/guide_travel.py proposes them), and .fly to a
   flight path that no earlier .fp teaches;
 - class-only directives in a chapter or track without a .class gate for that class;
@@ -25,6 +27,7 @@ Without the data pack (as in CI) the checks that need it are skipped, and a note
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -347,6 +350,79 @@ def availability_checks(route: Route, pack: guide_travel.Pack, world: guide_trav
     return found
 
 
+def talk_to(record: dict, objective: dict) -> bool:
+    """An objective the pack models as "talk to X": a kill or object objective on the very NPC or object that starts or ends
+    the quest (QuestieDB's way of saying "speak with X"). The hand-in at that NPC is the whole of it: no `.complete` needed."""
+    parties = {"kill": "npc", "object": "obj"}
+    kind = parties.get(str(objective.get("k")))
+    if kind is None or not isinstance(objective.get("id"), int):
+        return False
+    return any(
+        objective["id"] in (entities.get(kind) or ()) for entities in (record.get("s") or {}, record.get("e") or {})
+    )
+
+
+def objective_checks(route: Route, pack: guide_travel.Pack) -> Found:
+    """A quest the pack gives objectives that the route accepts and turns in with no `.complete` for them (and no `.todo` that
+    marks it): the player gets a step that cannot be finished (an explore objective a generator dropped is the usual case) or
+    free experience in the simulator. No `.complete` at all is an error; some of the objectives but not all, a warning (the
+    numbers are the pack's own order, which the generators write: a hand-written guide may count as the quest log does).
+    Exempt: a quest the pack gives no objective (a delivery, or a class quest whose `unknown_work` carries its own `.todo`) and
+    one whose objectives are all "talk to" the NPC that starts or ends it."""
+    quests = pack.table("quests")
+    if not quests:
+        return []
+    accepted: dict[int, tuple[RouteStep, int | None]] = {}
+    turned: set[int] = set()
+    whole: set[int] = set()  # `.complete <quest>`: all of its objectives
+    numbered: dict[int, set[int]] = {}  # `.complete <quest>,<n>`
+    reasons: list[str] = []  # what the route's `.todo` lines say, lower case
+    for rs in route.steps:
+        for d in rs.all_directives():
+            quest = d.args.get("quest")
+            if d.name == "todo":
+                reasons.append(str(d.args.get("reason", "")).lower())
+            elif d.name == "accept":
+                accepted.setdefault(quest, (rs, d.line))
+            elif d.name == "turnin":
+                turned.add(quest)
+            elif d.name == "complete":
+                if d.args["objective"] is None:
+                    whole.add(quest)
+                else:
+                    numbered.setdefault(quest, set()).add(d.args["objective"])
+    found: Found = []
+    for quest, (rs, line) in accepted.items():
+        record = quests.get(quest)
+        if quest not in turned or quest in whole or not isinstance(record, dict):
+            continue
+        objectives = [o for o in record.get("o") or [] if isinstance(o, dict)]
+        wanted = [number for number, o in enumerate(objectives, 1) if not talk_to(record, o)]
+        if not wanted:
+            continue  # no objectives, or all of them are "talk to"
+        name = (record.get("n") or "").lower()
+        if any(str(quest) in re.findall(r"\d+", text) or (name and name in text) for text in reasons):
+            continue  # a `.todo` somewhere says what the quest asks
+        kinds = ", ".join(str(objectives[number - 1].get("k")) for number in wanted)
+        missing = [number for number in wanted if number not in numbered.get(quest, ())]
+        if not missing:
+            continue
+        if len(missing) == len(wanted):
+            message = (
+                f"{_quest(pack, quest)} has objectives in the data pack ({kinds}) but the route accepts it and turns it in with no "
+                f".complete for it: add .complete {quest}, or a .todo that says what it asks"
+            )
+            found.append((_problem("error", "missing-complete", message, rs, line), [rs]))
+        else:
+            left = ", ".join(f"{number} ({objectives[number - 1].get('k')})" for number in missing)
+            message = (
+                f"{_quest(pack, quest)} has {len(wanted)} objectives in the data pack ({kinds}) but the route has no .complete for "
+                f"objective {left}: add .complete {quest},{missing[0]} (or .complete {quest} for all of them)"
+            )
+            found.append((_problem("warning", "partial-complete", message, rs, line), [rs]))
+    return found
+
+
 def chapter_order(route: Route) -> list[Problem]:
     """Chapter minimum levels never go down, and stay inside the guide's levels."""
     problems = []
@@ -416,6 +492,7 @@ def flight_node_names(route: Route, world: guide_travel.World) -> Found:
 
 def route_checks(route: Route, pack: guide_travel.Pack, world: guide_travel.World, skip=(), skill_lines=None) -> Found:
     found = quest_flow(route, pack) + availability_checks(route, pack, world, skill_lines) + travel_checks(route, world)
+    found += objective_checks(route, pack)
     return found if "node" in skip else found + flight_node_names(route, world)
 
 
@@ -575,7 +652,7 @@ def lint(root: Path, pack_dir: Path | None, guide_ids=None, why_no_pack: str = "
         if skip:
             report.notes.append(f"--skip-ids: {', '.join(skip)} IDs are not checked")
     else:
-        skipped = "unknown IDs, quest levels, flight node names and the pack's quest chains"
+        skipped = "unknown IDs, quest levels, quests whose objectives never appear as a .complete, flight node names and the pack's quest chains"
         report.notes.append(f"no data pack: {skipped} are not checked")
     if not project.professions:
         report.notes.append("no profession modules in Professions/: profession keys are not checked")
