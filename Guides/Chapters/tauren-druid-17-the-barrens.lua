@@ -1,21 +1,32 @@
--- PLANNED: the thorough route for Tauren Druid (HARDCORE): tools/route_planner.py tauren --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 1 route for Tauren Druid (HARDCORE): tools/route_planner.py tauren --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
 
 ns.Chapters:Register(
-	"tauren-druid-21-the-barrens",
+	"tauren-druid-17-the-barrens",
 	[[
 #chapter 27-27 The Barrens
-step
-  .goto 1413,46.97,85.63
-  .complete 849 -- Revenge of Gann
 step
   .goto 1413,45.89,77.0
   .turnin 849 -- Revenge of Gann
 step
-  .goto 1413,44.86,59.14
-  .accept 874 -- Mahren Skyseer
+  .goto 1413,50.73,56.83
+  .complete 878,2 -- Tribes at War
+step
+  .goto 1413,53.32,53.19
+  .complete 878,3 -- Tribes at War
+  .complete 878,1 -- Tribes at War
+step
+  .goto 1413,44.55,59.26
+  .turnin 878 -- Tribes at War
+  .accept 5052 -- Blood Shards of Agamaggan
+step
+  .goto 1413,42.87,55.25
+  .complete 5052 -- Blood Shards of Agamaggan
+step
+  .goto 1413,44.55,59.26
+  .turnin 5052 -- Blood Shards of Agamaggan
 step
   .goto 1413,65.84,43.86
   .turnin 874 -- Mahren Skyseer
@@ -44,7 +55,7 @@ step
   .goto 1413,62.37,37.62
   .turnin 1221 -- Blueleaf Tubers
 step
-  .todo "travel from The Barrens to Thunder Bluff: the travel graph has no route yet"
-  .zone 1456 >> Go to Thunder Bluff
+  .todo "Walk from The Barrens to Ashenvale: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Ashenvale."
+  .zone 1440 >> Go to Ashenvale
 ]]
 )

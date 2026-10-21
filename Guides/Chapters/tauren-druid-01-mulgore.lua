@@ -1,4 +1,4 @@
--- PLANNED: the thorough route for Tauren Druid (HARDCORE): tools/route_planner.py tauren --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 1 route for Tauren Druid (HARDCORE): tools/route_planner.py tauren --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
@@ -6,7 +6,7 @@ local ADDON_NAME, ns = ...
 ns.Chapters:Register(
 	"tauren-druid-01-mulgore",
 	[[
-#chapter 1-10 Mulgore
+#chapter 1-11 Mulgore
 step
   .goto 1412,43.89,76.66
   .accept 752 -- A Humble Task
@@ -91,6 +91,8 @@ step
   .goto 1412,47.52,63.58
   .turnin 748 -- Poison Water
   .accept 754 -- Winterhoof Cleansing
+  .complete 754,1 -- Winterhoof Cleansing
+  .note Winterhoof Cleansing: HARDCORE event: enemies may come at you here; be healed and buffed first, and come back later if unsure
   .turnin 754 -- Winterhoof Cleansing
   .accept 756 -- Thunderhorn Totem
 step
@@ -107,6 +109,8 @@ step
   .goto 1412,47.52,63.58
   .turnin 756 -- Thunderhorn Totem
   .accept 758 -- Thunderhorn Cleansing
+  .complete 758,1 -- Thunderhorn Cleansing
+  .note Thunderhorn Cleansing: HARDCORE event: enemies may come at you here; be healed and buffed first, and come back later if unsure
   .turnin 758 -- Thunderhorn Cleansing
   .goto 1412,46.67,63.38
   .accept 745 -- Sharing the Land
@@ -147,6 +151,9 @@ step
   .goto 1412,33.13,65.92
   .accept 98430 -- The Longwalkers
 step
+  .goto 1412,37.19,64.62
+  .complete 98430 -- The Longwalkers
+step
   .goto 1412,46.67,63.38
   .turnin 745 -- Sharing the Land
   .goto 1412,46.03,63.44
@@ -167,19 +174,50 @@ step
   .goto 1412,56.98,34.55
   .turnin 833 -- A Sacred Burial
 step
+  .goto 1412,53.15,32.46
+  .complete 861 -- The Hunter's Way
+step
   .goto 1412,45.33,36.52
   .complete 759 -- Wildmane Totem
+step
+  .todo "Walk from Mulgore to Thunder Bluff: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Thunder Bluff."
+  .zone 1456 >> Go to Thunder Bluff
+step
+  .goto 1456,61.54,80.92
+  .turnin 861 -- The Hunter's Way
+  .goto 1456,60.3,51.68
+  .turnin 98430 -- The Longwalkers
+step
+  .goto 1456,47.0,49.83 >> Go to the flight master
+  .fp 1456,Thunder Bluff
+step
+  .goto 1456,76.48,27.22
+  .turnin 5926 .class DRUID -- Heeding the Call
+  .accept 5922 .class DRUID -- Moonglade
+  .note Moonglade is a long walk from here. VERIFY(beta): Classic's druid learns Teleport: Moonglade at level 10, and this guide does not assume that Forever does; the way back (hearthstone, or a flight master at Nighthaven) is unconfirmed too.
+step
+  .todo "Walk from Thunder Bluff to Mulgore: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Mulgore."
+  .zone 1412 >> Go to Mulgore
 step
   .goto 1412,47.52,63.58
   .turnin 759 -- Wildmane Totem
   .accept 760 -- Wildmane Cleansing
+  .complete 760,1 -- Wildmane Cleansing
+  .note Wildmane Cleansing: HARDCORE event: enemies may come at you here; be healed and buffed first, and come back later if unsure
   .turnin 760 -- Wildmane Cleansing
   .accept 98435 -- Thunderhorn's Report
 step
   .goto 1412,54.76,64.27
   .turnin 764 -- The Venture Co.
+  .accept 765 -- Supervisor Fizsprocket
 step
-  .todo "travel from Mulgore to Thunder Bluff: the travel graph has no route yet"
+  .goto 1412,61.19,49.32
+  .complete 765 -- Supervisor Fizsprocket
+step
+  .goto 1412,54.76,64.27
+  .turnin 765 -- Supervisor Fizsprocket
+step
+  .todo "Walk from Mulgore to Thunder Bluff: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in Thunder Bluff."
   .zone 1456 >> Go to Thunder Bluff
 ]]
 )
