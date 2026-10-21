@@ -326,6 +326,12 @@ describe("Placement:Find", function()
 			assert.is_true(result.skipped >= 8)
 		end)
 
+		it("takes the straight line when told to", function()
+			local g = guide({ { levels = { 1, 10 }, steps = questline(1, 10) } })
+			local result = Placement:Find(g, snap({ level = 9, done = { 1, 2, 3 } }), { curve = "linear" })
+			assert.is_true(result.index >= 25) -- eight ninths of the way through levels 1 to 10, not two thirds
+		end)
+
 		describe("the tolerance", function()
 			-- 120 steps over 14 levels, like the island of a guide: a chapter whose line cannot be trusted to a level
 			local LONG = { { levels = { 1, 15 }, steps = questline(1, 40) } }
@@ -496,6 +502,16 @@ describe("Placement against the shipped guides", function()
 				return results[entry.id][name]
 			end
 
+			it("is graded against levels that its line is a level off from, in its longest chapter", function()
+				-- the stress the bounds below are held to: with the truth equal to the line there would be nothing to hold
+				local warp, model = Sim.truth(ns, entry, "warp"), Sim.truth(ns, entry, "model")
+				local widest = 0
+				for i = 1, #warp do
+					widest = math.max(widest, math.abs(warp[i] - model[i]))
+				end
+				assert.is_true(widest >= 0.9)
+			end)
+
 			it("finds a character who followed the guide, to the step", function()
 				assert.is_true(stats("exact").quests.p90 <= 2)
 				assert.is_true(stats("exact").steps.max <= 6)
@@ -546,6 +562,27 @@ describe("Placement against the shipped guides", function()
 			end)
 		end)
 	end
+
+	it("widens the headers of the guide it shows the placement, and not the guide's own", function()
+		local entry = shipped[1]
+		local before = {}
+		for c, chapter in ipairs(entry.guide.chapters) do
+			before[c] = chapter.levels and { chapter.levels[1], chapter.levels[2] }
+		end
+		local view = Sim.view(ns, entry, { lo = -1, hi = 2 })
+		assert.are.equal(entry.id .. "/w-1,2", view.id)
+		assert.are.equal(entry.guide.steps, view.guide.steps)
+		for c, chapter in ipairs(entry.guide.chapters) do
+			local levels = view.guide.chapters[c].levels
+			if chapter.levels and not chapter.dungeon then
+				assert.are.equal(math.max(1, before[c][1] - 1), levels[1])
+				assert.are.equal((before[c][2] or before[c][1]) + 2, levels[2])
+			else
+				assert.are.equal(chapter.levels, levels)
+			end
+			assert.are.same(before[c], chapter.levels and { chapter.levels[1], chapter.levels[2] })
+		end
+	end)
 
 	it("gives the same figures again with the same seed", function()
 		local again = Sim.run({
