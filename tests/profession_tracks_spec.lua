@@ -461,7 +461,7 @@ describe("the profession steps in the engine", function()
 		assert.are.same({}, ns.Progress:Sticky())
 	end)
 
-	it("passes the learn step by itself for a character that knows the profession already", function()
+	it("passes the learn step by itself when the profession is known and far from its cap", function()
 		local ns, world = start(function()
 			knowSkinning(30)
 		end)

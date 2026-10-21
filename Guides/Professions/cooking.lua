@@ -12,7 +12,8 @@ local ADDON_NAME, ns = ...
 -- (docs/FOREVER-API-NOTES.md, Open probes, "Profession tracks"). The data names no trainer or book for Expert Cooking,
 -- so no step points at it and a .todo says so.
 -- The shipped route already holds Forever's new "Camping 101: Cooking" quest (Cook Torka, Razor Hill); what it gives
--- is not in the data. The learn step below passes by itself for a character that knows Cooking, so either way it is safe.
+-- is not in the data. If it teaches Cooking, the learn step below passes by itself while the skill is more than 25
+-- below its cap, and asks for the next rank when it is not, so either way it is safe.
 -- Trainers come from the data pack's NPC titles (a QuestieDB Classic baseline plus Forever's layers; names and positions,
 -- not walked in game yet): Zamja 3399 (Orgrimmar), Eunice Burch 4552 (Undercity) and Aska Mistrunner 3026 (Thunder
 -- Bluff), all "Cooking Trainer", Horde. The pack has no profession records yet (no trainer lists, no recipes), so

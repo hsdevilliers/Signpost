@@ -30,10 +30,18 @@ good experience at level 4 or 5) out of reach for the route.
   (`valley`, `razorhill`, `senjin`, `orgrimmar`, `crossroads`, `undercity`, `thunderbluff`, ...), at least for the towns that have a profession trainer
   in the pack. `docs/PLANNER.md` and `docs/GUIDE-FORMAT.md` say so, with a test on a fixture.
 - The tracks gain `@hub` steps for the early trainers (gated `.race Troll`, `.trainprof` first so a skip still declines), and the Orgrimmar learn
-  steps stay as the fallback for a character that did not learn earlier (the learn step passes by itself for one who did).
+  steps stay as the fallback for a character that did not learn earlier (the learn step passes by itself for one who did, while the skill is more
+  than 25 below the cap).
 - `guide_lint --strict` is clean with the pack, for every guide.
 
 ## Notes
 
 - Do not make a track require a hub that a regenerated route may lack: an `@hub` step with no matching `.hub` is an `unmatched-anchor` error.
 - Only the Troll route is in question today; the hub names must serve the Orc and Tauren routes too (PLAN §3.8).
+- The planner has the seam for this (work package E1, `Planner.step_marks(hub, place)` in `tools/planner.py` on `feat/planner-features`): it returns
+  the lines written after a step's quest lines for a place of a hub, and returns none yet. Returning `  .hub <town>` for the step of a town that has a
+  profession trainer is the whole planner side; a step with a `.hub` line is never joined with its neighbours, and a step has one `.hub`, so the
+  names are per town, not per quest hub. Proposed only: the profession tracks work did not write `.hub` lines.
+- At the first Orgrimmar visit the five learn steps come in plan order (skinning, leatherworking, first aid, cooking, fishing), which zig-zags
+  across the city (Arnok, the First Aid Trainer, is in the far south-west corner, Lumak in the north-east). A hub-anchored step per trainer, or a
+  plan order that follows the walk, would shorten it; the plan order is the `#professions` header's, so changing it changes the detected plan.

@@ -255,9 +255,9 @@ step @zone 1458                           -- the next rank, at the next town wit
   than 25 below the cap, and is satisfied by the cap rising (or by learning the profession, for a character that had not), so one step serves
   every rank and its text says "your next rank". The level and skill a rank asks are a `.note`: Classic's numbers until Forever's are known.
 - **Anchors without `.hub` lines** (the planner writes none into the chapters): `@zone <uiMapID>` puts a step before the first route step in
-  that map after the track's previous step, and the same anchor again stays in the same place, so a later visit to a town is reached by
-  anchoring a step at the town after one that lies beyond the earlier visit. `@level <N>` is for what belongs to a level wherever the
-  player is. A track that names a town the regenerated route no longer visits gets `unmatched-anchor` from the lint: anchor it again.
+  that map from the place of the track's previous step on. The same anchor twice in a row lands at the same place, so a later visit to a
+  town is reached by putting a step for another town between the two. `@level <N>` is for what belongs to a level wherever the player is.
+  When a regenerated route no longer visits a town a track names, the lint reports `unmatched-anchor`: anchor that step again.
 - **A step with its own position belongs to one route.** The guide of another race would report an unmatched anchor for it, or take a
   trainer that is not on its way: gate such a step with `.race` (one file may hold the steps of several races), and the lint stays clean for
   the guides of the other races.
