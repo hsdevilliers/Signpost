@@ -11,7 +11,7 @@ the guides as a player. They changed nothing. This file records what they found 
 | R-engine-2 | launcher, Journal, step card, recorders, profession tracks, TOCs | 81 (62 caught) | no must-fix; 4 findings fixed anyway |
 | R-tools | planner, lint, simulator, travel generator, importers, pricing, rules | 74 (63 caught) | one must-fix (fixed), seven to the backlog |
 | R-guides-A | the Troll Hunter and Tauren Druid guides, the profession tracks, placement | (reads guides) | three must-fix (fixed in the tools, guides regenerated) |
-| R-guides-B | the Skyborne Druid guide, placement on all three | (reads guides) | see the end of this file |
+| R-guides-B | the Skyborne Druid guide | (reads guides) | one must-fix candidate (a quest family, left to the user's decision), the rest to the backlog |
 
 ## R-engine-1: placement, tracking, conditions
 
@@ -78,3 +78,23 @@ coordinates match the pack.
 | Five Orgrimmar quests from profession NPCs have no skill field | Backlog (verify at the first visit) |
 | Developer text in `.todo` lines, an 11-line step, a far pin | Backlog |
 | The Tauren walk report described the previous generation | Refreshed after the final regeneration |
+
+## R-guides-B: the Skyborne Druid guide (final generation)
+
+Walked: the first 60 steps, the whole island and its exit line by line, a sample from the middle, the last chapter. Sound: all 33 prerequisites of 95349 (the closure, computed) and every island quest are turned in before
+the airship step; 94006 and 94638 are done on the island, so `require [95349, 94638]` worked; the exit is handled honestly (VERIFY marks, no invented coordinates, the airship step is `.zone 1412` plus a note
+plus a `.todo` and finishes on arrival); the Moonglade legs say Teleport: Moonglade if you have it and not to walk it; every accept and turn-in pin matches its NPC; the class quests (10) are present and gated;
+the quest log never holds more than 10 and ends empty; the race and class gates are right.
+
+| Finding | What became of it |
+|---|---|
+| MUST-FIX candidate: the route takes the Tauren camp's quests 96605 and 96661 (Camp Narache) and skips the Skyborne's own set 96101 and 96646 as "alternative ... which is routed"; the game very likely does not offer a Skyborne the Tauren set, and accepting the Skyborne's 96101 locks the Tauren ones (PLAUSIBLE, not proven; the lint and the simulator are blind to it) | Not fixed here: the fix means regenerating the Skyborne guide, which was left to the lead and the user. Backlog item (high) with the likely cause (the planner guesses 10% of the level's bar as the experience of a quest the Classic seed does not know) and a PR-body line |
+| The "Confront Lorthuna" warning sits on the pick-up, not on the fight twelve steps later | Backlog (filed by the Skyborne worker) |
+| Exploring the Horde (93739) is dropped silently as an elite kill: its objectives are talk credits for rank-3 NPCs | Backlog |
+| Three relic objectives in Moonglade are `.todo` although the pack has their positions | Backlog |
+| A drafter-written `.level` gate has no grind note | Backlog |
+| The Moonglade notes name a Nighthaven flight master; no step teaches the flight path | Backlog |
+| Ambermill Keep and Forever's named island kills carry no HARDCORE note | Backlog |
+| Zig-zags: the island's north camp twice, the Barrens four times | Backlog |
+| Same-area omissions on the island (92462, 92598, 92515, 92553, 93951, 92516, 92679) | A note on the user's item; the completeness default is the user's choice |
+| The walk report was stale | Refreshed for the final generation |

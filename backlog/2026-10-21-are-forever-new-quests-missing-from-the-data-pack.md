@@ -1,12 +1,14 @@
 ---
 title: Are Forever-new quests missing from the data pack? Compare what the game offered with the pack and the guides
 kind: question
-status: open
+status: done
 priority: normal
 area: tools, data
 source: user
 raised: 2026-10-21
 raised_in: the user's early test of the Skyborne HARDCORE guide, 2026-10-21
+closed: 2026-10-21
+resolution: tools/audit_quests.py (batch 1, WP-E2) reads the quests the game offered in recorded play (events, learned records) through tools/read_savedvars.py, looks each up in the pack and in each guide, and lists data gaps and route gaps with the rule that explains them (docs/AVAILABILITY.md). First run, on the dev client's recorded session (6 distinct quests, 189 events): 0 data gaps; the three Troll quests are routed; the Skyborne quest 92462 is left out on purpose with its numbers (its work pays 71% of the route's pace; completeness 0.71 or less would finish it). Re-run it on the friend's SavedVariables (`--from incoming/play-machine`) when they arrive; a data gap found then gets its own item.
 ---
 
 ## What

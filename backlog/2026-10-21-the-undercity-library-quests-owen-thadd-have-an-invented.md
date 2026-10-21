@@ -24,4 +24,5 @@ Someone with a character in the game says what one of these quests shows in the 
 ## Notes
 
 - Related: "Thin Forever quest records and chains the pack cannot order: verify in play and correct".
+- Generation 3 of the Tauren route (807be15): five of them are routed (78127, 78143, 78149, 79097, 78150: 11,600 guessed experience); 79096 and 79094 (The Lessons of Ta'zo) are `#skipquest` as not finished by the route. The three Undercity legs (levels 19 to 20, 23 and 25) pay 32,800 experience for 0h38, nearly three times the route's pace.
 - Raised by the review of the Tauren Druid planner route (batch 1, WP-A2); the Skyborne worker saw the same invented levels.

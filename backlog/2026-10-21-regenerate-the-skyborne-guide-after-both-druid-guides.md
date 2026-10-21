@@ -1,12 +1,14 @@
 ---
 title: Regenerate the Skyborne guide after both druid guides' HARDCORE rules are merged
 kind: task
-status: open
+status: done
 priority: normal
 area: guides, planner
 source: claude
 raised: 2026-10-21
 raised_in: review of the Skyborne Druid planner route (WP-A1), 2026-10-21
+closed: 2026-10-21
+resolution: Done in batch 1: the Skyborne guide was regenerated (feat/skyborne-guide 9ca64ab) after both druid rule sets, the planner fixes and the generator fixes were merged; tools/tests/test_shipped_guides.py now fails whenever a planned guide accepts a quest the rules skip for it, and is green.
 ---
 
 ## What

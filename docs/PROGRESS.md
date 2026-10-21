@@ -473,3 +473,41 @@ prerequisite, the lint did not model prerequisites, and its 20 or so level warni
   in conversation; before a PR is pushed and before a session ends every open question and unresolved problem is closed or written up
   there first. The tool tests check every item, so CI does. First items: the user's notes on activity steps, quest-level step state and
   markers (and the tools that follow them), the planner's open question and limits, the first in-game session, `/signpost reset`.
+
+## Batch 1 (2026-10-21)
+
+Ten parallel work packages under one coordinator, integrated on one branch, the three guides regenerated with the final tools, and the result attacked by five
+independent reviews (`docs/reviews/batch-1-reviews.md`: what they found and what became of each finding). Everything below is built and specced on the mock, in the
+planner or in the simulator; **nothing was seen in the real client** unless a line says so. What needs the game is in the PR and in the backlog's verify items.
+
+- [x] Find my place (WP-B): `Engine/Placement.lua` (a pure function: level, quests done, quests in the log) and `Progress:Place` (first use, late history,
+  a lost place, on demand; `<` undoes it), the Journal's Route-tab button, `/signpost place`, `/signpost reset progress`; the constants come from a simulation over
+  the shipped guides (`python tools/placement_report.py`, tables in docs/ENGINE.md). Review fixes: a fingerprint of the guide in the saved record (a
+  regenerated guide re-places once from the quest history), the quest log is no longer taken for quest history, group-quest steps wait for the quest log, a
+  placement starts the goals of the steps it passes. Specs only; the quest history at login is an open probe.
+- [x] Step card and pins (WP-C): one pin and label for each NPC of a joined step (on top of the leftover-marker rule of PR #43), done marks on accept and
+  turn-in lines, group quests never hold the route up and show as an `Optional: <quest> (group quest)` line. The 5-level rule waits for `.group` (backlog).
+- [x] Quest tracking hardened (WP-D): one state machine in `Engine/Tracking.lua` (the earlier tracking given back, retries with a back-off, the card shown
+  again, the game's own tracking told from the player's, "taken in hand" kept over a reload); `/signpost tracking [test]`; `SignpostDB.probe.questLogMax`.
+  The quest log holds 40, confirmed by the user in the game.
+- [x] Launcher (WP-I, the lead's): the minimap button's clicks, a quick menu shared with the step card's right-click and the AddOn Compartment, six key
+  bindings, hide/lock settings, `/signpost card` and `/signpost minimap` (docs/INTERACTIONS.md). None of it seen in the game.
+- [x] Route Planner (WP-E1): grind steps say how much to grind; the quest log limit (40); the spread between grains in the report; chapters cut at zone stays;
+  nothing dropped silently (each quest the planner takes out is listed and written as `#skipquest ... not finished by this route`); `--completeness` (finish
+  what the route accepts; **off by default, the user chooses**); `--require` (mandatory quests, used for the Skyborne exit); what needs a group quest is
+  optional too and dungeon quests are optional (normal route) or dropped (HARDCORE).
+- [x] Lint, one price for travel, escorts (WP-E2): the lint rule for a quest whose objectives never appear as `.complete`; one travel price shared by the planner,
+  the travel graph and the simulation (the planner and the full simulation agree within about 3%); escorts and events flagged in the pack (`scripted`) and priced;
+  `tools/audit_quests.py` (quests the game offered against the pack and the guides).
+- [x] Travel (WP-F): the generator uses the pack's flight masters and inns and teaches flight paths, plain-words placeholders for what the data does not know, rides
+  and innkeepers recorded (mock only), the Horde airship off Zephras Isle as a hand-authored ride, a HARDCORE-safe wording for the Moonglade legs of druid guides,
+  `docs/PLAY-CHECKLIST.md`.
+- [x] Profession tracks (WP-G1): Skinning, Leatherworking, First Aid, Cooking and Fishing for the Troll Hunter, first cut, every number Classic's (VERIFY(launch)).
+  Open: `.hub` markers in the chapters, the early trainers, the recipe data.
+- [x] Profession recorder (WP-G2): trainer services and recipes with difficulty observations, opt-in, no names, chat or gold; the importer files them.
+- [x] Guides to level 30, regenerated with the final tools and the rebuilt pack (completeness off): Troll Hunter 21 chapters, 20h23 planned, 20h12 simulated, 45 `.todo`;
+  Tauren Druid (HARDCORE) 23 chapters, 27h43 planned, 27h36 simulated, 47 `.todo`; Skyborne Druid (HARDCORE) 19 chapters, 24h14 planned, 24h03 simulated, 33 `.todo`
+  (its island part ends with the exit chain and the airship, from research, unverified). Compare play time only: a beam total is chaotic.
+- [ ] The user picks the completeness defaults (F and T): until then 92462 and 92463 stay out of the Skyborne guide, with the reason in the guide.
+- [ ] To see in the game: the placement at login, the step card's new lines and pins, the launcher (menu, compartment, key bindings, the Settings column), the
+  tracker's watch functions, the recorders, the Skyborne exit, Teleport: Moonglade.

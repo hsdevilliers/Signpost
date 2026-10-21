@@ -38,3 +38,42 @@ A quest offered where the player already stands, with objectives in the area of 
 
 - For this quest it is not missing data: the pack has quest 92462 (giver and ender NPC 251368, one kill objective, the follow-up 92463), the game's own offer of it was recorded in the user's save, and the planner keeps it. A fresh beam run takes it; the installed route does not. So here it is the planner's route choice (the winning finalist leaves out a free pick-up), not the data.
 - The user's other cause can still be true for other Forever-new quests: see the item "Are Forever-new quests missing from the data pack" (the audit that tells the two causes apart).
+
+## Root cause (corrected 2026-10-21 after tracing the raw route; the first version of this note had the order wrong)
+
+Traced with the thorough preset on main's tools (windshaper, HARDCORE, hub radius 150), on the plan BEFORE `Planner.tidy()` ran. Not the data, not a pick-up distance.
+
+- The quest is picked up at the first chance. The raw winner's visit 2 (hub 566, where Ailee and Elatrell stand, level 2 after) accepts 92462 and in the same visit completes Harmony in Balance (92461) at its kill spot in that hub, then 92474 and 94414.
+- 92461 has kill spots in hubs 566 and 570; 92462's two kill spots are only in hub 570, 21.9 s of travel from 566. A visit completes an objective at the first hub that has a spot, so the shared hunting ground is never used for both.
+- The raw winner never visits hub 570. After the turn-ins at Rorian (hub 563) the search chose Yala Windwatcher (hub 575) over the east trip: +440 XP in 224 s = 1.96 XP/s against +1240 XP in 505 s = 2.46 XP/s (scores 94003 against 93891). Earlier, from hub 563 after handing in 92460, going east first (94043) or to hub 566 first (94054) was a near tie. Later the character outlevels the quest and the trip is never the best again.
+- The quest stays in the log with its objective open, the search ends, and `tidy()` ("a guide must not accept a quest it never turns in") deletes it silently (22 quests were in the log at the end of the winner), and 92463 never appears.
+- A fresh `--preset beam` run happens to take both quests.
+- Distances for reference: Ailee and Rorian are 43 yards apart (yet different hubs), Elatrell is 63 yards from Ailee and 91 from Rorian.
+
+The model behind the numbers: a quest with unknown experience (new to Forever) is worth 0.1 x the experience of its level (92462: 90 XP) and its kills default to 8 (440 XP, 192 s). The user's save shows the game paid 40 XP for Coming of Age (92460), equal to the model's guess for it, so the guesses are not unreasonable, but 1.96 against 2.46 XP/s on guessed numbers is a coin flip, and the user's expectation is that a quest picked up in the area, with its kills a short trip away, is done.
+
+Hub radius test (beam, flat 8 s walk between places of one hub, nothing else changed): 300 yards merges the NPCs and the kill area into one hub, so the first visit takes 92462 (accept, complete, turn in) and 92463 follows, total 26.71 h against 26.72 h at 150 (thorough); `tidy()` still removes 22 quests. 500 yards: 92462 taken late, 92463 absent, total 34.91 h (8 h more). It works at 300 only because the two spots happen to merge; the radius is not the cause.
+
+## The user's suggestions (dictated, 2026-10-21)
+
+"You describe it as a free pickup, while I see it as something that should have been picked up because it reinforces having more quests being done in an area. [...] And yeah, maybe the area we define for having to check for picking up quests should be enlarged. I think it was 15 yards. [...] But I think we need to enlarge that quest pickup and hand in area scan. What do you think?"
+
+And after Claude's first answer: "Before we formally decide to go with the enlarging of an area, remember I didn't have full context of the problem, and that was just me taking a shot in the dark of what would improve the guide planner to include, you know, all quests at the correct time in a hub. It feels like I'm still not understanding the problem correctly. So please just double check and note that you don't have to go with a solution of increasing the area. You can push back and propose something else if you wish."
+
+Claude's answer: the areas are 150 yards (hubs), 250 (step grouping) and 10 (a `.goto` counts as reached), and none of that decided this; see the root cause above. A bigger area is not recommended.
+
+## Done when (updated 2026-10-21)
+
+- A planner test reproduces it (a quest accepted at a hub whose only kill spots are in another hub about 20 s away, rate slightly under the best alternative) and fails today.
+- No silent deletion: every quest `tidy()` removes is recorded with the reason and the numbers, printed by the route planner report and visible in the lint or the walk report.
+- Finish what you accept: before tidy deletes an unfinished quest, the planner tries to insert the objective trip and keeps it within a tolerance.
+- A completeness setting (the lowest rate, relative to the route's pace, at which a quest picked up on the route is still finished, and the longest objective trip) measured on Troll, Tauren and Skyborne for several values (quests added, planner and simulated time change); the user chooses the default.
+- The Skyborne route holds 92462 and 92463 once the chosen setting is on; the Tauren and Troll routes are checked for the same gap.
+- Design note: choosing, for an objective with spots in two hubs, the spot that also serves another open quest.
+
+## State after batch 1 (the coordinator, 2026-10-21)
+
+- The cause was the planner's `tidy`: a route that accepts a quest next to the work of another one, but never makes the short trip to its own work, had the unfinished quest deleted silently. Batch 1 (WP-E1) removed the silence: every quest `tidy` takes out has a record, is printed in the report and written as a `#skipquest <id> >> not finished by this route: <reason>` line in the guide, and `--completeness F` / `--completeness-trip T` (default off) finish what the route accepts when the trip is short and pays at least F of the route's pace.
+- The installed guides were made with completeness OFF, so 92462 and 92463 are still left out of the Skyborne guide, now with the reason in plain sight (92462: its work is 20 s away and pays 2.07 XP/s against the route's 2.93, 71%; completeness 0.71 or less would finish it). The tables that show what each setting does on the three guides are in docs/PLANNER.md, Measurements. The choice of the default is the user's (backlog item "Completeness: which values of F and T should be the defaults?"); when it is made, the guides are regenerated and this item can be closed.
+- `python tools/audit_quests.py --guide horde-windshaper-druid` lists the same-area omissions of a guide with the rule that explains each.
+- The independent review of the final Skyborne guide (R-guides-B) lists more island quests left out although the player stands at the giver: 92598 (The Gift of Skysight, the Windshaper's own fork quest), 92515, 92553, 93951, 92516 and 92679 besides 92462; 92463 is not in the left-out list because it is not offered until 92462 is done.

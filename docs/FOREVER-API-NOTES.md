@@ -235,6 +235,13 @@ How a Horde Windshaper leaves Zephras Isle. The Horde sources agree with each ot
   [classicwowforever.com: Zephras Isle (Skyborne)](https://classicwowforever.com/guides/wow-forever-zephras-isle-skyborne/),
   [wowhandbook.com: Zephras Isle](https://wowhandbook.com/zones/zephras-isle/),
   [warcrafttavern.com: Zephras Isle walkthrough](https://www.warcrafttavern.com/forever/guides/zephras-isle-walkthrough/).
+- **What the project does with it (batch 1):** the Skyborne guide's island part ends with the finale and the exit chain, even in HARDCORE:
+  the guide's entry in `tools/drafts.json` has `"require": [95349, 94638]` (the planner option of docs/PLANNER.md, "Required quests": the
+  quests they need, 31 with the closure, are required too, a zone lock keeps the route on the island until that work is done); three notes warn
+  about the finale (92947, 93958, 92646: the scripted boss fight, reinforcements arrive); the airship is a hand-authored ride
+  (`Guides/Travel/Borders.lua`: map IDs 2521 to 1412, a wait of 450 s, no dock position) that the generator writes as a step with the wait
+  and a `.todo` listing what is unverified, until a recorded ride replaces it. The route leaves the island at about level 15 (HARDCORE's
+  one-level rule needs level 12 for 95349, which is level 13), later than the 12 to 14 the guides report.
 - **To confirm in the game** (backlog verify item "Skyborne exit in the game"): the quest chain and the level it is done at, the dock
   position, the vehicle's name, the landing spot, and whether the airship can be boarded before the chain is done. A Windshaper's recorded
   play (the friend's, or the user's) answers all of it: `/signpost learned` lists the ride once someone has ridden it.

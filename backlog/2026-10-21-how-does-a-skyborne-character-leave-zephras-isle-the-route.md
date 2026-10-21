@@ -1,12 +1,14 @@
 ---
 title: How does a Skyborne character leave Zephras Isle? The route has a placeholder at the exit
 kind: question
-status: open
+status: done
 priority: high
 area: planner, guides
 source: claude
 raised: 2026-10-21
 raised_in: batch 1, WP-A1 review of the Skyborne HARDCORE guide, 2026-10-21
+closed: 2026-10-21
+resolution: Answered by research (the lead, 2026-10-21; beta-era fan guides and the Warcraft Wiki, nothing seen in the game, every line VERIFY(beta); sources and unknowns in docs/FOREVER-API-NOTES.md, section Skyborne exit): the exit is the island story chain 93836, 93090, 95349 (The Earthen Ring) and an airship from Valanaar's westernmost dock (a wait of about 7 to 8 minutes) to Skywatcher Plateau in north-west Mulgore. Batch 1 built it into the route: the planner option `require` (docs/PLANNER.md, Required quests; the Skyborne entry of tools/drafts.json requires 95349 and 94638, 31 quests with the closure), the airship as a hand-authored ride (Guides/Travel/Borders.lua, no dock position until someone rides), three finale warning notes (92947, 93958, 92646: the scripted boss fight), and the Skyborne guide regenerated: one island chapter that ends with the exit chain, the airship step, no placeholder at the exit. Still unconfirmed in the game: the verify item Skyborne exit in the game.
 ---
 
 ## What
