@@ -90,9 +90,10 @@ class Settings:
     # and works it only when that is the better use of the time; one still in the log at the end is taken out when the route is written
     # (`Planner.tidy`). With `completeness` F > 0, tidy first tries to finish it: a stop at its objectives, right after the pick-up, when they are at
     # most `completeness_trip` seconds of walking away and the quest pays at least F times the route's pace (experience per second, the trip
-    # included). 0 is off: the quest is taken out, and the report says why (a record for each in `plan.stats["left_out"]`).
-    completeness: float = 0.0
-    completeness_trip: float = 30.0
+    # included). The user chose 0.6 and 45 s (2026-10-21) from the table in docs/PLANNER.md, "Measurements". 0 is off: the quest is taken out, and the
+    # report says why (a record for each in `plan.stats["left_out"]`).
+    completeness: float = 0.6
+    completeness_trip: float = 45.0
 
 
 @dataclass

@@ -407,7 +407,7 @@ class CapTest(PlannerCase):
 
 class TidyTest(PlannerCase):
     def test_a_replay_walks_the_grinds_again_or_the_levels_that_open_quests_are_missed(self):
-        pl = self.planner(cap=8)
+        pl = self.planner(cap=8, completeness=0)  # (a quest that is taken out, not finished: the replay is what is looked at)
         hub = self.start(pl)
         raw = pl._finish(pl.rollout(pl.start(hub)))
         self.assertTrue(any(v.hub is None for v in raw.visits))  # no quest gets a level 6 character to 8
@@ -1099,7 +1099,7 @@ class CompletenessTest(PlannerCase):
         self.assertAlmostEqual(pl.finish_ratio(q, raw.visits[0].level), 0.8)
 
     def test_tidy_takes_it_out_and_says_why_with_the_numbers(self):
-        pl = self.camp()
+        pl = self.camp(completeness=0)  # (switched off: the default finishes it, below)
         written = pl.tidy(self.raw(pl), self.hubs(pl)[0])
         self.assertNotIn(self.QA, written.final.done)
         self.assertEqual(written.final.active, {})
@@ -1120,7 +1120,7 @@ class CompletenessTest(PlannerCase):
     def test_with_completeness_the_route_stops_at_the_objectives_after_the_pick_up_and_finishes_the_quest(self):
         pl = self.camp(completeness=0.6)
         giver, camp, away = self.hubs(pl)
-        plain = self.camp()
+        plain = self.camp(completeness=0)
         before = plain.tidy(self.raw(plain), giver)
         written = pl.tidy(self.raw(pl), giver)
         self.assertIn(self.QA, written.final.done)
@@ -1138,8 +1138,19 @@ class CompletenessTest(PlannerCase):
         self.assertNotIn(self.QA, before.final.done)  # (what the same route does without)
         self.assertEqual(pl.tidy(written, giver).stats["completed"], [self.QA, 303])  # a plan tidied again still says what it saved
 
+    def test_completeness_is_on_by_default_at_the_users_choice_and_off_changes_it_back(self):
+        s = engine.Settings()
+        self.assertEqual((s.completeness, s.completeness_trip), (0.6, 45.0))  # the user's choice of 2026-10-21, from docs/PLANNER.md "Measurements"
+        pl = self.camp()  # no setting given: the quest pays 80% of the pace and its work is 23 s away
+        giver, camp, _away = self.hubs(pl)
+        written = pl.tidy(self.raw(pl), giver)
+        self.assertIn(self.QA, written.final.done)
+        self.assertEqual([v.hub for v in written.visits][:3], [giver, camp, giver])
+        off = self.camp(completeness=0)
+        self.assertNotIn(self.QA, off.tidy(self.raw(off), giver).final.done)
+
     def test_completeness_off_changes_nothing(self):
-        pl = self.camp()
+        pl = self.camp(completeness=0)
         giver, camp, _away = self.hubs(pl)
         written = pl.tidy(self.raw(pl), giver)
         self.assertNotIn(camp, [v.hub for v in written.visits])
@@ -1623,7 +1634,7 @@ class SettingsTest(unittest.TestCase):
     def test_settings_are_frozen_and_replaceable(self):
         s = engine.Settings()
         self.assertEqual((s.cap, s.hub_radius, s.zone_friction), (30, 150.0, 180.0))
-        self.assertEqual((s.completeness, s.completeness_trip), (0.0, 30.0))  # completeness is off until the user has chosen a value
+        self.assertEqual((s.completeness, s.completeness_trip), (0.6, 45.0))  # the user's choice of 2026-10-21; 0 switches it off
         self.assertEqual(dataclasses.replace(s, cap=20).cap, 20)
         with self.assertRaises(dataclasses.FrozenInstanceError):
             s.cap = 5  # type: ignore[misc]

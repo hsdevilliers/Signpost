@@ -538,8 +538,8 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         (f"a quest the route picked up and did not finish is finished when its objectives are at most {s.completeness_trip:g} s of walking away and it pays "
          f"at least {s.completeness:.0%} of the route's pace (--completeness, --completeness-trip); the rest are taken out and listed with the reason")
         if s.completeness > 0
-        else "a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason (--completeness F finishes the "
-             "ones that are a short walk away and pay at least F of the route's pace; off)",
+        else "a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason (completeness is off here: --completeness F "
+             "finishes the ones that are a short walk away and pay at least F of the route's pace)",
         (f"required quests (--require, \"require\" in tools/drafts.json): {', '.join(str(q) for q in job.required)}. Each is done "
          f"whatever it costs, with the quests it needs (all of them are pushed like a class chain's); none is left out for being slow, taken out when the "
          f"route is written, or kept out by a full quest log, and one that only has to be handed in, in another zone, is handed in next (the route leaves for it)")
@@ -1131,11 +1131,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="yards within which neighbouring steps of one kind are written as one: pick up, doing, hand in (default 250)")
     parser.add_argument("--completeness", type=float, default=engine.Settings.completeness, metavar="F",
                         help="finish a quest the route picked up and did not finish, when its objectives are a short walk away (--completeness-trip) and it pays at "
-                             "least F times the route's pace in experience per second (0.6: at least 60%%); 0 is off, the quest is taken out and listed "
-                             "with the reason (default %(default)g; docs/PLANNER.md, Completeness)")
+                             "least F times the route's pace in experience per second (0.6: at least 60%%); 0 switches it off, the quest is then taken out and "
+                             "listed with the reason (default %(default)g, the user's choice of 2026-10-21; docs/PLANNER.md, Completeness)")
     parser.add_argument("--completeness-trip", type=float, default=engine.Settings.completeness_trip, metavar="SECONDS",
                         help="the longest walk from where a quest was picked up to its objectives, and (unless the route goes there anyway) to where it is "
-                             "handed in, that --completeness will make (default %(default)g)")
+                             "handed in, that --completeness will make (default %(default)g, the user's choice of 2026-10-21)")
     parser.add_argument("--walk-by-map", action="store_true",
                         help="charge the walk between the places of one hub by the map's distance, not a flat 8 s (Settings.local_walk) for each change of place "
                              "(an experiment: docs/PLANNER.md, Measurements)")
