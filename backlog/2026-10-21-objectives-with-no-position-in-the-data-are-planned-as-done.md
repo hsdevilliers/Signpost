@@ -27,3 +27,7 @@ These quests look cheaper than they are, which pulls the planner towards them an
 ## Notes
 
 - The positions arrive over time from the recorder (learned positions in the pack); the charge should fall away when a position is known.
+
+## What the data says (traced 2026-10-21)
+
+The missing positions are a data gap, not a planner blind spot: the objects and creatures exist in the pack as names without coordinates (the questie layer itself has none for them), and the planner already follows item -> object or creature -> position. The cause table, the examples and the plan to fill the gaps are in the item `fill-the-missing-positions-...` (the user's idea of looking the entities up in a database). This item stays for what the planner does in the meantime.
