@@ -34,3 +34,8 @@ login) is answered, or what is wrong is turned into items.
 ## Notes
 
 Batch 1 (WP-C): `Engine/Conditions.lua` (`:Targets`, `:OptionalOnly`), `UI/StepFrame.lua` (`MARKED`, `:OptionalLines`), `UI/Pins.lua` (tooltip), `UI/Journal.lua`.
+
+Batch 1 review fixes (branch fix/review-engine): a group quest's step is now passed only once the client has sent the quest log (`ns.Context:QuestLogLoaded()`; a
+character that holds the quest and logs in with the log not there yet stays at its step), and the `Optional:` line no longer names the quest of the card's own step
+(on the accept step of a group quest the body lists it and the line is empty). To look at with a group quest in the log: `/reload`, the step is still the group
+quest's, `/signpost context` then `questLogLoaded` is true.

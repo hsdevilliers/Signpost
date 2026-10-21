@@ -109,6 +109,16 @@ describe("Placement:Find", function()
 		assert.are.equal(1, result.active)
 	end)
 
+	it("takes a quest log without a single completed quest for a history of its own", function()
+		-- what the client has sent when its list of completed quests has not arrived yet
+		local result = Placement:Find(guide(TEN), snap({ level = 5, active = { 1, 2, 3 } }))
+		assert.are.equal("history", result.mode)
+		assert.are.equal(3, result.active)
+		assert.are.equal(0, result.done)
+		assert.are.equal(8, result.index) -- behind the three accepts, at the doing step of the last quest
+		assert.are.equal(4, result.skipped) -- and the steps of quests 1 and 2 in between are not done
+	end)
+
 	it("goes on to the hand-in when the quest in the log is ready", function()
 		local result = Placement:Find(guide(TEN), snap({ done = range(1, 4), active = { 5 }, ready = { 5 } }))
 		assert.are.equal(15, result.index)

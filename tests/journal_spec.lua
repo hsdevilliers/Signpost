@@ -253,6 +253,9 @@ describe("Journal", function()
 			end
 			assert.is_true(found)
 			assert.are.same({}, mock.errors)
+			-- it is a manual placement, which < takes back: the pointer as it was before the click
+			assert.is_true(ns.Progress:Back())
+			assert.are.equal("valley:1", ns.Progress:Current().id)
 		end)
 
 		it("refreshes the route list when the character is placed", function()
@@ -392,6 +395,25 @@ step
 					assert.is_nil(steps[i]:find("[x]", 1, true), steps[i])
 				end
 				assert.is_truthy(steps[5]:find(">", 1, true)) -- current
+			end)
+
+			it("keeps drawing the route list when the check for group quests raises an error, and logs it", function()
+				local ns, _, mock = startGrove()
+				ns.Conditions.OptionalOnly = function()
+					error("broken group check")
+				end
+				ns.Journal:Show()
+				local steps = texts(ns.Journal.frame.route.steps)
+				assert.are.equal(5, #steps) -- every row is drawn, none of them tagged
+				for i, text in ipairs(steps) do
+					assert.is_nil(text:find("(group quest)", 1, true), text)
+					assert.is_truthy(text:find(tostring(i), 1, true), text)
+				end
+				assert.is_truthy(steps[2]:find('Accept "Quest #9500"', 1, true))
+				assert.is_true(#ns.db.errors > 0)
+				assert.truthy(ns.db.errors[1].msg:find("broken group check", 1, true))
+				wipe(ns.db.errors) -- seen; the check after each test is for the unexpected ones
+				wipe(mock.errors)
 			end)
 
 			it("shows them as done when the quest was done", function()

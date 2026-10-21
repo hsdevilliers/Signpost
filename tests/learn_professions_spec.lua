@@ -640,6 +640,181 @@ describe("Core/LearnProfessions", function()
 		end)
 	end)
 
+	-- A window is the client's data, and the saved variables must stay small whatever it lists: these are the bounds as
+	-- shipped (docs/ENGINE.md "Profession part"), each held at its edge by one spec. The specs above lower LIMITS to see
+	-- that the code uses them; these say what the numbers are, so that a bound raised a thousandfold is noticed.
+	describe("the bounds on what a window can add", function()
+		it("keeps a name or a rank text of up to 100 bytes and drops a longer one (a recipe's name too)", function()
+			local ns, mock, world, win = load()
+			talkTo(world, TRAINER, "Trainer")
+			local fits, tooLong = string.rep("a", 100), string.rep("b", 101)
+			win.trainer.services = {
+				{ name = fits, rank = fits, spell = 1, cost = 1 },
+				{ name = tooLong, rank = tooLong, spell = 2, cost = 2 },
+			}
+			mock.fire("TRAINER_SHOW")
+			local services = ns.db.learned.trainers[3154].services
+			assert.are.same({ id = 1, n = fits, r = fits, cost = 1 }, services[1])
+			assert.are.same({ id = 2, cost = 2 }, services[2])
+			win.trade.recipes = { { id = 5, name = fits, item = 50 }, { id = 6, name = tooLong, item = 60 } }
+			openTradeSkill(mock)
+			assert.are.equal(fits, ns.db.learned.recipes[5].n)
+			assert.is_nil(ns.db.learned.recipes[6].n)
+			assert.are.equal(60, ns.db.learned.recipes[6].item)
+		end)
+
+		it(
+			"reads at most 500 services of a trainer window, and at most 500 entries of a Classic trade skill window",
+			function()
+				local ns, mock, world, win = load({ trade = "classic" })
+				talkTo(world, TRAINER, "Trainer")
+				local services, recipes = {}, {}
+				for i = 1, 600 do
+					services[i] = { name = "Service " .. i, spell = 1000 + i, cost = 1 }
+					recipes[i] = { id = 5000 + i, name = "Recipe " .. i, difficulty = "easy" }
+				end
+				win.trainer.services, win.trade.recipes = services, recipes
+				mock.fire("TRAINER_SHOW")
+				assert.are.equal(500, ns.db.recorder.trainer.services)
+				openTradeSkill(mock)
+				assert.are.equal(500, ns.db.recorder.tradeSkill.recipes)
+				assert.are.equal(500, ns.Learn:Count("recipes"))
+			end
+		)
+
+		it("reads at most 1000 recipes of one trade skill window", function()
+			local ns, mock, _, win = load()
+			local recipes = {}
+			for i = 1, 1200 do
+				recipes[i] = { id = 5000 + i, name = "Recipe " .. i }
+			end
+			win.trade.recipes = recipes
+			openTradeSkill(mock)
+			assert.are.equal(1000, ns.db.recorder.tradeSkill.recipes)
+			assert.are.equal(1000, ns.Learn:Count("recipes"))
+		end)
+
+		it("keeps a skill of up to 1000 (a service's requirement) and drops a larger one", function()
+			local ns, mock, world, win = load()
+			talkTo(world, TRAINER, "Trainer")
+			win.trainer.services = {
+				{ name = "Fits", spell = 1, need = { "Beta", 1000 } },
+				{ name = "Too much", spell = 2, need = { "Beta", 1001 } },
+			}
+			mock.fire("TRAINER_SHOW")
+			local services = ns.db.learned.trainers[3154].services
+			assert.are.equal(1000, services[1].need)
+			assert.is_nil(services[2].need)
+		end)
+
+		it("keeps a price of up to 2^31 copper and drops a larger one", function()
+			local ns, mock, world, win = load()
+			talkTo(world, TRAINER, "Trainer")
+			win.trainer.services = {
+				{ name = "Fits", spell = 1, cost = 2 ^ 31 },
+				{ name = "Too much", spell = 2, cost = 2 ^ 31 + 1 },
+			}
+			mock.fire("TRAINER_SHOW")
+			local services = ns.db.learned.trainers[3154].services
+			assert.are.equal(2 ^ 31, services[1].cost)
+			assert.is_nil(services[2].cost)
+		end)
+
+		it("keeps at most 150 services of one trainer", function()
+			local ns, mock, world, win = load()
+			talkTo(world, TRAINER, "Trainer")
+			local services = {}
+			for i = 1, 151 do
+				services[i] = { name = "Service " .. i, spell = i, cost = 1 }
+			end
+			win.trainer.services = services
+			mock.fire("TRAINER_SHOW")
+			assert.are.equal(150, #ns.db.learned.trainers[3154].services)
+		end)
+
+		it("keeps at most 12 reagents of one recipe", function()
+			local ns, mock, _, win = load()
+			local reagents = {}
+			for i = 1, 13 do
+				reagents[i] = { item = 100 + i, count = 1 }
+			end
+			win.trade.recipes = { { id = 9, name = "Many reagents", reagents = reagents } }
+			openTradeSkill(mock)
+			assert.are.equal(12, count(ns.db.learned.recipes[9].reagents))
+		end)
+
+		it("keeps at most 2000 recipes, the one seen longest ago going first", function()
+			local ns, mock, _, win = load()
+			for window = 0, 2 do -- three windows of 700 recipes: 2100
+				local recipes = {}
+				for i = 1, 700 do
+					recipes[i] = { id = 10000 + window * 1000 + i, name = "Recipe" }
+				end
+				mock.clock = NOW + window
+				win.trade.recipes = recipes
+				openTradeSkill(mock)
+			end
+			assert.are.equal(2000, ns.Learn:Count("recipes"))
+			assert.is_table(ns.db.learned.recipes[12700]) -- the newest window is all there
+			local oldest = 0
+			for i = 1, 700 do
+				oldest = oldest + (ns.db.learned.recipes[10000 + i] and 1 or 0)
+			end
+			assert.are.equal(600, oldest) -- and the 100 that went were of the first
+		end)
+	end)
+
+	-- Where the character's skill comes from, in the order docs/ENGINE.md gives: the child profession, the modern
+	-- GetTradeSkillLine, the Classic one, the learned professions, the base profession. The first sane value wins.
+	describe("the skill a recipe's difficulty is read at", function()
+		local function everySource()
+			local ns, mock, _, win = load({
+				trade = "both",
+				before = function()
+					professionsMock.install(G, { [1] = { skillLine = 100, name = "Alpha", rank = 44, max = 75 } })
+				end,
+			})
+			win.trade.child = { professionID = 2937, parentProfessionID = 100, skillLevel = 11, maxSkillLevel = 75 }
+			win.trade.skill = 33 -- the Classic GetTradeSkillLine answers rank 33
+			win.trade.base = { professionID = 100, skillLevel = 55, maxSkillLevel = 75 }
+			G.C_TradeSkillUI.GetTradeSkillLine = function()
+				return 100, "Alpha", 22, 75, 0, 0 -- the modern one: skill line, name, rank, max rank, modifier, parent
+			end
+			win.trade.recipes = { { id = 7, name = "Practice", difficulty = "optimal", item = 70 } }
+			return ns, mock, win
+		end
+
+		local function read(ns, mock)
+			openTradeSkill(mock)
+			local report = ns.db.recorder.tradeSkill
+			return report.skillFrom, report.skill
+		end
+
+		it("goes child, modern line, Classic line, learned professions, base: the first value wins", function()
+			local ns, mock, win = everySource()
+			assert.are.same({ "child", 11 }, { read(ns, mock) })
+			win.trade.child = nil
+			assert.are.same({ "line", 22 }, { read(ns, mock) })
+			G.C_TradeSkillUI.GetTradeSkillLine = nil
+			assert.are.same({ "classic", 33 }, { read(ns, mock) })
+			G.GetTradeSkillLine = nil
+			assert.are.same({ "player", 44 }, { read(ns, mock) })
+			professionsMock.uninstall(G)
+			ns.Player:RefreshProfessions()
+			assert.are.same({ "base", 55 }, { read(ns, mock) })
+		end)
+
+		it("passes over a source that gives no skill, or one above the profession's maximum", function()
+			local ns, mock, win = everySource()
+			win.trade.child.skillLevel = 0 -- nothing learned there
+			win.trade.skill = 80 -- above the maximum of 75
+			G.C_TradeSkillUI.GetTradeSkillLine = function()
+				return 100, "Alpha", 99, 75, 0, 0
+			end
+			assert.are.same({ "player", 44 }, { read(ns, mock) })
+		end)
+	end)
+
 	describe("difficulty observations", function()
 		local Professions
 		before_each(function()
@@ -720,6 +895,18 @@ describe("Core/LearnProfessions", function()
 			openTradeSkill(mock)
 			assert.are.equal(3, #ns.db.learned.trainers[3154].services)
 			assert.are.equal(3, count(ns.db.learned.recipes))
+		end)
+
+		it("records nothing from a trainer window update either until the player agrees", function()
+			local ns, mock, world, win = load({ release = true })
+			talkTo(world, TRAINER, "Trainer")
+			win.trainer.services = betaServices()
+			mock.fire("TRAINER_UPDATE")
+			assert.are.same({}, ns.db.learned.trainers)
+			assert.is_nil(ns.db.recorder)
+			ns.Contribute:SetEnabled(true)
+			mock.fire("TRAINER_UPDATE")
+			assert.are.equal(3, #ns.db.learned.trainers[3154].services)
 		end)
 
 		it("does not read a trade skill window the player took the choice back from before the read", function()

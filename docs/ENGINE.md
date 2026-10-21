@@ -59,6 +59,7 @@ guide = {
 	skipQuests = { [questID] = reason },
 	plan = plan, -- the plan the tracks were merged with
 	errors = { { source = sourceId, line = 12, message = "..." } }, -- line 0: the source as a whole
+	fingerprint = "4d09f3e9-5d3d7c6e-1234", -- Util.Checksum of the texts it was parsed from: see below
 }
 
 step = {
@@ -91,6 +92,11 @@ plan = { primary = { "skinning", "leatherworking" }, secondary = { "firstaid", "
 	declined = { [key] = true }, -- declined and not learned
 	learned = { [key] = true }, unknown = { key, ... } } -- unknown: suggestions without a profession module
 ```
+
+`guide.fingerprint` is `ns.Util.Checksum` (an arithmetic checksum, `"<8 hex>-<8 hex>-<length>"`) of the guide's own text and of every
+chapter it included, each with its id, in the order they were read. Step ids are positions in those texts, so it says which text a
+step id belongs to. It is the same for every player and every profession plan (gates and tracks are applied after the texts are read
+and profession tracks are separate texts), and any change to a text changes it, a comment too. Nil when the checksum could not be made.
 
 Parsed directive arguments (what `def.parse` returns; other modules read them):
 
@@ -210,7 +216,10 @@ else the client's `isPrimaryProfession`, else the slot.
   sticky directives is complete at once. Directives about an `.optional` quest count only when nothing else does, and
   then only those of the quests in the quest log: an **optional-only step** whose quests are none of them in the log is
   complete at once (a group quest the player did not take never holds the route up; `detail[i]` stays false for its
-  directives), while a quest the player took decides it like any other (GUIDE-FORMAT "Optional-only steps").
+  directives), while a quest the player took decides it like any other (GUIDE-FORMAT "Optional-only steps"). That holds only
+  once the client has sent the quest log (`ns.Context:QuestLogLoaded()`): before that an empty log proves nothing, a quest the
+  player holds may be in the log that has not arrived, and every optional directive of the step counts as in any other step (it
+  waits for them, or for `>`). A context without the query counts as loaded.
 - `:OptionalOnly(step, context, states)` → `nil`, or for an optional-only step (its completable directives all belong
   to `.optional` quests; a `.goto`, `.todo` or `.note` beside them do not count) `{ quests = { questID, ... } (each once,
   in directive order), available = the quests neither in the quest log nor done, taken = one of them is in the log,
@@ -245,6 +254,10 @@ Cached player state, refreshed by events (a burst costs one re-read on the next 
 - `:QuestInLog(id)`, `:QuestCompleted(id)` (flagged, or turned in this session), `:QuestReady(id)` (in the log, not
   failed, objectives done or `IsComplete`), `:Objectives(id)` → `{ { text, type, finished, have, need } }` (nil when not
   in the log, `{}` without objectives), `:QuestLog()` → `{ [questID] = entry }`, `:QuestEntry(id)`;
+  `:QuestLogLoaded()` → true once the client has told us about the log (a `QUEST_LOG_UPDATE` arrived, or the walk of the log
+  found a quest; it stays true): before that an empty log may be a log not sent yet. The turn to loaded is a change
+  (`CONTEXT_CHANGED("quests")`) even when the log is empty, and `/signpost context` saves it (`questLogLoaded`).
+  VERIFY(beta): the client sends `QUEST_LOG_UPDATE` once the log is there, also for a character with an empty one.
 - `:SpellKnown(spellID)` (any of `IsPlayerSpell`, `C_SpellBook.IsSpellKnown`, `IsSpellKnown`); `:Skill(skillLineID)` →
   rank, max or nil (from `ns.Player.professions`); `:ItemCount(itemID)` (bags only); `:Level()`;
 - `:Position()` → `{ map, x, y, wx, wy, instance, taxi }` or nil (any field but `taxi` may be nil in instances and on
@@ -390,8 +403,18 @@ quest never taken.
   to skip at 5+ levels above it (`DUNGEON_SKIP_OFFER`). Also `:IsDone(stepId)`, `:IsSkipped(stepId)`, `:Describe(step)`.
 - Saves `SignpostCharDB.progress[guideId] = { current = stepId, skipped = { [stepId] = true }, done = { [stepId] = true },
   sticky = { [stepId] = { [directive line] = active } }, states = { [stepId] = { started, d = { [line] = state } } },
-  offered = { [first step id of a dungeon chapter] = true }, placed = { step, index, reason, mode, time } }` (states: the current
-  step and steps with active stickies; `placed`: a placement ran, see below).
+  offered = { [first step id of a dungeon chapter] = true }, placed = { step, index, reason, mode, time },
+  fingerprint = "..." }` (states: the current step and steps with active stickies; `placed`: a placement ran, see below;
+  `fingerprint`: the `guide.fingerprint` of the text the record was made for, stamped when the guide loads).
+- **The record belongs to one text of the guide.** A step id is a position in the guide's text, and a regenerated chapter keeps its
+  ids while its steps change, so a saved place is trusted only for the text it was made for. When a guide loads (not when it is parsed
+  again for a profession plan) for a character that is not new to it, `SetGuide` compares `record.fingerprint` with `guide.fingerprint`;
+  when they differ, or the record has none (an older version wrote none), the record is dropped (`Progress:Forget`: the marks, the
+  stickies, the saved states, the offers and the place, all keyed by step id) and the character is placed from its quest history as for a
+  lost place (`reason "lost"`, with its own chat line: "Your saved place may not match this version of the guide, so it is found again
+  from your quest history."). In plain words: after a guide update the add-on finds your place again from your quest history. The new
+  fingerprint is stored at once, so a record for the same text keeps its place exactly as before. A guide without a fingerprint is
+  trusted as before (nothing to compare).
 - **Placement** (`Progress:Place(opts)`; user, 2026-10-21; the algorithm and its numbers are under `Engine/Placement.lua`): puts the
   pointer and the marks where `ns.Placement:Find` says, from the live `ns.Context` (`Level`, `QuestCompleted`, `QuestInLog`,
   `QuestReady`; a stand-in without them knows nothing, which places no one). It runs by itself in three cases, and on demand:
@@ -399,18 +422,26 @@ quest never taken.
     `placed`, the saved step absent or the first one; a different guide than the one loaded, never a re-parse of the same one after
     a profession plan change) places before the first evaluation, so the load is one `STEP_CHANGED("load")` on the right step. Above
     level 2 it first waits for the quest history, the completed-quest list the client fills a moment after login (`historyReady`: the
-    list is loaded and not empty, or something is in the quest log; VERIFY(beta), FOREVER-API-NOTES "Open probes"). It places on the
-    first `CONTEXT_CHANGED("quests")` that finds the history, or after 5 s on the level alone. A placement made without the history is
-    made once more, with `reason "refine"`, when it turns up, if the pointer is still on the step the first one ended on.
+    list is loaded and not empty; a quest in the quest log does not count as the list, because the log is read separately and a
+    placement by the log alone marks everything the character did before it as skipped; VERIFY(beta), FOREVER-API-NOTES "Open
+    probes"). It places on the first `CONTEXT_CHANGED("quests")` that finds the list, or after 5 s by what there is (the quest log
+    and the level). A placement made without the list is made once more, with `reason "refine"`, when it turns up, if the pointer is
+    still on the step the first one ended on. A move by the player's hand (`>`, `<`, skip, a jump, a dungeon chapter's skip:
+    `Progress:PlayerMoved`) ends either wait for good: a placement made later would move the pointer under the player and turn the
+    steps they marked done into skipped ones.
   - *A lost place* (`reason "lost"`): the record has progress that matches nothing in the guide (an install changed the step ids;
-    `Resume`'s second result). The character is placed instead of sent to step 1, after a chat line that the guide was updated; the
-    old ids are dropped from the record. A record where some marks still match keeps the old rule (after the furthest one).
+    `Resume`'s second result), or it is for another text of the guide (the fingerprint above: the second chat line, and the whole
+    record is dropped). The character is placed instead of sent to step 1, after a chat line that the guide was updated; the
+    old ids are dropped from the record. A record where some marks still match and whose fingerprint is the guide's keeps the old rule
+    (after the furthest one).
   - *On demand* (`reason "manual"`): the Journal's "Find my place" and `/signpost place`, any time. It is a manual move: `<` right
     afterwards takes it back (the pointer, the marks and the furthest step as they were); any other move drops the undo.
   - *Applying*: the steps before the pointer are marked done (their quests are, or they have none) or skipped (their quests are not
     done; a skip the player made by hand on a step with no quest of its own stays), the pointer's step and every step after it are
-    cleared. The flags are set directly and never through `Skip`, which would decline a profession; the stickies of steps passed
-    are not started, those of steps skipped are dismissed. Then `GUIDE_PLACED(result, reason)`, the evaluation (`STEP_CHANGED("place")`;
+    cleared. The flags are set directly and never through `Skip`, which would decline a profession; the sticky directives of the
+    steps marked done are started (`StartStep`, as the walk through them would have: the goal, a skill or a level to reach, is going
+    beside the route unless it is met already, so a character placed at a step has the goals of one that walked to it), those of
+    steps skipped are dismissed. Then `GUIDE_PLACED(result, reason)`, the evaluation (`STEP_CHANGED("place")`;
     inside `SetGuide` it is the load's) and `Settle`: the chat lines, which name the step the engine settled on (it passes steps that are
     done already), the undo, and the second look.
   - *The chat lines* (`ns.L`): "Your place: step 143/368 (The Barrens). 62 of this guide's 185 quests are done, 3 are in your quest
@@ -615,7 +646,8 @@ writes `travel.inns`; `tools/guide_travel.py` turns them into `.boat`/`.zeppelin
   marks), never with objective counters, and no other line has one; every active sticky directive (the current step's
   too) is an "Ongoing:" line; below those, up to two "Optional: <quest> (group quest)" lines name the group quests
   coming up (`StepFrame:OptionalLines(step)`: the quests of `ns.Conditions:OptionalOnly(...).available` of the next three
-  steps of the route, each once; a font string of its own, not counted in the ten body lines); an in-transit line while
+  steps of the route, each once, and never a quest one of the current step's own directives names, which its body lists already;
+  a font string of its own, not counted in the ten body lines); an in-transit line while
   boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out of combat) uses the step's `.use` item
   (`args.itemID`).
 - Settings via `RegisterDefaults("account", "stepFrame", { shown, locked, scale, alpha, hideInCombat, hideWhenDead,

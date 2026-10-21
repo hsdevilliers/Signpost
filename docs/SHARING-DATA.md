@@ -11,11 +11,12 @@ change it any time with `/signpost contribute` (or `/signpost contribute off`). 
 
 Recorded: IDs, the names of NPCs, objects, flight nodes and places (the game's own zone texts at a dock), and map positions; for a
 boat or zeppelin ride the two docks, how long it took and your faction; at a trainer, the names of what it teaches, the
-trainer's prices and the level and skill each needs; in a profession window, the recipes (name, the item they make, the reagents)
-and how hard each was at your skill (orange, yellow, green or grey) with that skill value. To learn a profession's colours, open
-its window now and then as your skill goes up. Not recorded: chat, your name, your character's or pet's name, your gold, anything
-about other players (another player's or the guild's profession window is never read). The file also holds Signpost's settings
-and error log.
+trainer's prices, the level and skill each needs and whether you already know it; in a profession window, the recipes (name, the item
+they make, the reagents) and how hard each was at your skill (orange, yellow, green or grey) with that skill value. To learn a
+profession's colours, open its window now and then as your skill goes up. So the four things about you are: your skill next to
+each recipe, whether you know a trainer's service, how long a ride took and your faction. Not recorded: chat, your name, your
+character's or pet's name, your gold, anything about other players (another player's or the guild's profession window is never
+read). The file also holds Signpost's settings and error log.
 
 ## 2. Hand the file over (Windows)
 

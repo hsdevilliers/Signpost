@@ -1266,6 +1266,75 @@ describe("Parser stable step ids", function()
 		assert.are.same({ "test-guide:1", "test-guide:3" }, ids({ primary = {}, secondary = { "cooking" } }))
 		assert.are.same({ "test-guide:3" }, ids(nil))
 	end)
+
+	-- Step ids are positions in the source texts, so saved progress is good only for the texts it was made for. The
+	-- fingerprint is the checksum of those texts (the guide's own and every chapter it included, with their ids).
+	describe("and the guide's fingerprint", function()
+		local TEXT = lines("step", "  .accept 10", "#include shared-1", "step", "  .accept 11")
+		local SHARED = lines("#chapter 1-5 Shared", "step", "  .accept 1", "step", "  .accept 2")
+
+		local function fingerprint(Parser, env, text, shared, opts)
+			env.chapters["shared-1"] = shared
+			return parse(Parser, text, opts).fingerprint
+		end
+
+		it("is a string, the same for the same texts however often they are parsed", function()
+			local Parser, env = setup()
+			local first = fingerprint(Parser, env, TEXT, SHARED)
+			assert.is_string(first)
+			assert.is_truthy(first:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%x%x%x%x%-%d+$"))
+			assert.are.equal(first, fingerprint(Parser, env, TEXT, SHARED))
+		end)
+
+		it("is the same for every player and every profession plan: only the texts count", function()
+			local Parser, env = setup()
+			local base = fingerprint(Parser, env, TEXT, SHARED, { player = HUNTER })
+			assert.are.equal(base, fingerprint(Parser, env, TEXT, SHARED, { player = WARRIOR }))
+			assert.are.equal(base, fingerprint(Parser, env, TEXT, SHARED, { player = MAGE, plan = PLAN }))
+			assert.are.equal(base, fingerprint(Parser, env, TEXT, SHARED, { player = HUNTER, plan = nil }))
+			-- a track merged into the route is a step the guide's text does not have, and not part of the fingerprint
+			local unmerged = #parse(Parser, TEXT, { player = HUNTER, plan = PLAN }).steps
+			env.ns.Professions.Merge = function(_, guide)
+				guide.steps[#guide.steps + 1] =
+					{ id = "track:skinning:1", directives = {}, sticky = {}, track = "skinning" }
+			end
+			local merged = parse(Parser, TEXT, { player = HUNTER, plan = PLAN })
+			assert.are.equal(unmerged + 1, #merged.steps)
+			assert.are.equal(base, merged.fingerprint)
+		end)
+
+		it("changes with the guide's own text, with a chapter it includes, and with the chapter's id", function()
+			local Parser, env = setup()
+			local base = fingerprint(Parser, env, TEXT, SHARED)
+			assert.are_not.equal(base, fingerprint(Parser, env, TEXT .. "\n-- a comment", SHARED))
+			assert.are_not.equal(base, fingerprint(Parser, env, TEXT, SHARED .. "\n-- a comment"))
+			assert.are_not.equal(base, fingerprint(Parser, env, TEXT, (SHARED:gsub("%.accept 2", ".accept 3"))))
+			-- the same text under another chapter id numbers its steps differently
+			env.chapters["shared-1"] = nil
+			env.chapters["shared-2"] = SHARED
+			assert.are_not.equal(base, parse(Parser, (TEXT:gsub("shared%-1", "shared-2"))).fingerprint)
+		end)
+
+		it("does not mistake where one text ends and the next begins", function()
+			local Parser, env = setup()
+			local text = lines("#include a-1", "#include b-1")
+			env.chapters["a-1"], env.chapters["b-1"] = "step\n  .accept 1", "step\n  .accept 2"
+			local base = parse(Parser, text).fingerprint
+			env.chapters["a-1"], env.chapters["b-1"] = "step\n  .accept 1\nstep", "\n  .accept 2"
+			assert.are_not.equal(base, parse(Parser, text).fingerprint)
+		end)
+
+		it(
+			"is there for a guide whose text has errors and for one that includes a chapter that does not exist",
+			function()
+				local Parser = setup()
+				local broken = parse(Parser, lines("#include nowhere-1", "step", "  .fail"))
+				assert.is_string(broken.fingerprint)
+				assert.is_true(#broken.errors > 0)
+				assert.are_not.equal(broken.fingerprint, parse(Parser, lines("step", "  .fail")).fingerprint)
+			end
+		)
+	end)
 end)
 
 describe("Parser:ParseTrack", function()

@@ -459,11 +459,11 @@ describe("step frame", function()
 			local ns, mock = load({
 				setup = function(engine)
 					engine.lines["valley:1"] = { 'Accept "Cutting Teeth"' }
-					group(engine, "valley:3", 4641)
+					group(engine, "valley:3", 9500) -- (not a quest of the current step: valley:1 accepts 4641)
 				end,
 			})
 			local frame = ns.StepFrame.frame
-			assert.are.equal(OPTIONAL .. "Quest #4641 (group quest)", frame.optional:GetText())
+			assert.are.equal(OPTIONAL .. "Quest #9500 (group quest)", frame.optional:GetText())
 			assert.is_true(frame.optional:IsShown())
 			assert.are.equal("GameFontHighlightSmall", state(frame.optional).template)
 			-- not one of the body's lines
@@ -512,6 +512,22 @@ describe("step frame", function()
 			assert.are.equal("", frame.optional:GetText())
 		end)
 
+		it("leaves out the quests the current step's own directives name: its body lists them already", function()
+			local ns, _, _, engine = load({
+				setup = function(engine)
+					-- the second step completes 787 and 789 (two quests of one step)
+					table.insert(engine.guide.steps[2].directives, { name = "complete", args = { questID = 789 } })
+					group(engine, "valley:3", 787, 5, 789)
+				end,
+			})
+			local frame = ns.StepFrame.frame
+			assert.are.equal(shown({ 787, 5 }), frame.optional:GetText()) -- from the first step: two lines at most
+			go(ns, engine, 2) -- the second step's own quests are its lines
+			assert.are.equal(shown({ 5 }), frame.optional:GetText())
+			go(ns, engine, 1)
+			assert.are.equal(shown({ 787, 5 }), frame.optional:GetText())
+		end)
+
 		it("shows two lines at most, each quest once", function()
 			local ns, _, _, engine = load({
 				setup = function(engine)
@@ -531,12 +547,12 @@ describe("step frame", function()
 		it("goes when the engine no longer offers the quest: it is in the quest log, or done", function()
 			local ns, mock, _, engine = load({
 				setup = function(engine)
-					group(engine, "valley:2", 4641)
+					group(engine, "valley:2", 9500)
 				end,
 			})
 			local frame = ns.StepFrame.frame
-			assert.are.equal(OPTIONAL .. "Quest #4641 (group quest)", frame.optional:GetText())
-			engine.optional["valley:2"] = { quests = { 4641 }, available = {}, taken = true } -- accepted
+			assert.are.equal(OPTIONAL .. "Quest #9500 (group quest)", frame.optional:GetText())
+			engine.optional["valley:2"] = { quests = { 9500 }, available = {}, taken = true } -- accepted
 			ns.Events:Fire("CONTEXT_CHANGED", "quests")
 			mock.runTimers()
 			assert.are.equal("", frame.optional:GetText())
@@ -573,6 +589,29 @@ describe("step frame", function()
 			local _, _, _, _, optionalY = frame.optional:GetPoint(1)
 			assert.is_true(optionalY < ongoingY) -- further down the frame
 		end)
+
+		it(
+			"draws the rest of the card when the check for group quests raises an error, and the error is logged",
+			function()
+				local ns, mock, _, engine = load({
+					setup = function(engine)
+						engine.lines["valley:2"] = { "Kill Mottled Boars" }
+					end,
+				})
+				ns.Conditions.OptionalOnly = function()
+					error("broken group check")
+				end
+				go(ns, engine, 2)
+				local frame = ns.StepFrame.frame
+				assert.are.equal("Kill Mottled Boars", frame.body:GetText())
+				assert.are.equal("", frame.optional:GetText())
+				assert.is_true(frame.back:IsEnabled()) -- the card was filled to its end: this comes after the group quests
+				assert.truthy(ns.db.errors[1].msg:find("broken group check", 1, true))
+				wipe(ns.db.errors) -- seen; noErrors is for the unexpected ones
+				wipe(mock.errors)
+				noErrors(ns, mock)
+			end
+		)
 
 		it("shows nothing when the engine cannot say", function()
 			local ns, mock, _, engine = load()

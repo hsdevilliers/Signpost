@@ -270,6 +270,79 @@ describe("optional-only steps (group quests)", function()
 		end
 	end)
 
+	-- The client may not have sent the quest log when the engine first looks (login): an empty log then proves nothing,
+	-- and the step of a group quest the player holds must not be passed as if it were not taken.
+	describe("before the client has sent the quest log", function()
+		before_each(function()
+			context.logLoaded = false
+		end)
+
+		it("does not pass a step because its quest is missing from the log: its own directives decide", function()
+			for _, lines in ipairs({ ACCEPT, DOING, HAND_IN, ALL_IN_ONE }) do
+				local complete, detail = ns.Conditions:IsComplete(mocks.step(ns, lines), context, {})
+				assert.is_false(complete, lines[2])
+				assert.is_nil(detail.manual, lines[2]) -- it waits for the quest's directives, not for the player's ">"
+			end
+		end)
+
+		it("passes it when the directives are satisfied, as any step is", function()
+			context.log[442] = true -- the accept is satisfied
+			assert.is_true(isComplete(ns, mocks.step(ns, ACCEPT), context))
+			context.log[442], context.completed[442] = nil, true -- handed in: every directive of the quest is satisfied
+			for _, lines in ipairs({ ACCEPT, DOING, HAND_IN, ALL_IN_ONE }) do
+				assert.is_true(isComplete(ns, mocks.step(ns, lines), context), lines[2])
+			end
+		end)
+
+		it("does not skip a quest the player took under their feet either", function()
+			context.log[442] = true
+			context.objectives[442] = { { text = "Fenris Keep: 0/1", finished = false } }
+			assert.is_false(isComplete(ns, mocks.step(ns, DOING), context))
+		end)
+
+		it("counts every optional quest of the step, not only the ones in the log", function()
+			local step = mocks.step(
+				ns,
+				{ ".goto 1421,65.7,23.7", ".complete 442", ".complete 443", ".optional 442", ".optional 443" }
+			)
+			context.log[442] = true
+			context.objectives[442] = { { text = "One: 1/1", finished = true } }
+			assert.is_false(isComplete(ns, step, context)) -- 443 is not satisfied, and it may be in the log that has not come
+			context.completed[443] = true
+			assert.is_true(isComplete(ns, step, context))
+		end)
+
+		it("passes as soon as the log is loaded and the quest is not in it", function()
+			local step = mocks.step(ns, DOING)
+			assert.is_false(isComplete(ns, step, context))
+			context.logLoaded = true
+			assert.is_true(isComplete(ns, step, context))
+		end)
+
+		it("is not a rule for a step that is not an optional-only one", function()
+			local step = mocks.step(ns, { ".goto 1421,43.4,40.9", ".turnin 446", ".accept 442", ".optional 442" })
+			context.completed[446] = true
+			assert.is_true(isComplete(ns, step, context))
+		end)
+
+		it("is what a context that cannot say, or whose answer fails, gets", function()
+			local step = mocks.step(ns, DOING)
+			context.QuestLogLoaded = nil -- a stand-in without the query: as loaded
+			assert.is_true(isComplete(ns, step, context))
+			context.QuestLogLoaded = function()
+				error("broken query")
+			end
+			assert.is_false(isComplete(ns, step, context)) -- an answer that fails is not "loaded"
+			assert.are.equal(1, #ns.db.errors)
+			assert.truthy(ns.db.errors[1].msg:find("broken query", 1, true))
+			wipe(ns.db.errors) -- seen
+			context.QuestLogLoaded = function()
+				return "yes"
+			end
+			assert.is_false(isComplete(ns, step, context)) -- only true is
+		end)
+	end)
+
 	it("of two optional quests only the one the player took decides", function()
 		local step = mocks.step(
 			ns,

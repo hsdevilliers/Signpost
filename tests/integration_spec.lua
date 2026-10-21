@@ -299,6 +299,30 @@ describe("Wave 1 integration", function()
 		assert.are.equal("test-other:1", current(reloaded))
 	end)
 
+	-- The saved place belongs to the guide's text (the fingerprint); the profession plan is not part of it, so a character
+	-- that has since declined a profession, whose track steps leave the route, is not placed again.
+	it("keeps the place across a reload whatever the profession plan has become", function()
+		local ns, world, mock = start()
+		world.log = { quest(QUEST, { objectives = { objective("Boar slain", 0, 2) } }) }
+		event(world, mock, "QUEST_ACCEPTED", QUEST)
+		assert.are.equal("valley:2", current(ns))
+		assert.are.same({ "skinning" }, ns.Progress:Guide().plan.primary)
+		local saved = ns.Util.CopyTable(ns.char)
+		saved.declinedProfessions = { skinning = true } -- the next session has no skinning track
+		contextMock.uninstall()
+		local reloaded, _, mock2 = start(function(w)
+			G.SignpostCharDB = saved
+			w.log = { quest(QUEST, { objectives = { objective("Boar slain", 1, 2) } }) }
+		end)
+		assert.are.same({}, reloaded.Progress:Guide().plan.primary)
+		assert.is_nil(reloaded.Progress:Guide().byId["track:skinning:1"])
+		assert.are.equal("valley:2", current(reloaded))
+		assert.are.equal("first", reloaded.char.progress["test-integration"].placed.reason) -- never placed again
+		for _, line in ipairs(mock2.printed) do
+			assert.is_nil(line:find("may not match", 1, true), line)
+		end
+	end)
+
 	-- A data pack in Data/Schema.lua's shape, as the questie layer writes it (test IDs and names, not real data).
 	local CAMP = [[
 #chapter 1-6 Camp
@@ -551,6 +575,81 @@ step
 		local record = ns.char.progress["test-group"]
 		assert.is_true(record.done["group:2"] and record.done["group:3"] and record.done["group:4"])
 		assert.are.same({}, ns.StepFrame:OptionalLines(ns.Progress:Current()))
+	end)
+
+	-- The engine looks at the quest log when it first evaluates at login; the client may not have sent it yet, and an
+	-- empty log that has not arrived must not pass the steps of a group quest the character holds (R-engine-1 #3).
+	describe("when the client has not sent the quest log yet", function()
+		-- a session that has the log from the start, then its SavedVariables as the client gives them back
+		local function savedAt(stepNumber, log)
+			local ns, world = start(function(w)
+				w.log = log
+			end, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+			assert.is_true(ns.Progress:JumpTo(stepNumber))
+			world.advance(1.1)
+			assert.are.equal("group:" .. stepNumber, current(ns))
+			local saved = ns.Util.CopyTable(ns.char)
+			contextMock.uninstall()
+			return saved
+		end
+
+		local function wolf(have)
+			return quest(9500, { objectives = { objective("Wolf slain", have, 2) } })
+		end
+		local function boar()
+			return quest(9001, { objectives = { objective("Boar slain", 0, 3) } })
+		end
+
+		it("keeps the character who holds the group quest at its step, before and after the log arrives", function()
+			local saved = savedAt(3, { boar(), wolf(1) })
+			local ns, world, mock = start(function(w)
+				G.SignpostCharDB = saved
+				w.log = {} -- not sent yet
+			end, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+			assert.is_false(ns.Context:QuestLogLoaded())
+			assert.are.equal("group:3", current(ns)) -- its quest is not in the log it can see, and it does not pass
+			world.log = { boar(), wolf(1) } -- the client sends the log
+			event(world, mock, "QUEST_LOG_UPDATE")
+			assert.is_true(ns.Context:QuestLogLoaded())
+			assert.are.equal("group:3", current(ns))
+			local record = ns.char.progress["test-group"]
+			assert.is_nil(record.done["group:3"])
+			assert.is_nil(record.done["group:4"])
+			assert.are.same({}, ns.StepFrame:OptionalLines(ns.Progress:Current()))
+		end)
+
+		it(
+			"passes the steps of a group quest the character does not hold once the log has arrived without it",
+			function()
+				local saved = savedAt(2, { boar() })
+				local ns, world, mock = start(function(w)
+					G.SignpostCharDB = saved
+					w.log = {} -- not sent yet
+				end, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+				assert.are.equal("group:2", current(ns)) -- it cannot tell yet that the quest is not taken
+				world.log = { boar() }
+				event(world, mock, "QUEST_LOG_UPDATE")
+				assert.are.equal("group:5", current(ns))
+				local record = ns.char.progress["test-group"]
+				assert.is_true(record.done["group:2"] and record.done["group:3"] and record.done["group:4"])
+			end
+		)
+	end)
+
+	-- The card lists the current step's own quest in its body; the Optional: line is for the group quests coming up, and
+	-- must not repeat that one (R-engine-2 #3).
+	it("does not offer, beside the step of a group quest, the quest that step lists itself", function()
+		local ns = start(nil, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+		assert.are.same({ "Quest #9500 (group quest)" }, ns.StepFrame:OptionalLines(ns.Progress:Current())) -- from group:1
+		for _, stepNumber in ipairs({ 2, 3, 4 }) do
+			assert.is_true(ns.Progress:JumpTo(stepNumber)) -- held there, the quest not taken
+			local step = ns.Progress:Current()
+			assert.are.equal("group:" .. stepNumber, step.id)
+			local body = ns.StepFrame.DescribeLines(step)
+			assert.are.equal(1, #body)
+			assert.is_truthy(body[1]:find("Quest #9500", 1, true)) -- the body names it
+			assert.are.same({}, ns.StepFrame:OptionalLines(step), step.id) -- and the line beside it does not
+		end
 	end)
 
 	it("does not pass a group quest the player took, and offers nothing once it is in the log", function()

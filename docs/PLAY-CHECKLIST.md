@@ -3,8 +3,9 @@
 Why: a guide tells you to change zone but cannot say how until the game has shown Signpost the way. Each item is a short run you
 probably make anyway; do any of them, in any session, in any order. They go by how many travel steps of the three routes (Troll
 Hunter, Tauren Druid, Skyborne Druid) they fix, most first (the number in brackets; it moves when the routes are planned again).
-Signpost keeps only positions and the names of places, nothing about you. `/signpost contribute` shows whether recording is on
-(a development build always records).
+Signpost keeps positions and the names of places, and four small things about you: your skill next to each recipe you open, whether
+you already know a service a trainer offers, how long a boat or zeppelin ride took, and your faction. No names, no chat, no gold
+(docs/SHARING-DATA.md has the whole list). `/signpost contribute` shows whether recording is on (a development build always records).
 
 ## Run across these borders, there and back (a minute each; keep running, you need not stop)
 1. Mulgore <-> Thunder Bluff: up into Thunder Bluff and down again (27)

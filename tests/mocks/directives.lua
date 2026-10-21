@@ -13,7 +13,8 @@ end
 
 -- A fake ns.Context. Fields (all optional): log, completed, ready = { [questID] = true }; objectives = { [questID] =
 -- { { text, finished, have, need } } }; spells = { [spellID] = true }; skills = { [skillLine] = { rank, max } };
--- items = { [itemID] = count }; level; position = { map = id, x, y }; distances = { ["map:x:y"] = yards } (or :Near).
+-- items = { [itemID] = count }; level; position = { map = id, x, y }; distances = { ["map:x:y"] = yards } (or :Near);
+-- logLoaded = false: the client has not sent the quest log yet (true otherwise, as in any session that has begun).
 function M.context(fields)
 	local context = {
 		log = {},
@@ -31,6 +32,9 @@ function M.context(fields)
 	end
 	function context:QuestInLog(questID)
 		return self.log[questID] == true
+	end
+	function context:QuestLogLoaded()
+		return self.logLoaded ~= false
 	end
 	function context:QuestCompleted(questID)
 		return self.completed[questID] == true
