@@ -75,6 +75,19 @@ class ReplayTest(unittest.TestCase):
         events = [{"e": "QUEST_ACCEPTED", "a": {"1": 4641, "n": 1}}, gossip(3143, [97279])]
         self.assertTrue(validate.replay(events, rules())[0].agrees)  # 788 is not offered while 4641 is in the log
 
+    def test_a_second_character_is_offered_what_the_first_accepted(self):
+        # the log is account-wide: the first character accepted Wayward Weapons, a new one is offered it again. The game never offers a
+        # quest that is in the log, so the replay must not believe the earlier accept for that quest
+        events = [gossip(3143, [788, 97279]), accepted(97279), gossip(3143, [788, 97279])]
+        visits = validate.replay(events, rules())
+        self.assertEqual([v.agrees for v in visits], [True, True])
+        # the same for a quest the first character turned in (an older log has no `standing` to say what is done)
+        events = [gossip(3143, [788, 97279]), accepted(97279), turned_in(97279), gossip(3143, [788, 97279])]
+        self.assertEqual([v.agrees for v in validate.replay(events, rules())], [True, True])
+        # what the game does not offer stays in the log: the second character's visit is still replayed with the first one's quest 4641
+        events = [accepted(4641), gossip(3143, [97279])]
+        self.assertTrue(validate.replay(events, rules())[0].agrees)  # 788 is held back by 4641, which no visit contradicts
+
     def test_a_quest_in_the_log_closes_the_one_it_hands_over_even_when_only_the_accept_was_recorded(self):
         # no `standing` in the visit (an older log): what the player holds comes from QUEST_ACCEPTED alone
         with_accept = validate.replay([accepted(4641), gossip(3143, [97279])], rules())

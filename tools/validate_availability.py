@@ -11,7 +11,9 @@ quests it had turned in (the recorder keeps the level and the completed IDs of e
 QUEST_ACCEPTED, QUEST_TURNED_IN and an assumed level):
   - a quest the rules offer and the game did not is a data gap: the rules are too generous (the Burning Blade Medallion);
   - a quest the game offered and the rules do not is a wrong rule or a field the pack does not carry.
-Exit code 1 when any visit disagrees.
+Exit code 1 when any visit disagrees. The event log is account-wide and says nothing of who played, so a second character's visit is
+replayed with the first one's accepted quests still in the log, except for the quests the game offers at that visit (it never offers one
+that is in the log).
 """
 
 from __future__ import annotations
@@ -126,8 +128,13 @@ def replay(events: list, rules: availability.Rules, assume_level: int = 1) -> li
             npc = npc_record.get("id")
             if not isinstance(npc, int):
                 continue
-            active |= _quest_ids(state.get("active"), greeting)
             observed = _quest_ids(state.get("available"), greeting)
+            # The game never offers a quest that is in the character's log or already turned in. The event log is account-wide and holds
+            # every character's events (nothing in an entry says who played), so what an earlier character accepted must not hide the
+            # quest from the next one: whatever the game offers here is neither held nor done.
+            active -= observed
+            done -= observed
+            active |= _quest_ids(state.get("active"), greeting)
             visit = Visit(
                 npc,
                 str(npc_record.get("name") or npc),
