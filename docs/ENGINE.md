@@ -59,6 +59,7 @@ guide = {
 	skipQuests = { [questID] = reason },
 	plan = plan, -- the plan the tracks were merged with
 	errors = { { source = sourceId, line = 12, message = "..." } }, -- line 0: the source as a whole
+	fingerprint = "4d09f3e9-5d3d7c6e-1234", -- Util.Checksum of the texts it was parsed from: see below
 }
 
 step = {
@@ -91,6 +92,11 @@ plan = { primary = { "skinning", "leatherworking" }, secondary = { "firstaid", "
 	declined = { [key] = true }, -- declined and not learned
 	learned = { [key] = true }, unknown = { key, ... } } -- unknown: suggestions without a profession module
 ```
+
+`guide.fingerprint` is `ns.Util.Checksum` (an arithmetic checksum, `"<8 hex>-<8 hex>-<length>"`) of the guide's own text and of every
+chapter it included, each with its id, in the order they were read. Step ids are positions in those texts, so it says which text a
+step id belongs to. It is the same for every player and every profession plan (gates and tracks are applied after the texts are read
+and profession tracks are separate texts), and any change to a text changes it, a comment too. Nil when the checksum could not be made.
 
 Parsed directive arguments (what `def.parse` returns; other modules read them):
 
@@ -390,8 +396,18 @@ quest never taken.
   to skip at 5+ levels above it (`DUNGEON_SKIP_OFFER`). Also `:IsDone(stepId)`, `:IsSkipped(stepId)`, `:Describe(step)`.
 - Saves `SignpostCharDB.progress[guideId] = { current = stepId, skipped = { [stepId] = true }, done = { [stepId] = true },
   sticky = { [stepId] = { [directive line] = active } }, states = { [stepId] = { started, d = { [line] = state } } },
-  offered = { [first step id of a dungeon chapter] = true }, placed = { step, index, reason, mode, time } }` (states: the current
-  step and steps with active stickies; `placed`: a placement ran, see below).
+  offered = { [first step id of a dungeon chapter] = true }, placed = { step, index, reason, mode, time },
+  fingerprint = "..." }` (states: the current step and steps with active stickies; `placed`: a placement ran, see below;
+  `fingerprint`: the `guide.fingerprint` of the text the record was made for, stamped when the guide loads).
+- **The record belongs to one text of the guide.** A step id is a position in the guide's text, and a regenerated chapter keeps its
+  ids while its steps change, so a saved place is trusted only for the text it was made for. When a guide loads (not when it is parsed
+  again for a profession plan) for a character that is not new to it, `SetGuide` compares `record.fingerprint` with `guide.fingerprint`;
+  when they differ, or the record has none (an older version wrote none), the record is dropped (`Progress:Forget`: the marks, the
+  stickies, the saved states, the offers and the place, all keyed by step id) and the character is placed from its quest history as for a
+  lost place (`reason "lost"`, with its own chat line: "Your saved place may not match this version of the guide, so it is found again
+  from your quest history."). In plain words: after a guide update the add-on finds your place again from your quest history. The new
+  fingerprint is stored at once, so a record for the same text keeps its place exactly as before. A guide without a fingerprint is
+  trusted as before (nothing to compare).
 - **Placement** (`Progress:Place(opts)`; user, 2026-10-21; the algorithm and its numbers are under `Engine/Placement.lua`): puts the
   pointer and the marks where `ns.Placement:Find` says, from the live `ns.Context` (`Level`, `QuestCompleted`, `QuestInLog`,
   `QuestReady`; a stand-in without them knows nothing, which places no one). It runs by itself in three cases, and on demand:
@@ -403,8 +419,10 @@ quest never taken.
     first `CONTEXT_CHANGED("quests")` that finds the history, or after 5 s on the level alone. A placement made without the history is
     made once more, with `reason "refine"`, when it turns up, if the pointer is still on the step the first one ended on.
   - *A lost place* (`reason "lost"`): the record has progress that matches nothing in the guide (an install changed the step ids;
-    `Resume`'s second result). The character is placed instead of sent to step 1, after a chat line that the guide was updated; the
-    old ids are dropped from the record. A record where some marks still match keeps the old rule (after the furthest one).
+    `Resume`'s second result), or it is for another text of the guide (the fingerprint above: the second chat line, and the whole
+    record is dropped). The character is placed instead of sent to step 1, after a chat line that the guide was updated; the
+    old ids are dropped from the record. A record where some marks still match and whose fingerprint is the guide's keeps the old rule
+    (after the furthest one).
   - *On demand* (`reason "manual"`): the Journal's "Find my place" and `/signpost place`, any time. It is a manual move: `<` right
     afterwards takes it back (the pointer, the marks and the furthest step as they were); any other move drops the undo.
   - *Applying*: the steps before the pointer are marked done (their quests are, or they have none) or skipped (their quests are not

@@ -299,6 +299,30 @@ describe("Wave 1 integration", function()
 		assert.are.equal("test-other:1", current(reloaded))
 	end)
 
+	-- The saved place belongs to the guide's text (the fingerprint); the profession plan is not part of it, so a character
+	-- that has since declined a profession, whose track steps leave the route, is not placed again.
+	it("keeps the place across a reload whatever the profession plan has become", function()
+		local ns, world, mock = start()
+		world.log = { quest(QUEST, { objectives = { objective("Boar slain", 0, 2) } }) }
+		event(world, mock, "QUEST_ACCEPTED", QUEST)
+		assert.are.equal("valley:2", current(ns))
+		assert.are.same({ "skinning" }, ns.Progress:Guide().plan.primary)
+		local saved = ns.Util.CopyTable(ns.char)
+		saved.declinedProfessions = { skinning = true } -- the next session has no skinning track
+		contextMock.uninstall()
+		local reloaded, _, mock2 = start(function(w)
+			G.SignpostCharDB = saved
+			w.log = { quest(QUEST, { objectives = { objective("Boar slain", 1, 2) } }) }
+		end)
+		assert.are.same({}, reloaded.Progress:Guide().plan.primary)
+		assert.is_nil(reloaded.Progress:Guide().byId["track:skinning:1"])
+		assert.are.equal("valley:2", current(reloaded))
+		assert.are.equal("first", reloaded.char.progress["test-integration"].placed.reason) -- never placed again
+		for _, line in ipairs(mock2.printed) do
+			assert.is_nil(line:find("may not match", 1, true), line)
+		end
+	end)
+
 	-- A data pack in Data/Schema.lua's shape, as the questie layer writes it (test IDs and names, not real data).
 	local CAMP = [[
 #chapter 1-6 Camp

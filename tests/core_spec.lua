@@ -294,6 +294,37 @@ describe("Util", function()
 		assert.are.equal(42.13, ns.Util.Round(0.421349, 2, 100))
 		assert.is_nil(ns.Util.Round(nil))
 	end)
+
+	describe("Checksum", function()
+		it("is the same for the same strings and tells a changed byte, an order and a boundary apart", function()
+			local sum = ns.Util.Checksum
+			assert.are.equal(sum({ "step\n  .accept 4641\n" }), sum({ "step\n  .accept 4641\n" }))
+			assert.is_truthy(sum({ "abc" }):match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%x%x%x%x%-3$")) -- 8 hex, 8 hex, the length
+			assert.are_not.equal(sum({ "step\n  .accept 4641" }), sum({ "step\n  .accept 4642" }))
+			assert.are_not.equal(sum({ "ab", "cd" }), sum({ "cd", "ab" }))
+			assert.are_not.equal(sum({ "ab", "c" }), sum({ "a", "bc" })) -- where one string ends matters
+			assert.are_not.equal(sum({ "" }), sum({}))
+			assert.are_not.equal(sum({ "abcd" }), sum({ "abcd\0\0" })) -- the end of the last four bytes is not padding
+		end)
+
+		it(
+			"notices a change of one byte anywhere in a long text, which is how a regenerated chapter differs",
+			function()
+				local text =
+					string.rep("step\n  .goto 1411,43.35,68.70 -- a comment line\n  .accept 4641 >> Accept it\n", 400)
+				local base = ns.Util.Checksum({ "chapter-1", text })
+				local noticed = 0
+				for trial = 1, 60 do
+					local pos = (trial * 4999) % #text + 1
+					local changed = text:sub(1, pos - 1) .. string.char((text:byte(pos) + 1) % 256) .. text:sub(pos + 1)
+					if ns.Util.Checksum({ "chapter-1", changed }) ~= base then
+						noticed = noticed + 1
+					end
+				end
+				assert.are.equal(60, noticed)
+			end
+		)
+	end)
 end)
 
 describe("slash commands", function()

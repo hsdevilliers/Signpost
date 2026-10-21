@@ -70,8 +70,26 @@ after_each(function()
 	end
 end)
 
+-- The fingerprint of the test guide's text as this session registered it (Engine/Parser.lua).
+local function fingerprintOf(ns, guideId)
+	local def = ns.Guides:Get(guideId or GUIDE_ID)
+	return ns.Parser:ParseGuide(def, { player = {} }).fingerprint
+end
+
+-- A record made by hand is for the text this session registered, as a record the addon wrote would be: it gets that
+-- fingerprint, unless it has one already (it came out of an earlier session of the spec).
+local function stamp(ns, saved)
+	for guideId, record in pairs(saved.progress or {}) do
+		if type(record) == "table" and record.fingerprint == nil and ns.Guides:Get(guideId) then
+			record.fingerprint = fingerprintOf(ns, guideId)
+		end
+	end
+end
+
 -- One play session. opts: level, completed (quest IDs), log (quest log entries), saved (SignpostCharDB from an earlier
--- session), advance (seconds let pass after login, default 1), noGuide (register no guide), setup(ns) (before login).
+-- session; a record in it that has no fingerprint gets the one of this session's guide text, unless opts.unstamped: an
+-- older version wrote none), chapters (the chapter texts of the session instead of CHAPTERS), advance (seconds let pass
+-- after login, default 1), noGuide (register no guide), setup(ns) (before login).
 local function start(opts)
 	opts = opts or {}
 	local world
@@ -85,7 +103,7 @@ local function start(opts)
 			G.SignpostCharDB = opts.saved
 		end,
 	})
-	for id, text in pairs(CHAPTERS) do
+	for id, text in pairs(opts.chapters or CHAPTERS) do
 		assert.is_true(ns.Chapters:Register(id, text))
 	end
 	if not opts.noGuide then
@@ -93,6 +111,9 @@ local function start(opts)
 	end
 	if opts.setup then
 		opts.setup(ns)
+	end
+	if opts.saved and not opts.unstamped then
+		stamp(ns, opts.saved)
 	end
 	local log = { steps = {}, placed = {} }
 	ns.Events:RegisterMessage("STEP_CHANGED", function(_, step, _, reason)
@@ -456,6 +477,188 @@ describe("a saved place that is not in the guide", function()
 		assert.are.equal("valley:3", current(ns))
 		assert.are.equal(0, #log.placed)
 		assert.are.equal(0, count(mock, "Your place"))
+	end)
+end)
+
+-- A step id is a position in the guide's text, so a record made for another text of the guide cannot be trusted: the
+-- same id can be another step (docs/ENGINE.md "Engine/Progress.lua", the fingerprint). The fingerprint is the Parser's
+-- checksum of the guide's text and the chapters it included.
+describe("a saved place made for another text of the guide", function()
+	-- The valley of a newer version of the guide: two steps for a quest nobody here has done in front of the old ones,
+	-- so that every id from valley:1 on means another step, and the ids the old record marks done are not what they were.
+	local VALLEY_V2 = [[
+#chapter 1-6 Valley
+step
+  .accept 100
+step
+  .turnin 100
+step
+  .accept 101
+step
+  .complete 101
+step
+  .turnin 101
+  .accept 102
+step
+  .complete 102
+step
+  .turnin 102
+step
+  .accept 103
+step
+  .complete 103
+step
+  .turnin 103
+]]
+	local function newer()
+		return { valley = VALLEY_V2, plains = CHAPTERS.plains }
+	end
+
+	-- the record a session of the old text leaves behind, as the client would give it back
+	local function oldRecord()
+		local ns = start({ level = 4, completed = { 101, 102 } })
+		assert.are.equal("valley:6", current(ns))
+		return ns.Util.CopyTable(ns.char), ns
+	end
+
+	it("keeps its place, with no word, when the text is the same", function()
+		local saved, first = oldRecord()
+		local ns, _, mock, log = start({ level = 4, completed = { 101, 102 }, saved = saved })
+		assert.are.equal("valley:6", current(ns))
+		assert.are.equal(0, #log.placed)
+		assert.are.equal(0, count(mock, "Your place"))
+		assert.are.equal(0, count(mock, "may not match"))
+		assert.are.same(first.char.progress[GUIDE_ID].placed, record(ns).placed)
+		assert.are.equal(fingerprintOf(first), record(ns).fingerprint)
+	end)
+
+	it("stores the fingerprint of the text with the first placement", function()
+		local saved, first = oldRecord()
+		assert.are.equal("first", saved.progress[GUIDE_ID].placed.reason)
+		assert.are.equal(fingerprintOf(first), saved.progress[GUIDE_ID].fingerprint)
+		assert.is_string(saved.progress[GUIDE_ID].fingerprint)
+	end)
+
+	it("places the character again from its quest history when the ids are the same and the text is not", function()
+		local saved = oldRecord()
+		assert.is_true(saved.progress[GUIDE_ID].done["valley:1"]) -- the old valley:1 is a step that was done
+		local oldFingerprint = saved.progress[GUIDE_ID].fingerprint
+		local ns, _, mock, log = start({ level = 4, completed = { 101, 102 }, saved = saved, chapters = newer() })
+		assert.are.equal("valley:8", current(ns)) -- accept 103, whichever ids the quests have now
+		assert.are.equal("lost", record(ns).placed.reason)
+		assert.are.same({ { index = 8, reason = "lost" } }, log.placed)
+		assert.are.equal(1, count(mock, "Your saved place may not match this version of the guide"))
+		assert.are.equal(1, count(mock, "Your place: step 8/15 (Valley)."))
+		-- the marks are the history's, not the old record's: the step for quest 100, which was never done, is not done
+		assert.is_false(ns.Progress:IsDone("valley:1"))
+		assert.is_true(ns.Progress:IsSkipped("valley:1"))
+		assert.is_true(ns.Progress:IsSkipped("valley:2"))
+		assert.is_true(ns.Progress:IsDone("valley:5"))
+		assert.is_false(ns.Progress:IsDone("valley:9")) -- ahead of the pointer
+		assert.are.equal(fingerprintOf(ns), record(ns).fingerprint)
+		assert.are_not.equal(oldFingerprint, record(ns).fingerprint)
+	end)
+
+	it("keeps that new place at the next login", function()
+		local ns = start({ level = 4, completed = { 101, 102 }, saved = oldRecord(), chapters = newer() })
+		assert.are.equal("valley:8", current(ns))
+		local again, _, mock, log = start({
+			level = 4,
+			completed = { 101, 102 },
+			saved = ns.Util.CopyTable(ns.char),
+			chapters = newer(),
+		})
+		assert.are.equal("valley:8", current(again))
+		assert.are.equal(0, #log.placed)
+		assert.are.equal(0, count(mock, "Your place"))
+	end)
+
+	it("notices a changed chapter that a guide includes, not only a change of the guide's own text", function()
+		local saved = oldRecord()
+		local ns, _, _, log = start({
+			level = 4,
+			completed = { 101, 102 },
+			saved = saved,
+			chapters = {
+				valley = CHAPTERS.valley .. "step\n  .note A step added at the end.\n",
+				plains = CHAPTERS.plains,
+			},
+		})
+		assert.are.same({ { index = 6, reason = "lost" } }, log.placed)
+		assert.are.equal("valley:6", current(ns))
+	end)
+
+	it("does not let the old marks move the pointer while the quest history is still on its way", function()
+		-- the old record says valley:1 to valley:5 are done; for this text they are not, and the history is not there yet
+		local saved = oldRecord()
+		local ns, world, mock, log = start({
+			level = 4,
+			completed = {},
+			saved = saved,
+			chapters = newer(),
+			advance = 0.5,
+		})
+		assert.are.equal("valley:1", current(ns)) -- the old record's valley:6 is not where this character is
+		assert.are.same({}, keys(record(ns).done))
+		assert.are.equal(0, #log.placed)
+		historyArrives(world, mock, { 101, 102 })
+		assert.are.equal("valley:8", current(ns))
+		assert.are.same({ { index = 8, reason = "lost" } }, log.placed)
+		assert.are.equal(1, count(mock, "Your saved place may not match this version of the guide"))
+	end)
+
+	it("says why also when the history never comes and the level has to do", function()
+		local ns, world, mock = start({
+			level = 4,
+			completed = {},
+			saved = oldRecord(),
+			chapters = newer(),
+			advance = 0.5,
+		})
+		world.advance(6) -- the wait for the history is over
+		assert.are.equal("lost", record(ns).placed.reason)
+		assert.are.equal("level", record(ns).placed.mode)
+		assert.are.equal(1, count(mock, "Your saved place may not match this version of the guide"))
+		assert.are.equal(0, count(mock, "your saved place is not in it any more"))
+	end)
+
+	it("places a record that has no fingerprint once, and keeps it from then on", function()
+		local old = {
+			dbVersion = 2,
+			progress = { [GUIDE_ID] = { current = "valley:3", done = { ["valley:1"] = true, ["valley:2"] = true } } },
+		}
+		local ns, _, mock, log = start({ level = 4, completed = { 101, 102 }, saved = old, unstamped = true })
+		assert.are.equal("valley:6", current(ns))
+		assert.are.same({ { index = 6, reason = "lost" } }, log.placed)
+		assert.are.equal(1, count(mock, "Your saved place may not match this version of the guide"))
+		assert.are.equal(fingerprintOf(ns), record(ns).fingerprint)
+		local again, _, mock2, log2 = start({ level = 4, completed = { 101, 102 }, saved = ns.Util.CopyTable(ns.char) })
+		assert.are.equal("valley:6", current(again))
+		assert.are.equal(0, #log2.placed)
+		assert.are.equal(0, count(mock2, "Your place"))
+	end)
+
+	it("treats a fresh record as new, not as outdated, and stamps it", function()
+		local ns, _, mock = start({ level = 1 })
+		assert.are.equal("first", record(ns).placed.reason)
+		assert.are.equal(0, count(mock, "may not match"))
+		assert.are.equal(fingerprintOf(ns), record(ns).fingerprint)
+	end)
+
+	it("does not place a record again when the guide is parsed again for another profession plan", function()
+		local ns, _, mock, log = start({ level = 4, completed = { 101, 102 } })
+		local stamped = record(ns).fingerprint
+		ns.Events:Fire(
+			"PROFESSION_PLAN_CHANGED",
+			{ primary = { "skinning" }, secondary = {}, declined = {}, learned = {}, unknown = {} }
+		)
+		ns.Events:Fire(
+			"PROFESSION_PLAN_CHANGED",
+			{ primary = {}, secondary = {}, declined = {}, learned = {}, unknown = {} }
+		)
+		assert.are.equal(1, #log.placed)
+		assert.are.equal(1, count(mock, "Your place"))
+		assert.are.equal(stamped, record(ns).fingerprint)
 	end)
 end)
 

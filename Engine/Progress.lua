@@ -32,6 +32,8 @@ local RESET_CONFIRM = 30
 -- offered[first step id of a dungeon chapter] records the one-time skip offer, and placed = { step, index, reason,
 -- mode, time } says that a placement ran (see "Placement"): a record with it, or with any done or skipped step, is not
 -- new to the guide. A directive's key is its source line, which stays the same when the guide is parsed again.
+-- fingerprint is the checksum of the guide text (guide.fingerprint, Engine/Parser.lua) the record was made for: step
+-- ids are positions in that text, so a record is trusted only for the same text (see "Placement").
 local RECORD_DEFAULTS = { skipped = {}, done = {}, sticky = {}, states = {}, offered = {} }
 
 ns.SavedVars:RegisterDefaults("char", "progress", {})
@@ -812,8 +814,9 @@ end
 -- Placement (docs/ENGINE.md "Engine/Placement.lua") -------------------------------------------------------------------
 -- Where in the guide the character is, from its level and the quests it has done or has in its log: ns.Placement
 -- works it out, this puts the pointer and the marks there. It runs by itself the first time a guide runs for a
--- character with no progress in it, when the saved step is not in the guide any more, and once more when the quest
--- history turns up late; the player runs it with the Journal's "Find my place" and /signpost place.
+-- character with no progress in it, when the saved step is not in the guide any more or the record is for another text
+-- of the guide, and once more when the quest history turns up late; the player runs it with the Journal's "Find my
+-- place" and /signpost place.
 
 -- fn(questID) -> boolean from a Context query; a stand-in without that query knows nothing.
 local function asker(context, name)
@@ -875,6 +878,23 @@ function Progress:IsFresh()
 	return record.current == nil or (first ~= nil and record.current == first.id)
 end
 
+-- Whether the record was made for another text of the guide, or for one nobody can say (it has no fingerprint: a
+-- record from before fingerprints, or one that was never stamped). A step id is a position in the guide's text, so
+-- after the text changed every id can mean another step, and nothing in the record can be trusted. A guide without a
+-- fingerprint (a parser that does not give one) cannot be told apart from itself: its records are trusted as before.
+function Progress:IsOutdated(guide)
+	return guide.fingerprint ~= nil and self.record.fingerprint ~= guide.fingerprint
+end
+
+-- Drops everything in the record that is keyed by a step id (the marks, the stickies, the saved states, the offers, the
+-- place itself): for another text of the guide it describes other steps. The character is then placed from its quest
+-- history instead (SetGuide).
+function Progress:Forget()
+	local record = self.record
+	record.current, record.placed, record.fingerprint = nil, nil, nil
+	record.done, record.skipped, record.sticky, record.states, record.offered = {}, {}, {}, {}, {}
+end
+
 -- Puts the marks and the pointer where `result` (ns.Placement:Find) says. A step before the pointer is done when its
 -- quests are (or it holds none) and skipped when they are not; the pointer's step and every step after it are clear. A
 -- skip the player made by hand on a step with no quest of its own stays. The flags are set here and not through
@@ -910,10 +930,14 @@ end
 
 -- The chat lines of a placement: where (the step the engine settled on), why in numbers, how to put it right. A
 -- character with nothing to go on and no reason to expect more hears nothing.
-function Progress:Announce(result, reason)
+function Progress:Announce(result, reason, outdated)
 	local say = ns.Util.Print
 	local n, index = #self.guide.steps, self.index or result.index
-	if reason == "lost" then
+	if reason == "lost" and outdated then
+		say(
+			L["Your saved place may not match this version of the guide, so it is found again from your quest history."]
+		)
+	elseif reason == "lost" then
 		say(L["The guide was updated and your saved place is not in it any more."])
 	elseif reason == "refine" then
 		say(L["Your quest history has loaded: placing you again."])
@@ -983,9 +1007,10 @@ end
 -- Places the character: the pointer on the step its level and quests say, the marks before it set (ApplyPlacement),
 -- one record.placed so that it never happens by itself again, GUIDE_PLACED(result, reason), the evaluation (the
 -- engine passes what is done already) and then Settle. opts.reason is "first" (a character new to the guide), "lost"
--- (its saved step is not in the guide), "refine" (the quest history came late) or "manual" (the player asked; the
--- default: `<` right afterwards takes it back); opts.evaluate = false leaves the evaluation, and Settle, to the caller
--- (SetGuide); opts.quiet prints nothing. Returns the result, or nil without a guide.
+-- (its saved step is not in the guide, or the record is for another text of it: opts.outdated, which only changes what
+-- the chat line says), "refine" (the quest history came late) or "manual" (the player asked; the default: `<` right
+-- afterwards takes it back); opts.evaluate = false leaves the evaluation, and Settle, to the caller (SetGuide);
+-- opts.quiet prints nothing. Returns the result, or nil without a guide.
 function Progress:Place(opts)
 	opts = opts or {}
 	local guide, record, placement = self.guide, self.record, ns.Placement
@@ -1015,6 +1040,7 @@ function Progress:Place(opts)
 	self.settle = {
 		result = result,
 		reason = reason,
+		outdated = opts.outdated,
 		quiet = opts.quiet,
 		undo = undo,
 		-- placed before the quest history was there: look again when it turns up, if the player has not moved on
@@ -1037,7 +1063,7 @@ function Progress:Settle()
 		return
 	end
 	if not pending.quiet then
-		self:Announce(pending.result, pending.reason)
+		self:Announce(pending.result, pending.reason, pending.outdated)
 	end
 	if pending.undo then
 		pending.undo.afterId = step.id
@@ -1070,12 +1096,13 @@ function Progress:UndoPlacement()
 end
 
 -- First use of a guide (or a lost place): place now when the quest history is there, else wait for it a few seconds.
-function Progress:BeginPlacement(reason)
+-- `outdated` says that the record was for another text of the guide (only the chat line differs).
+function Progress:BeginPlacement(reason, outdated)
 	if historyReady(liveLevel()) then
-		self:Place({ reason = reason, evaluate = false })
+		self:Place({ reason = reason, outdated = outdated, evaluate = false })
 		return
 	end
-	local token = { id = self.guide.id, reason = reason }
+	local token = { id = self.guide.id, reason = reason, outdated = outdated }
 	self.placing = token
 	C_Timer.After(PLACE_WAIT, function()
 		ns.SafeCall(Progress.OnPlaceTimer, Progress, token)
@@ -1085,7 +1112,7 @@ end
 -- The wait is over and the quest history has not come: go by what there is (the level).
 function Progress:OnPlaceTimer(token)
 	if self.placing == token and self.guide and self.guide.id == token.id then
-		self:Place({ reason = token.reason })
+		self:Place({ reason = token.reason, outdated = token.outdated })
 	end
 end
 
@@ -1098,7 +1125,7 @@ function Progress:CheckPlacement()
 	end
 	if token and token.id == guide.id then
 		if historyReady(liveLevel()) then
-			self:Place({ reason = token.reason })
+			self:Place({ reason = token.reason, outdated = token.outdated })
 		end
 	elseif refining and refining.id == guide.id then
 		local step = self:CurrentStep()
@@ -1193,7 +1220,19 @@ function Progress:SetGuide(guide)
 	local sameGuide = previous ~= nil and previous.id == guide.id
 	self.record = self:Record(guide.id)
 	self:Index(guide)
+	local fresh, outdated = false, false
 	if not sameGuide then
+		-- A record made for another text of the guide (or by a version that did not say) is not trusted: step ids are
+		-- positions in the text, so the same id can be another step now. It is dropped and the character is placed from
+		-- its quest history, as for a lost place. A new record is for this text from now on.
+		fresh = self:IsFresh()
+		outdated = not fresh and self:IsOutdated(guide)
+		if outdated then
+			self:Forget()
+		end
+		if guide.fingerprint ~= nil then
+			self.record.fingerprint = guide.fingerprint
+		end
 		previous, previousIndex = nil, nil
 		self.stores = {}
 		for stepId, store in pairs(self.record.states) do
@@ -1205,16 +1244,16 @@ function Progress:SetGuide(guide)
 		self.hold, self.frontier, self.declined, self.chapterKey = nil, nil, nil, nil
 		self.placing, self.refining, self.undo, self.settle = nil, nil, nil, nil
 	end
-	local fresh = not sameGuide and self:IsFresh()
 	local lost
 	self.index, lost = self:Resume(previous, previousIndex)
 	if previous and self.index then
 		self:StartInserted(previous)
 	end
-	-- A character new to this guide, or whose saved place is not in it, starts where its level and quests say. The same
-	-- guide parsed again (a profession plan change) never does.
-	if self.index and (fresh or lost) then
-		ns.SafeCall(self.BeginPlacement, self, lost and "lost" or "first") -- the guide loads whatever happens here
+	-- A character new to this guide, or whose saved place is not in it (or is for another text of it), starts where its
+	-- level and quests say. The same guide parsed again (a profession plan change) never does.
+	if self.index and (fresh or lost or outdated) then
+		-- the guide loads whatever happens here
+		ns.SafeCall(self.BeginPlacement, self, (lost or outdated) and "lost" or "first", outdated)
 	end
 	self.stickyDirty = true
 	self:Echo(

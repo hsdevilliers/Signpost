@@ -73,6 +73,35 @@ function Util.CopyTable(source)
 	return copy
 end
 
+-- A checksum of a list of strings, in order, by arithmetic only (Lua 5.1 has no bit operators and the specs do not
+-- load the client's bit library): two polynomial hashes of every byte, each modulo its own prime below 2^31, and the
+-- total length. "<8 hex>-<8 hex>-<length>". It notices that a text changed (docs/ENGINE.md: a guide's saved progress
+-- belongs to one text of the guide); it is no defense against anyone. A mark between the strings makes ("ab", "c")
+-- differ from ("a", "bc"). Four bytes go into the hashes per step: the products stay below 2^53, where a Lua number is
+-- still exact.
+local CHECK_PRIME_A, CHECK_PRIME_B = 2147483629, 2147483587
+local CHECK_BASE_A, CHECK_BASE_B = 131, 257
+
+function Util.Checksum(texts)
+	local a, b, length = 5381, 52711, 0
+	for _, text in ipairs(texts) do
+		text = tostring(text)
+		local size = #text
+		length = length + size
+		a = (a * CHECK_BASE_A + 255) % CHECK_PRIME_A
+		b = (b * CHECK_BASE_B + 255) % CHECK_PRIME_B
+		for pos = 1, size, 4 do
+			local c1, c2, c3, c4 = string.byte(text, pos, pos + 3)
+			c2, c3, c4 = c2 or 0, c3 or 0, c4 or 0
+			a = ((a * CHECK_BASE_A + c1) * CHECK_BASE_A + c2) % CHECK_PRIME_A
+			a = ((a * CHECK_BASE_A + c3) * CHECK_BASE_A + c4) % CHECK_PRIME_A
+			b = ((b * CHECK_BASE_B + c1) * CHECK_BASE_B + c2) % CHECK_PRIME_B
+			b = ((b * CHECK_BASE_B + c3) * CHECK_BASE_B + c4) % CHECK_PRIME_B
+		end
+	end
+	return string.format("%08x-%08x-%d", a, b, length)
+end
+
 local SANITIZE_MAX_DEPTH = 8
 local SANITIZE_MAX_STRING = 500
 
