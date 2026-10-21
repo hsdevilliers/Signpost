@@ -1,12 +1,13 @@
 # Interactions: what a click, a right-click and a key do
 
 Signpost behaves the way players expect an add-on to behave: a button on the minimap, an entry in the AddOn Compartment, a small menu on
-a right-click, keys on the Key Bindings screen. The user asked for this on 2026-10-21 ("the common ... app interactions that apps have";
-their own example was Shift-click on the minimap button to hide or show the steps panel, left-click for the big window, right-click for a
-small context menu, with "please don't take that as instruction ... go and look ... what the industry standard is"). This file records
-what the standard is and where it comes from, the map Signpost implements, where Signpost differs from the first proposal and why, and
-what only the real client can confirm. The code is `UI/Launcher.lua`, the key bindings are `Bindings.xml`, the specs are
-`tests/launcher_spec.lua` (with the fakes in `tests/mocks/launcher.lua`). The contract is in `docs/ENGINE.md` ("UI/Launcher.lua").
+a right-click, keys on the Key Bindings screen. The user asked for this on 2026-10-21 ("the common, what do you call it, app interactions
+that apps have"). Their own example was Shift-clicking the button on the minimap border to hide or show the steps panel, left-click for the
+big window and right-click for "a small little context window", with "Please don't take that as instruction": they asked to "go and look
+extensively" for "the industry standard". This file records what the standard is and where it comes from, the map Signpost implements,
+where Signpost differs from the first proposal and why, and what only the real client can confirm. The code is `UI/Launcher.lua`, the key
+bindings are `Bindings.xml`, the specs are `tests/launcher_spec.lua` (with the fakes in `tests/mocks/launcher.lua`). The contract is in
+`docs/ENGINE.md` ("UI/Launcher.lua").
 
 ## 1. What the convention is
 
@@ -16,8 +17,8 @@ read at its source on 2026-10-21; where a page could not be read, that is said.
 | Source | What it shows |
 |---|---|
 | [LibDataBroker-1.1 data specification](https://github.com/tekkub/libdatabroker-1-1/wiki/Data-Specifications) | A launcher is `type = "launcher"` with an `icon` and an `OnClick(self, button)` that the display attaches to its frame. A tooltip is `OnTooltipShow(tooltip)`: the display positions and shows it, the handler only fills it; the spec gives as its common use "to explain the mapping of click buttons to function (e.g. left click for hide window, right click for config window etc.)". "Quicklaunchers should never expect a secure frame to be used." The spec says **nothing about modifier keys**: a handler reads `IsShiftKeyDown()`, `IsControlKeyDown()`, `IsAltKeyDown()` itself. |
-| [Bartender4 (source)](https://github.com/Nevcairiel/Bartender4/blob/master/Bartender4.lua), `createLDBLauncher` | Left-click toggles the bar lock, right-click opens or closes the options dialog; it looks at no modifier key. The tooltip is the name followed by one hint per click, the key in yellow and the rest in the default colour: `|cffffff00Click|r to toggle bar lock`, `|cffffff00Right-click|r to open the options menu`. |
-| [MinimapIconBar](https://www.curseforge.com/wow/addons/minimapiconbar) | "Click it to open or close the row, right-click for options, and drag it to move the whole bar"; **Shift-click** "freezes" the bar's position and open state (a lock). |
+| [Bartender4 (source)](https://github.com/Nevcairiel/Bartender4/blob/master/Bartender4.lua), `createLDBLauncher` | Left-click toggles the bar lock, right-click opens or closes the options dialog; it looks at no modifier key. The tooltip is the name followed by one hint per click, the key in yellow and the rest in the default colour: `\|cffffff00Click\|r to toggle bar lock`, `\|cffffff00Right-click\|r to open the options menu` (the backslashes only keep the table intact; the text starts with the colour code `|cffffff00`). |
+| [MinimapIconBar](https://www.curseforge.com/wow/addons/minimapiconbar) | "Click it to open or close the row, right-click for options, and drag it to move the whole bar"; **Shift-click** does the lock: "shift-click the M to freeze position + open state". |
 | [Minimap Button Stash for TBC](https://www.curseforge.com/wow/addons/mbs-minimap-button-stash-for-tbc-2026) | Left-click opens or closes its window; **Shift + right-click** locks or unlocks its icon: another add-on, another meaning for Shift. |
 | `Libs/LibDBIcon-1.0` (the bundled copy, minor 57) | The button is registered for the release of any mouse button and for left-drag, and hands `(button frame, mouse button)` to the object's `OnClick`. Its saved table holds `hide`, `lock`, `minimapPos`, `showInCompartment`. `Hide` and `Show` only act on the button: **the saved `hide` flag is the add-on's to keep**; `Lock` writes `db.lock = true`, `Unlock` clears it. If the object has `OnTooltipShow` the library anchors its own tooltip at the button, calls it and shows the tooltip. |
 | [Blizzard's `AddonCompartment.lua`](https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_Minimap/Mainline/AddonCompartment.lua) | Each compartment entry is `rootDescription:CreateButton(text, func)` with `RegisterForClicks("AnyUp")`; the click reaches the TOC function as `CallAddonGlobalFunc(name, menuInputData.buttonName)`, so **both mouse buttons arrive as `(addonName, "LeftButton" or "RightButton")`**. The hover functions get `(addonName, buttonFrame)`; the compartment's own icon shows its tooltip with `GameTooltip:SetOwner(self, "ANCHOR_LEFT")`. The TOC fields are `AddonCompartmentFunc`, `AddonCompartmentFuncOnEnter`, `AddonCompartmentFuncOnLeave` ([Warcraft Wiki: Addon compartment](https://warcraft.wiki.gg/wiki/Addon_compartment); since 11.0 an automatic registration no longer receives the frame as a third click argument). |
