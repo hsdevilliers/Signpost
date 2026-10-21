@@ -314,6 +314,17 @@ def _clean(text: str) -> str:
     return text.replace("]]", "] ]").replace("\n", " ").strip()
 
 
+def rule_applies(rule: dict, class_token: str) -> bool:
+    """Whether a rule of tools/hardcore_rules.json is meant for a guide of this class. `class_quest_of` (a class token, or a list of
+    them) says the quest belongs to that class although the data has no class mask for it (Forever's new quests have none): the rule
+    then skips it for the guides of every other class and leaves it to that class's own. A rule without the field holds for every
+    class (a HARDCORE-only rule is told apart by its reason, not by this)."""
+    owners = rule.get("class_quest_of")
+    if isinstance(owners, str):
+        owners = [owners]
+    return not (isinstance(owners, list) and str(class_token).upper() in {str(owner).upper() for owner in owners})
+
+
 def draft(pack: guide_travel.Pack, world: guide_travel.World, spec: argparse.Namespace) -> Draft:
     pool, dropped = candidates(pack, world, spec)
     result = Draft(dropped=dropped)
@@ -649,7 +660,7 @@ def main(argv: list[str] | None = None, carry: dict | None = None) -> int:
         if spec.hardcore:
             parser.error(f"--hardcore: {exc}")
     for rule in rules:
-        if not isinstance(rule, dict) or not isinstance(rule.get("id"), int):
+        if not isinstance(rule, dict) or not isinstance(rule.get("id"), int) or not rule_applies(rule, spec.class_token):
             continue
         reason = str(rule.get("reason") or HARDCORE_NOTE)
         # a skip whose reason is not about HARDCORE (a battleground quest is not leveling content) holds for every guide

@@ -48,7 +48,8 @@ beam compares its best finished routes as they would be written, and against the
   prerequisites, chains, exclusive quests, race, class, faction). Quests of a chain the data does not link come from the hints in
   `tools/drafts.json` (`--chain`), and the quests the guide's chapters exclude there (`--exclude` with its reason) are left out too. A
   normal route accepts quests up to 5 levels above the character and works on them up to 3; a HARDCORE route 1 and 1, leaves out the elite
-  and boss objectives and the skips of `tools/hardcore_rules.json`. Every quest left out on purpose is named in a `#skipquest` line with its
+  and boss objectives and the skips of `tools/hardcore_rules.json` (a skip whose reason starts with HARDCORE only in a HARDCORE route; a rule with
+  `class_quest_of` only in the guides of other classes: docs/HARDCORE.md). Every quest left out on purpose is named in a `#skipquest` line with its
   reason, as the drafted chapters name theirs.
 - **Data it does not trust** (found by an independent review of the first installed guide): the planner leaves out a quest that has no
   start position, no turn-in position (a class quest stays, its step carries a `.todo`), no objective and is accepted and handed in at one NPC

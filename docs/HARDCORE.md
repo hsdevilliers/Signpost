@@ -39,7 +39,12 @@ Sources: [Blizzard forums thread](https://us.forums.blizzard.com/en/wow/t/advice
    the chapter's top level** is dropped (`--hardcore-over`). The pack has no escort, group or cave flags, so those still need the list below.
 1. **Skip list** (`tools/hardcore_rules.json`): each rule has a quest ID (from the data pack), an action (`skip` becomes
    `#skipquest <id> >> <reason>`, `note` becomes a `.note` after the `.accept`), a source and a confidence. `tools/guide_draft.py
-   --hardcore` applies it. Corrected from play: the contributors' deaths and notes are the best source we will get.
+   --hardcore` applies it. Corrected from play: the contributors' deaths and notes are the best source we will get. Scope (2026-10-21): a skip
+   whose reason starts with HARDCORE (escorts, elite or unknown-rank targets, dungeon quests) holds for HARDCORE guides only; any other skip
+   holds for every guide, so it is for what nobody should do (a battleground quest) or it carries `class_quest_of` (a class token or a list):
+   the quest belongs to that class although the data has no class mask for it (Forever's new quests have none), and the rule skips it for the
+   guides of every other class and leaves it to that class's own. A rule's source says where the belief comes from (memory of Classic, a
+   review, a death) and whether it was seen in game; it does not quote the data pack.
 2. **Class quests stay mandatory** (the lint enforces it): a dangerous one is routed late and carries a note, or is skipped with a
    written reason, never silently dropped.
 3. **Group (elite) quests are optional** (PLAN §2) and in hardcore are skipped unless the player chooses otherwise.

@@ -211,6 +211,19 @@ class PoolTest(DraftCase):
         self.assertRegex(text, r"\.accept 201 -- First\n  \.note Heal up first\.")
         self.assertIn("excluded by the author", report)
 
+    def test_a_rule_about_another_classes_quest_skips_it_for_every_other_class(self):
+        rules = [
+            {"id": 203, "action": "skip", "reason": "probably a Warlock quest", "class_quest_of": "WARLOCK"},
+            {"id": 216, "action": "skip", "reason": "the Hunter's own", "class_quest_of": "hunter"},
+            {"id": 222, "action": "skip", "reason": "shared", "class_quest_of": ["Warlock", "HUNTER"]},
+        ]
+        text, _ = self.draft("--hardcore", self.rules_file(rules))  # the chapter is a Hunter's
+        self.assertIn("#skipquest 203 >> probably a Warlock quest", text)
+        self.assertNotIn(203, self.quests_in(text, "accept"))
+        for own in (216, 222):  # a quest of the guide's own class is routed, however the class is spelt
+            self.assertNotIn(f"#skipquest {own}", text)
+            self.assertIn(own, self.quests_in(text, "accept"))
+
     def test_hardcore_drops_quests_that_need_an_elite_kill_or_an_elite_only_item(self):
         normal, _ = self.draft()
         self.assertTrue({220, 221} <= set(self.quests_in(normal, "accept")))
@@ -240,6 +253,9 @@ class PoolTest(DraftCase):
             self.assertIn(rule["action"], ("skip", "note"))
             self.assertTrue(rule.get("source") and rule.get("confidence") in ("high", "medium", "low"), rule)
             self.assertTrue(rule.get("reason") if rule["action"] == "skip" else rule.get("text"), rule)
+            owners = rule.get("class_quest_of")  # the class the quest belongs to: a token, or a list of them
+            for owner in [owners] if isinstance(owners, str) else owners or []:
+                self.assertIn(str(owner).upper(), guide_draft.CLASS_BITS, rule)
 
     def test_a_quest_above_the_walk_gets_a_level_step_and_a_level_line(self):
         quests = {**QUESTS, 218: {"n": "Level Six", "r": 6, "l": 6, **HOME}}
