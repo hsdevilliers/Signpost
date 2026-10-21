@@ -28,7 +28,8 @@ you already know a service a trainer offers, how long a boat or zeppelin ride to
 - Talk to the innkeeper of each town; if you were going to make it your home, do. It records where the inn is and its name.
 
 ## The druids
-- Moonglade: how a druid gets there and back is not in the data. Go once and note how (spell, walking, flight) with `/signpost report`.
+- Moonglade: how a druid gets there and back is not in the data, and the guide says not to walk (from Classic memory the road overland is for
+  levels 48 and up). Go once by the spell, the hearthstone or a flight path if you have one, and note which with `/signpost report`.
 - Skyborne: when the island story sends you off, ride the airship from Valanaar's southwest dock to Mulgore (type `/signpost ride zeppelin`
   first), then `/signpost learned`: it should say 1 ride. Note what the airship is called and how long you waited.
 

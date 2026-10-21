@@ -102,7 +102,9 @@ beam compares its best finished routes as they would be written, and against the
   `#skipquest` reason (an alternative the route did not take). At the cap only they, and what they need, are still worth the walk.
   There is no deadline (user, 2026-10-20): a class quest costs the route `--class-push` minutes (default 20) for every level past the one it
   opens at when it is handed in, up to `--class-grace` + 6 levels, so the route picks one up when it passes the giver and makes the trip for a far one
-  (Moonglade) soon after it opens. While a quest is undone the search ranks a route by what it will probably cost: the level the character will
+  (Moonglade) soon after it opens. (The trip is priced as the walk the travel graph gives; the druid's guide steps for it say to cast Teleport: Moonglade if
+  the druid has it and not to walk it, `travelHints` in `Classes/DRUID.lua`, so the price stands for a way nobody has confirmed.)
+  While a quest is undone the search ranks a route by what it will probably cost: the level the character will
   have when it gets there (its own, plus the levels the trip takes at the pace of the greedy walk), so a quest that has not opened costs nothing
   and levelling is never what a route is charged for. This estimate ranks routes and does not prune them (see `hopeless`: a route is dropped
   only when it cannot beat the best finished one even with the class quests free). The search always tries the nearest few hubs (up to 4) where a

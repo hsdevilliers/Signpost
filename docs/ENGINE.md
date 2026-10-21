@@ -141,7 +141,10 @@ else the client's `isPrimaryProfession`, else the slot.
   (`races`: the chain is for those races only, as Classic's druid chains differ per race; the lint skips it for other races),
   `directives = { [name] = directiveDef }` (registered into `ns.Directives` for every class, one by one, so one bad def
   does not stop the rest), `classTab`, `automation`, `onLevelUp(level)` (called by Registry at `PLAYER_LEVEL_UP` for the
-  player's class, after `ns.Player.level` is updated; nothing else calls it).
+  player's class, after `ns.Player.level` is updated; nothing else calls it), and `travelHints = { [uiMapID] = { to, back,
+  unsafe } }` (read by `tools/guide_travel.py`, never by the addon: the words the travel generator writes for a trip to or from that
+  zone in a guide of this class, in place of "find your own way", because the class has a way of its own there and the road is not one
+  to walk: a druid's Teleport: Moonglade; each word is a string or a list of lines; GUIDE-FORMAT, "Travel").
 
 ### Engine/Professions.lua — `ns.Professions`
 
