@@ -39,25 +39,34 @@ A quest offered where the player already stands, with objectives in the area of 
 - For this quest it is not missing data: the pack has quest 92462 (giver and ender NPC 251368, one kill objective, the follow-up 92463), the game's own offer of it was recorded in the user's save, and the planner keeps it. A fresh beam run takes it; the installed route does not. So here it is the planner's route choice (the winning finalist leaves out a free pick-up), not the data.
 - The user's other cause can still be true for other Forever-new quests: see the item "Are Forever-new quests missing from the data pack" (the audit that tells the two causes apart).
 
-## Root cause (found 2026-10-21, thorough preset on main's tools, windshaper, HARDCORE)
+## Root cause (corrected 2026-10-21 after tracing the raw route; the first version of this note had the order wrong)
 
-Not the data and not a pick-up distance. The planner groups quest givers and objective areas into hubs of about 150 yards (`hub_radius`), a visit to a hub accepts everything offered there, and the cleanup `Planner.tidy()` ("a guide must not accept a quest it never turns in") deletes every quest still in the log when a search ends.
+Traced with the thorough preset on main's tools (windshaper, HARDCORE, hub radius 150), on the plan BEFORE `Planner.tidy()` ran. Not the data, not a pick-up distance.
 
-- Hubs here: 563 = Rorian (map 2521, 42.05 / 23.49: 92460 end, 92461 start and end); 566 = Ailee (42.82 / 23.37: 92460 start) and Elatrell (43.44 / 24.79: 92462 and 92463 start and end); 570 = the kill area east of them (92461's kills in hubs 566 and 570, 92462's kills in 570, 92463's kill in 578). Ailee and Rorian are 43 yards apart yet in different hubs (the greedy cutting depends on the order); Elatrell is 63 yards from Ailee and 91 from Rorian.
-- The winner and all five alternatives of the thorough run end with 92462 removed by tidy (22 quests removed in the winner); 92463 never appears (its parent is gone). 92461 is completed at level 2 in all of them.
-- Mechanism: the routes clear the kill area (570, for 92461) before they pass Elatrell (566), where 92462 is accepted; its own kills (also 570, unknown experience, so worth almost nothing) are never revisited; at the end the quest is in the log and tidy removes it, silently.
-- A fresh `--preset beam` run takes both quests (accept at level 2, complete and turn in at level 3), which is why a quick run looked fine.
+- The quest is picked up at the first chance. The raw winner's visit 2 (hub 566, where Ailee and Elatrell stand, level 2 after) accepts 92462 and in the same visit completes Harmony in Balance (92461) at its kill spot in that hub, then 92474 and 94414.
+- 92461 has kill spots in hubs 566 and 570; 92462's two kill spots are only in hub 570, 21.9 s of travel from 566. A visit completes an objective at the first hub that has a spot, so the shared hunting ground is never used for both.
+- The raw winner never visits hub 570. After the turn-ins at Rorian (hub 563) the search chose Yala Windwatcher (hub 575) over the east trip: +440 XP in 224 s = 1.96 XP/s against +1240 XP in 505 s = 2.46 XP/s (scores 94003 against 93891). Earlier, from hub 563 after handing in 92460, going east first (94043) or to hub 566 first (94054) was a near tie. Later the character outlevels the quest and the trip is never the best again.
+- The quest stays in the log with its objective open, the search ends, and `tidy()` ("a guide must not accept a quest it never turns in") deletes it silently (22 quests were in the log at the end of the winner), and 92463 never appears.
+- A fresh `--preset beam` run happens to take both quests.
+- Distances for reference: Ailee and Rorian are 43 yards apart (yet different hubs), Elatrell is 63 yards from Ailee and 91 from Rorian.
 
-Hub radius test (beam, flat 8 s walk between places of one hub, nothing else changed): 300 yards puts the four NPCs and the kill area in one hub, the first visit takes 92462 (accept, complete, turn in), 92463 follows, total 26.71 h against 26.72 h at 150 (thorough); but tidy still removes 22 quests, so the cleanup problem is general. 500 yards: 92462 is taken late (accept level 2, turn in level 6), 92463 absent, total 34.91 h (8 h more): too coarse. The 300 result is optimistic because the walk inside a hub is a flat 8 s; the proper test charges real yards and compares with the full simulation (work package E1 of batch 1).
+The model behind the numbers: a quest with unknown experience (new to Forever) is worth 0.1 x the experience of its level (92462: 90 XP) and its kills default to 8 (440 XP, 192 s). The user's save shows the game paid 40 XP for Coming of Age (92460), equal to the model's guess for it, so the guesses are not unreasonable, but 1.96 against 2.46 XP/s on guessed numbers is a coin flip, and the user's expectation is that a quest picked up in the area, with its kills a short trip away, is done.
+
+Hub radius test (beam, flat 8 s walk between places of one hub, nothing else changed): 300 yards merges the NPCs and the kill area into one hub, so the first visit takes 92462 (accept, complete, turn in) and 92463 follows, total 26.71 h against 26.72 h at 150 (thorough); `tidy()` still removes 22 quests. 500 yards: 92462 taken late, 92463 absent, total 34.91 h (8 h more). It works at 300 only because the two spots happen to merge; the radius is not the cause.
 
 ## The user's suggestions (dictated, 2026-10-21)
 
-"You describe it as a free pickup, while I see it as something that should have been picked up because it reinforces having more quests being done in an area. I mean, it's a couple of feet away from the other quest pickup. And yeah, maybe the area we define for having to check for picking up quests should be enlarged. I think it was 15 yards. [...] But I think we need to enlarge that quest pickup and hand in area scan. What do you think?"
+"You describe it as a free pickup, while I see it as something that should have been picked up because it reinforces having more quests being done in an area. [...] And yeah, maybe the area we define for having to check for picking up quests should be enlarged. I think it was 15 yards. [...] But I think we need to enlarge that quest pickup and hand in area scan. What do you think?"
 
-Claude's answer: the areas are already 150 yards (hubs), 250 (step grouping) and 10 (a `.goto` counts as reached), and the giver is 63 and 91 yards away. The cause is the order of the visits and the cleanup, not the distance. A bigger area helps only where giver and kill area land in one hub and it understates the walking; fix the cause first (a repair pass after tidy), decide the radius on numbers. The capital-city idea is its own item.
+And after Claude's first answer: "Before we formally decide to go with the enlarging of an area, remember I didn't have full context of the problem, and that was just me taking a shot in the dark of what would improve the guide planner to include, you know, all quests at the correct time in a hub. It feels like I'm still not understanding the problem correctly. So please just double check and note that you don't have to go with a solution of increasing the area. You can push back and propose something else if you wish."
+
+Claude's answer: the areas are 150 yards (hubs), 250 (step grouping) and 10 (a `.goto` counts as reached), and none of that decided this; see the root cause above. A bigger area is not recommended.
 
 ## Done when (updated 2026-10-21)
 
-- A planner test reproduces the case (a quest offered in a neighbouring hub whose kills are in the area the route works) and the fix (a repair pass after tidy, or better) takes it.
-- The Skyborne route holds 92462 and 92463; the Tauren and Troll routes are checked for the same gap; a report says how many quests tidy removed per guide and how many the repair gets back.
-- The hub radius changes only with the walk charged by real yards and a comparison with the full simulation.
+- A planner test reproduces it (a quest accepted at a hub whose only kill spots are in another hub about 20 s away, rate slightly under the best alternative) and fails today.
+- No silent deletion: every quest `tidy()` removes is recorded with the reason and the numbers, printed by the route planner report and visible in the lint or the walk report.
+- Finish what you accept: before tidy deletes an unfinished quest, the planner tries to insert the objective trip and keeps it within a tolerance.
+- A completeness setting (the lowest rate, relative to the route's pace, at which a quest picked up on the route is still finished, and the longest objective trip) measured on Troll, Tauren and Skyborne for several values (quests added, planner and simulated time change); the user chooses the default.
+- The Skyborne route holds 92462 and 92463 once the chosen setting is on; the Tauren and Troll routes are checked for the same gap.
+- Design note: choosing, for an objective with spots in two hubs, the spot that also serves another open quest.
