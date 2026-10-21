@@ -68,6 +68,7 @@ donors anywhere else.
 
 ## Notes
 
+- User, 2026-10-21: "We can pick up the donations discussion on a different time." Nothing is to be built or decided until they raise it.
 - CurseForge's own Rewards Program (points paid out through Tremendous in USD, EUR or GBP) is a different thing; whether a South African payout
   exists was not checked.
 - Never publish the bank account number.
