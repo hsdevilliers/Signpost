@@ -126,6 +126,16 @@ from, explore objectives their area.
 A `.complete` line shows the quest and nothing else (`Complete "<quest>"`, or `Complete objective 2 of "<quest>"` for the
 per-objective form): never an objective's counters ("Mottled Boar slain: 3/10"), in any step. The quest log has them.
 
+A **grind step** is not a kind of step of its own: when a route has to kill for a level before anything else opens, the guide writes `.level N` (satisfied when
+the player has reached level N) and a `.note` that says how much that is, on the step the grind follows (the Route Planner writes it so, docs/PLANNER.md):
+
+```
+.level 12 -- reach it first: kill or grind on the way
+.note Grind about 2,400 experience before you go on: about 55 kills of creatures near your level (an estimate)
+```
+
+The numbers are the model's, rounded to two figures, and promise nothing: rested experience, the quests in the log and the creatures at hand change them.
+
 Travel directives (`Engine/Travel.lua`):
 
 | Directive | Satisfied when | Pin |

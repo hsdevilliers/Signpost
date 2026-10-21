@@ -65,6 +65,11 @@ def _joins(a: Step, b: Step, near: Callable[[Coord, Coord], bool]) -> bool:
     return here is not None and there is not None and near(here, there)
 
 
+def is_goto(line: str) -> bool:
+    """Whether the line is a `.goto` directive."""
+    return _GOTO.match(line) is not None
+
+
 def group(
     steps: list[Step], near: Callable[[Coord, Coord], bool], objectives: Callable[[int], list[int] | None] | None = None
 ) -> list[Step]:
@@ -73,12 +78,20 @@ def group(
     priced); a doing step keeps the first only (it draws no markers: the quest log shows where the objectives are).
     `objectives(questID)`, when given, lists a quest's objective numbers: a doing step that finishes all of them says
     `.complete <quest>` once instead of one line per objective."""
-    out: list[Step] = []
-    for step in steps:
+    return [step for step, _first, _last in group_spans(steps, near, objectives)]
+
+
+def group_spans(
+    steps: list[Step], near: Callable[[Coord, Coord], bool], objectives: Callable[[int], list[int] | None] | None = None
+) -> list[tuple[Step, int, int]]:
+    """`group`, and for each step it writes the positions of the first and the last of the steps it was made of (a step that joined
+    nothing has the same one twice), so that what the caller knows about the steps it gave (a zone, a level) can follow them."""
+    out: list[list] = []  # [step, first input, last input]
+    for index, step in enumerate(steps):
         k = kind(step)
-        if out and k != OTHER and kind(out[-1]) == k and _joins(out[-1], step, near):
-            seen = {line.strip() for line in out[-1] if _GOTO.match(line)}
-            joined = list(out[-1])
+        if out and k != OTHER and kind(out[-1][0]) == k and _joins(out[-1][0], step, near):
+            seen = {line.strip() for line in out[-1][0] if _GOTO.match(line)}
+            joined = list(out[-1][0])
             for line in step:
                 if _GOTO.match(line):
                     if k == PLACE and line.strip() not in seen:
@@ -86,10 +99,10 @@ def group(
                         joined.append(line)
                 else:
                     joined.append(line)
-            out[-1] = joined
+            out[-1][0], out[-1][2] = joined, index
         else:
-            out.append(list(step))
-    return [whole_quests(step, objectives) if objectives and kind(step) == DO else step for step in out]
+            out.append([list(step), index, index])
+    return [(whole_quests(step, objectives) if objectives and kind(step) == DO else step, first, last) for step, first, last in out]
 
 
 def whole_quests(step: Step, objectives: Callable[[int], list[int] | None]) -> Step:

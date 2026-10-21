@@ -33,6 +33,7 @@ from signpost_tools.guidefile import Coord  # noqa: E402
 
 GRIND = "grind"
 TERRITORY_MIN = 4  # quests for the character's own faction a zone needs before it counts as theirs
+GRAIN_TRIES = 5  # finished routes of one grain (a different order of zones each) written out to find that grain's best
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,12 @@ class Settings:
     group_yards: float = steps.GROUP_YARDS  # neighbouring steps of one kind this near each other are written as one
     unknown_work: float = 300.0  # seconds given to a class quest whose objectives the pack does not have (taming, an escort...)
     instant_quests: bool = False  # keep quests with no objective that are handed in at the NPC that gave them: the pack probably lacks them
+    # The most quests the log holds at once; an accept is refused while it is full (a quest handed in at the NPC that gave it needs a free place
+    # too). Classic's is 25. VERIFY(beta): 40 is the value the user accepted (2026-10-21: "I believe the quest log limit has been bumped up from
+    # 25 to 40 for WoW Forever", then "accept a 40 quest cap for wow forever"); nothing is read from the client yet (the probe `questLogMax`,
+    # SignpostDB.probe.questLogMax, reads it); change the default only with that evidence.
+    quest_log_limit: int = 40
+    chapter_min_steps: int = 3  # a change of zone starts a new chapter only when the new zone lasts at least this many steps (counted once joined)
 
 
 @dataclass
@@ -201,6 +208,23 @@ class Plan:
                     found[a.quest] = v.level
         return found
 
+    def log_peak(self) -> tuple[int, int, float]:
+        """The most quests the route holds in the quest log at once, counted action by action (an accept adds one, a hand-in takes one out),
+        with the level the character had when the visit that first reached it began and the clock then. (0, 1, 0.0) for an empty route."""
+        held = peak = 0
+        level, clock = 1, 0.0
+        at = (1, 0.0)
+        for v in self.visits:
+            for a in v.actions:
+                if a.kind == "accept":
+                    held += 1
+                    if held > peak:
+                        peak, at = held, (level, clock)
+                elif a.kind == "turnin":
+                    held -= 1
+            level, clock = v.level, clock + v.seconds
+        return peak, at[0], at[1]
+
 
 @dataclass
 class BeamRun:
@@ -212,6 +236,8 @@ class BeamRun:
     pruned: int = 0
     trace: list = field(default_factory=list)  # (level, routes kept, best estimated total seconds) for each bucket worked
     log: dict = field(default_factory=dict)  # bucket -> the best routes held in it: (estimate, zone, level, clock)
+    seconds: float = 0.0  # how long the run took
+    best: "Plan | None" = None  # the best of its finished routes as it would be written (tidied); None when it finished none
 
 
 class Planner:
@@ -685,6 +711,10 @@ class Planner:
         return True
 
     def offered(self, q: PQuest, level: int, done, active, gone) -> bool:
+        """Whether the quest may be accepted now: the game offers it (level, prerequisites, chains, ...), the route still wants it, and the
+        quest log has a free place. Every accept the searches make or predict goes through here (`visit`, `options`, `overdue_hubs`)."""
+        if len(active) >= self.s.quest_log_limit:
+            return False
         if level < q.req or q.level > level + self.accept_over or q.id in self.forbidden:
             return False
         if level >= self.s.cap and q.id not in self.core:
@@ -812,6 +842,8 @@ class Planner:
             return self._grind_to(st, min(level + 1, self.s.cap))
         wanted: list[int] = []
         for q in self.window:
+            if len(active) >= self.s.quest_log_limit:
+                break  # a full log accepts nothing, whatever the level: no quest is waited for
             if q.id in done or q.id in active or q.id in gone or not self.ready(q, done, active, gone, level):
                 continue
             if not self.worth_now(q, level) and q.level + 8 < level:
@@ -1116,13 +1148,27 @@ class Planner:
         and the one that has levelled is not penalised for it. One run per entry of `Settings.parts` (a different grain of progress
         each, every one independent: what an earlier grain found never prunes a later one). The runs' best finished routes are then
         compared as they would be written, tidied (a guide may not leave quests in the log, and taking them out can cost a route much),
-        with the greedy route tidied too: the result is never slower than that."""
+        with the greedy route tidied too: the result is never slower than that. Each grain's own best route as written (of its first
+        `GRAIN_TRIES` different orders of zones) is a finalist too and is kept in `stats["grains"]` with what the grain did, so that the report
+        can say how far apart the grains are: the least the best route found can be off by."""
         s = self.s
         base = self._finish(self.rollout(self.start(start_hub)))
         self.calibrate(base)
         known = base.final.total if base.complete else float("inf")
-        runs = [self._layers(start_hub, max(1, parts), known, progress) for parts in s.parts or (2,)]
+        runs = []
+        for parts in s.parts or (2,):
+            started = time.perf_counter()
+            run = self._layers(start_hub, max(1, parts), known, progress)
+            run.seconds = time.perf_counter() - started
+            runs.append(run)
         reference = self.tidy(base, start_hub)
+        written: dict[int, Plan] = {}  # a finished route as it is written, found once
+
+        def as_written(final: PState) -> Plan:
+            if id(final) not in written:
+                written[id(final)] = self.tidy(self._finish(final), start_hub)
+            return written[id(final)]
+
         origin: dict[int, BeamRun] = {}
         tidied: list[Plan] = []
         seen: set = set()
@@ -1131,11 +1177,26 @@ class Planner:
             if sig in seen:
                 continue
             seen.add(sig)
-            candidate = self.tidy(self._finish(final), start_hub)
+            candidate = as_written(final)
             origin[id(candidate)] = run
             tidied.append(candidate)
             if len(tidied) >= s.alternatives + 8:
                 break
+        for run in runs:  # each grain's own best route as it is written, so that the report can say how far apart the grains are
+            signatures: set = set()
+            for final in sorted(run.finished, key=lambda f: f.total):
+                sig = self.signature(final)
+                if sig in signatures:
+                    continue
+                signatures.add(sig)
+                candidate = as_written(final)
+                if candidate.complete and (run.best is None or candidate.total < run.best.total):
+                    run.best = candidate
+                if len(signatures) >= GRAIN_TRIES:
+                    break
+            if run.best is not None and not any(run.best is c for c in tidied):
+                origin[id(run.best)] = run
+                tidied.append(run.best)
         pool = sorted((c for c in tidied if c.complete), key=lambda c: c.total)
         plan = pool[0] if pool and (not reference.complete or pool[0].total < reference.total) else reference
         winner = origin.get(id(plan), runs[0])
@@ -1148,6 +1209,9 @@ class Planner:
             baseline_seconds=reference.total,
             runs=len(runs),
             chosen="greedy" if plan is reference else "beam",
+            grains=[
+                dict(parts=r.parts, finals=r.finals, seconds=r.seconds, total=r.best.total if r.best is not None else None) for r in runs
+            ],
         )
         return plan
 
@@ -1276,37 +1340,73 @@ class Planner:
     def hub_name(self, hub: int | None) -> str:
         return self.hubs[hub].label if hub is not None else "(grinding)"
 
-    def emit(self, plan: Plan, class_token: str, split_after: int = 10) -> list:
-        """The route as chapters of guide steps: written one place at a time, then neighbouring steps of one kind joined
-        (signpost_tools/steps.py: a pick-up and hand-in step per area, a doing step per group of quests whose objectives are
-        near each other), a `.level` line before a quest above the last level asked for, a `.level` step for a grind,
-        `.optional` on group quests and `.note` where the rules have one. A chapter ends where the zone changes (once it has
-        `split_after` steps)."""
-        chapters: list[ChapterText] = []
-        current: ChapterText | None = None
+    def grind_kills(self, level: int, target: int, xp: float) -> float:
+        """The kills a grind from `level` to `target` that is worth `xp` experience comes to: at each level it climbs through, the kills of
+        creatures of that level the model's kill experience says its experience bar takes (the character's first level is part-way up)."""
+        model = self.model
+        have = max(0.0, sum(model.to_next(n) for n in range(level, target)) - xp)  # already earned towards `level`
+        kills = 0.0
+        for n in range(level, target):
+            each = model.kill_xp(n, n)
+            if each > 0:
+                kills += max(0.0, model.to_next(n) - have) / each
+            have = 0.0
+        return kills
+
+    def grind_note(self, xp: float, kills: float) -> str:
+        """What a grind step says about the size of the job: the experience still to grind and the kills it is, both rounded and both an
+        estimate (the experience a player needs depends on rested experience, the quests in the log and the creatures at hand). It does not
+        say "here": the grind follows the step before it, which may be in a town where nothing of the player's level lives."""
+        count = max(1, approx(kills))
+        return (
+            f"Grind about {approx(xp):,} experience before you go on: about {count:,} {'kill' if count == 1 else 'kills'} "
+            f"of creatures near your level (an estimate)"
+        )
+
+    def step_marks(self, hub: int, place: Coord | None) -> list:
+        """Lines that mark the step written for a place of a hub, after its quest lines. The seam where a step in a town gets the `.hub <town>`
+        line that profession tracks anchor on (a step with one is never joined with its neighbours): none yet."""
+        return []
+
+    def _grind_lines(self, target: int, xp: float, kills: float) -> list:
+        return [f"  .level {target} -- reach it first: kill or grind on the way", f"  .note {self.grind_note(xp, kills)}"]
+
+    def emit(self, plan: Plan, class_token: str) -> list:
+        """The route as chapters of guide steps. It is written one place at a time (the places of a visit are steps of their own), then
+        neighbouring steps of one kind are joined (signpost_tools/steps.py: a pick-up and hand-in step per area, a doing step per group of
+        quests whose objectives are near each other), with a `.level` line before a quest above the last level asked for, `.optional` on
+        group quests and `.note` where the rules have one. A grind (the route stops to kill for the level that opens quests) is a `.level N`
+        line and a note saying how much experience that is, written on the step before it, where the character stands when it begins (one
+        that comes first has no step before it and goes on the one after). Chapters are cut where the route goes to another zone for at
+        least `Settings.chapter_min_steps` steps and are named after the zone most of their steps are in (`split_chapters`)."""
+        pieces: list[Piece] = []
         gated = 0
         level = 1
         for v in plan.visits:
-            zone = self.hubs[v.hub].zone if v.hub is not None else (current.zone if current else None)
-            if current is None or (v.hub is not None and zone != current.zone and len(current.steps) >= split_after):
-                current = ChapterText(zone, level)
-                chapters.append(current)
-            if v.hub is None:
+            if v.hub is None:  # a grind
                 target = v.actions[0].index
-                current.steps.append([f"  .level {target} -- reach it first: kill or grind on the way"])
+                xp, kills = v.xp, self.grind_kills(level, target, v.xp)
+                if pieces and pieces[-1].grind is not None:  # two in a row are one
+                    before = pieces[-1]
+                    target, xp, kills = max(target, before.grind[0]), xp + before.grind[1], kills + before.grind[2]
+                    pieces.pop()
+                    first_in = before.level_in
+                else:
+                    first_in = level
+                pieces.append(Piece(self._grind_lines(target, xp, kills), None, first_in, v.level, (target, xp, kills)))
                 gated = max(gated, target)
                 level = v.level
-                current.level_out = level
                 continue
+            zone = self.hubs[v.hub].zone
             group: list[Action] = []
             for a in v.actions + [None]:
                 if group and (a is None or a.place != group[0].place):
-                    gated = self._step(current, group, class_token, gated)
+                    lines, gated = self._step(group, class_token, gated)
+                    pieces.append(Piece(lines + self.step_marks(v.hub, group[0].place), zone, level, v.level))
                     group = []
                 if a is not None:
                     group.append(a)
             level = v.level
-            current.level_out = level
 
         def near(a: Coord, b: Coord) -> bool:
             return a.map == b.map and self._yards(a, b) <= self.s.group_yards
@@ -1314,11 +1414,36 @@ class Planner:
         def objectives(qid: int) -> list[int] | None:
             return [o.index for o in self.quests[qid].objectives] if qid in self.quests else None
 
-        for chapter in chapters:
-            chapter.steps = steps.group(chapter.steps, near, objectives)
+        joined: list[Piece] = []
+        for lines, first, last in steps.group_spans([p.lines for p in pieces], near, objectives):
+            head, tail = pieces[first], pieces[last]
+            joined.append(Piece(lines, head.zone, head.level_in, tail.level_out, head.grind))
+        placed: list[Piece] = []  # a grind is folded into the step before it (a lone `.level` step has no place of its own)
+        carried: Piece | None = None
+        for piece in joined:
+            if piece.grind is None:
+                if carried is not None:  # the route began with a grind: it goes on its first step, after the step's `.goto` lines
+                    at = next((i for i, line in enumerate(piece.lines) if not steps.is_goto(line)), len(piece.lines))
+                    piece.lines = piece.lines[:at] + carried.lines + piece.lines[at:]
+                    piece.level_in = carried.level_in
+                    carried = None
+                placed.append(piece)
+            elif placed:
+                placed[-1].lines = placed[-1].lines + piece.lines
+                placed[-1].level_out = piece.level_out
+            else:
+                carried = piece
+        if carried is not None:  # nothing but grinds: the chapter that says so
+            placed.append(carried)
+        chapters: list[ChapterText] = []
+        for first, last, zone in split_chapters([p.zone for p in placed], self.s.chapter_min_steps):
+            chapter = ChapterText(zone, placed[first].level_in, placed[last].level_out)
+            chapter.steps = [p.lines for p in placed[first : last + 1]]
+            chapters.append(chapter)
         return chapters
 
-    def _step(self, chapter: "ChapterText", group: list, class_token: str, gated: int) -> int:
+    def _step(self, group: list, class_token: str, gated: int) -> tuple[list, int]:
+        """The lines of the step for the actions of one place, and the highest level the route has asked for so far."""
         place = group[0].place
         lines = [f"  .goto {place.dsl()}"] if place is not None else []
         optional: dict[int, str] = {}
@@ -1349,13 +1474,25 @@ class Planner:
                 optional[q.id] = name
         for qid, name in optional.items():
             lines.append(f"  .optional {qid} -- group quest: {name}")
-        chapter.steps.append(lines)
-        return gated
+        return lines, gated
+
+
+@dataclass
+class Piece:
+    """One step of the route as the planner writes it, before neighbours are joined: its lines, the zone of its first `.goto` (None for a grind,
+    which has no place of its own), the level the character had when the visit it comes from began and when it ended, and for a grind what it
+    asks: (the level to reach, the experience to grind, the kills that is)."""
+
+    lines: list
+    zone: int | None
+    level_in: int
+    level_out: int
+    grind: tuple | None = None
 
 
 @dataclass
 class ChapterText:
-    zone: int | None
+    zone: int | None  # the zone most of its steps are in: its name
     level_in: int
     level_out: int = 0
     steps: list = field(default_factory=list)
@@ -1373,6 +1510,53 @@ class ChapterText:
 
 def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def approx(value: float) -> int:
+    """A number rounded to two significant figures, as a person would say it (2,437 -> 2,400; 555 -> 560; 54.6 -> 55; 8.4 -> 8)."""
+    whole = int(value + 0.5)
+    if whole < 100:
+        return whole
+    step = 10 ** (len(str(whole)) - 2)
+    return int(whole / step + 0.5) * step
+
+
+def split_chapters(zones: list, min_steps: int) -> list[tuple[int, int, object]]:
+    """Cut a route, given the zone of each of its steps in order, into chapters: [(first step, last step, zone it is named after)].
+
+    A change of zone starts a new chapter only when the zone it goes to lasts at least `min_steps` steps in a row (counted once the steps are
+    joined); a shorter stay is a detour and belongs to the chapter it happens in, so a chapter never ends a step or two after it started.
+    The first chapter begins at the first step whatever it is (a short stay before the first long one goes into it); a return to the zone a
+    chapter began in after a detour goes on with that chapter. Each chapter is named after the zone most of its steps are in (on a tie the one
+    it began in, then the earliest)."""
+    if not zones:
+        return []
+    runs: list[list] = []  # [zone, first step, last step] of every stay in one zone
+    for index, zone in enumerate(zones):
+        if runs and runs[-1][0] == zone:
+            runs[-1][2] = index
+        else:
+            runs.append([zone, index, index])
+    starts: list[tuple[int, object]] = []  # (first step, the zone it began in)
+    for zone, first, last in runs:
+        if last - first + 1 < max(1, min_steps):
+            continue
+        if not starts:
+            starts.append((0, zone))
+        elif zone != starts[-1][1]:
+            starts.append((first, zone))
+    if not starts:
+        starts.append((0, zones[0]))  # every stay is short: one chapter
+    chapters = []
+    for number, (first, began) in enumerate(starts):
+        last = starts[number + 1][0] - 1 if number + 1 < len(starts) else len(zones) - 1
+        counts: dict = {}
+        for zone in zones[first : last + 1]:
+            counts[zone] = counts.get(zone, 0) + 1
+        order = list(counts)  # the order of first appearance
+        named = max(order, key=lambda z: (counts[z], z == began, -order.index(z)))
+        chapters.append((first, last, named))
+    return chapters
 
 
 def _unique(coords: list) -> list:

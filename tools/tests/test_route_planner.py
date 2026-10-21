@@ -1,7 +1,9 @@
 import contextlib
 import io
 import json
+import re
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -113,6 +115,49 @@ class EndToEndTest(RouteCase):
         self.assertIn("reaches level 6", text)
         self.assertIn("greedy:", text.strip().splitlines()[-1])
 
+    def test_the_report_says_how_many_quests_the_log_holds_at_most_and_the_limit_is_obeyed(self):
+        args = ("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "0", "--decisions", "0")
+        code, text = self.run_main(*args)
+        self.assertIn("the quest log holds at most 40 quests", text)
+        free = int(re.search(r"the most quests held at once: (\d+) \(at level \d+, \d+h\d\d in\); the log holds 40", text).group(1))
+        self.assertGreater(free, 3)  # the fixture holds a dozen when it may
+        self.assertRegex(text, rf"the written route holds at most {free} quests at once \(the log holds 40\)")
+        code, text = self.run_main(*args, "--quest-log", "3")
+        self.assertEqual(code, 0, text)
+        self.assertIn("the quest log holds at most 3 quests", text)
+        held = int(re.search(r"the most quests held at once: (\d+)", text).group(1))
+        self.assertLessEqual(held, 3)
+        self.assertRegex(text, rf"the written route holds at most {held} quests at once \(the log holds 3\)")
+        self.assertNotIn("ERROR, more than the log holds", text)
+
+    def test_the_grind_steps_are_listed_with_their_amounts_and_each_says_how_much_in_the_chapters(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            code, text = self.run_main("troll", "--preset", "greedy", "--cap", "8", "--out", out_dir, "--steps", "0", "--decisions", "0")
+            self.assertEqual(code, 0, text)
+            self.assertRegex(text, r"grinding      1 grind step\(s\) ask the player to kill for a level: [\d,]+ experience \(\d+\.\d% of the route's\)")
+            self.assertRegex(text, r"at \d+h\d\d: level \d to 8, about [\d,]+ experience, about [\d,]+ kills, \d+m")
+            chapters = sorted((Path(out_dir) / "greedy" / "Guides" / "Chapters").glob("plan-*.lua"))
+            written = "\n".join(path.read_text(encoding="utf-8") for path in chapters)
+            self.assertRegex(
+                written,
+                r"\.level 8 -- reach it first: kill or grind on the way\n  \.note Grind about [\d,]+ experience before you go on: "
+                r"about [\d,]+ kills of creatures near your level \(an estimate\)",
+            )
+            data = json.loads((Path(out_dir) / "greedy" / "plan.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(data["grinds"]), 1)
+            self.assertEqual(data["grinds"][0]["level_to"], 8)
+
+    def test_the_chapters_are_cut_where_the_zone_changes_for_as_long_as_the_setting_asks(self):
+        counts = {}
+        for asked in (1, 100):
+            with tempfile.TemporaryDirectory() as out_dir:
+                args = ("troll", "--preset", "greedy", "--cap", "6", "--out", out_dir, "--chapter-steps", str(asked), "--steps", "0", "--decisions", "0")
+                code, text = self.run_main(*args)
+                self.assertEqual(code, 0, text)
+                counts[asked] = len(list((Path(out_dir) / "greedy" / "Guides" / "Chapters").glob("plan-*.lua")))
+        self.assertEqual(counts[100], 1)  # one long stay is all there is
+        self.assertGreater(counts[1], 1)  # every change of zone is a chapter when one step is enough
+
     def test_every_technique_compares_in_one_table_and_files_are_written(self):
         with tempfile.TemporaryDirectory() as out_dir:
             code, text = self.run_main(
@@ -131,6 +176,11 @@ class EndToEndTest(RouteCase):
             self.assertTrue(data["complete"])
             self.assertEqual(data["lint_errors"], [])
             self.assertEqual(data["guide"], "test-guide")
+            self.assertEqual(data["quest_log_limit"], 40)
+            self.assertGreater(data["quest_log_peak"], 0)
+            thorough = json.loads((Path(out_dir) / "thorough" / "plan.json").read_text(encoding="utf-8"))
+            self.assertEqual([g["parts"] for g in thorough["grains"]], [2, 4, 8])  # every grain of thorough is in the plan file with what it found
+            self.assertIn("grains        each grain of progress searched on its own", text)
 
     def test_the_route_starts_where_the_guide_does_or_at_the_races_first_quest(self):
         code, text = self.run_main("troll", "--preset", "greedy", "--cap", "6", "--no-write", "--steps", "1", "--decisions", "0")
@@ -178,12 +228,76 @@ class SearchReportTest(unittest.TestCase):
         self.assertIn("none faster than the greedy one once tidied", text)
         self.assertNotIn("NO route of its own", text)
 
+    def test_a_search_of_several_grains_says_how_far_apart_they_are_and_one_grain_says_nothing_of_it(self):
+        grains = [dict(parts=2, finals=5, seconds=1.0, total=900.0), dict(parts=4, finals=7, seconds=2.0, total=1000.0)]
+        self.assertIn("the grains disagree by", self.report(finals=12, baseline_seconds=1000.0, chosen="beam", grains=grains))
+        self.assertNotIn("the grains disagree", self.report(finals=12, baseline_seconds=1000.0, chosen="beam", grains=grains[:1]))
+        self.assertNotIn("the grains disagree", self.report(finals=12, baseline_seconds=1000.0, chosen="beam"))
+
     def test_a_beam_that_won_says_how_many_routes_it_finished_and_how_much_faster(self):
         text = self.report(finals=12, baseline_seconds=1000.0, chosen="beam")
         self.assertIn("12 complete routes reached the cap", text)
         self.assertIn("the best 2 with different orders of zones", text)
         self.assertIn("10.0% faster", text)  # the route takes 900 s against the greedy route's 1000 s
         self.assertNotIn("this is the greedy route", text)
+
+
+class QuestLogPeakTest(unittest.TestCase):
+    def test_a_written_route_is_counted_on_its_own_steps_an_accept_adds_one_and_a_hand_in_takes_one_out(self):
+        def step(*directives):
+            return types.SimpleNamespace(directives=[types.SimpleNamespace(name=name, args={"quest": quest} if quest else {}) for name, quest in directives])
+
+        route = types.SimpleNamespace(
+            steps=[
+                step(("goto", None), ("accept", 1), ("accept", 2)),
+                step(("accept", 3), ("complete", 1), ("turnin", 1)),
+                step(("turnin", 2), ("turnin", 3), ("accept", 4)),
+                step(("accept", 5), ("accept", 6), ("accept", 7)),
+                step(("turnin", 4), ("turnin", 99)),  # a hand-in of a quest that was never accepted here takes nothing out
+            ]
+        )
+        self.assertEqual(rp.route_log_peak(route), 4)  # 2 held, 3 at the second step, only 4 at the third, and 4 + three accepts = four at the fourth
+        self.assertEqual(rp.route_log_peak(types.SimpleNamespace(steps=[])), 0)
+
+
+class GrainReportTest(unittest.TestCase):
+    def lines(self, grains):
+        out = rp.Out(quiet=True)
+        rp.report_grains(out, grains)
+        return "\n".join(out.lines)
+
+    GRAINS = [
+        dict(parts=2, finals=1204, seconds=40.2, total=80000.0),
+        dict(parts=4, finals=9, seconds=95.5, total=84800.0),
+        dict(parts=8, finals=0, seconds=200.0, total=None),
+    ]
+
+    def test_each_grain_is_listed_with_its_route_as_written_and_the_spread_is_said_in_hours_and_percent(self):
+        text = self.lines(self.GRAINS)
+        self.assertIn("22h13", text)  # 80,000 s
+        self.assertIn("23h33", text)  # 84,800 s
+        self.assertIn("1,204", text)
+        self.assertIn("none", text)  # the grain that finished nothing
+        self.assertIn("the grains disagree by 1h20, 6%: trust the best route no more than that", text)
+        shortest = [line for line in text.splitlines() if "<- the shortest" in line]
+        self.assertEqual(len(shortest), 1)
+        self.assertIn("22h13", shortest[0])
+
+    def test_a_spread_above_five_percent_is_a_warning_and_five_or_less_is_not(self):
+        self.assertIn("WARNING", self.lines(self.GRAINS))  # 6%
+        close = [dict(parts=2, finals=3, seconds=1.0, total=80000.0), dict(parts=4, finals=3, seconds=1.0, total=83200.0)]
+        text = self.lines(close)
+        self.assertIn("the grains disagree by 0h53, 4%", text)
+        self.assertNotIn("WARNING", text)
+        edge = [dict(parts=2, finals=3, seconds=1.0, total=80000.0), dict(parts=4, finals=3, seconds=1.0, total=84000.0)]
+        self.assertNotIn("WARNING", self.lines(edge))  # exactly 5% is not above it
+
+    def test_with_fewer_than_two_routes_there_is_nothing_to_compare(self):
+        text = self.lines([dict(parts=2, finals=3, seconds=1.0, total=80000.0), dict(parts=4, finals=0, seconds=1.0, total=None)])
+        self.assertIn("fewer than two grains finished a route", text)
+        self.assertNotIn("disagree", text)
+        self.assertIsNone(rp.spread_of([]))
+        self.assertEqual(rp.spread_of([dict(total=100.0), dict(total=110.0)]), (10.0, 10.0))
 
 
 class Fake:

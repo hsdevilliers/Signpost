@@ -340,6 +340,44 @@ class BeamTest(PlannerCase):
             self.assertGreaterEqual(other.total, plan.total - 1e-6)
         self.assertGreater(plan.stats["finals"], len(plan.alternatives))
 
+    def test_every_grain_reports_its_own_best_route_as_it_is_written(self):
+        pl = self.two_zones(parts=(1, 2, 4))
+        plan = pl.plan("beam", self.start(pl))
+        grains = plan.stats["grains"]
+        self.assertEqual([g["parts"] for g in grains], [1, 2, 4])
+        for g in grains:
+            self.assertGreater(g["finals"], 0)
+            self.assertIsNotNone(g["total"])  # each grain has a route of its own to show, whatever the others found
+            self.assertGreaterEqual(g["seconds"], 0.0)
+        self.assertEqual(sum(g["finals"] for g in grains), plan.stats["finals"])
+        # the route chosen is the best of everything written: no grain's best is shorter than it
+        self.assertAlmostEqual(plan.total, min([g["total"] for g in grains] + [plan.stats["baseline_seconds"]]))
+
+    def test_a_grain_is_judged_by_its_route_after_it_is_written_not_by_the_search_estimate(self):
+        pl = self.two_zones(parts=(2, 4))
+        real, calls = pl.tidy, []
+
+        def tidy(plan, start_hub):  # every route the beam finished turns out slow when written; the greedy one (the first tidied) does not
+            out = real(plan, start_hub)
+            calls.append(plan)
+            if len(calls) > 1 and not plan.stats:
+                out.penalty += 1e7
+            return out
+
+        pl.tidy = tidy
+        plan = pl.plan("beam", self.start(pl))
+        self.assertEqual(len(plan.stats["grains"]), 2)
+        for g in plan.stats["grains"]:
+            self.assertGreater(g["total"], 1e7)  # what a grain says is its route as written
+        self.assertEqual(plan.stats["chosen"], "greedy")
+
+    def test_a_grain_whose_routes_look_like_another_grains_still_has_its_own_best(self):
+        pl = self.two_zones(parts=(2, 4, 8))
+        pl.signature = lambda final: ("one order of zones",)  # every route counts as the same one, so the pool of the best routes keeps a single one...
+        plan = pl.plan("beam", self.start(pl))
+        self.assertTrue(all(g["total"] is not None for g in plan.stats["grains"]))  # ...but each grain still reports the best of its own
+        self.assertEqual(len(plan.alternatives), 2)  # and each is a finalist too: the other two grains' best routes
+
 
 class CapTest(PlannerCase):
     def test_at_the_cap_only_the_class_quests_and_what_they_need_are_worth_the_walk(self):
@@ -466,6 +504,18 @@ class ActivityStepsTest(PlannerCase):
         step = next(s for s in grouped.split("step\n") if ".accept 260" in s)
         self.assertIn(".accept 270", step)  # the neighbour and the giver at the hub
         self.assertNotIn(".accept 270", next(s for s in apart.split("step\n") if ".accept 260" in s))
+
+    def test_the_seam_for_marks_writes_its_lines_on_every_step_and_a_step_with_a_hub_line_is_not_joined(self):
+        plain = {n: {"n": f"Plain {n}", "r": 1, "l": 1, **HOME} for n in range(270, 274)}
+        quests = {**plain, 260: {"n": "Next Door", "r": 1, "l": 1, "s": {"npc": [1004]}, "e": {"npc": [1004]}, "side": "Horde", "races": 178}}
+        pl = self.planner(quests=quests, npcs={**NPCS, **self.NEIGHBOUR})
+        plan = pl.plan("greedy", self.start(pl))
+        self.assertEqual(pl.step_marks(0, None), [])  # nothing marks a step yet
+        joined = "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+        pl.step_marks = lambda hub, place: ["  .hub Orgrimmar"]
+        marked = "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+        self.assertEqual(marked.count(".hub Orgrimmar"), marked.count("step\n"))  # every step has its line, after its quest lines
+        self.assertGreater(marked.count("step\n"), joined.count("step\n"))  # and none is joined with its neighbour: a step has one `.hub`
 
     BOARS = {3101: {"n": "Boar One", "p": [[10, 60, 20]], "side": "none"}, 3102: {"n": "Boar Two", "p": [[10, 63, 21]], "side": "none"}}  # 60 yards apart
 
@@ -632,6 +682,215 @@ class EmitTest(PlannerCase):
             other = ({212, 213} - chosen).pop()
             self.assertIn(other, skips)
             self.assertIn("alternative to quest", skips[other])
+
+
+class QuestLogTest(PlannerCase):
+    """The quest log holds a fixed number of quests (Settings.quest_log_limit): nothing is accepted while it is full, in every search."""
+
+    def test_a_full_log_offers_nothing_and_a_free_place_offers_again(self):
+        three = {q: frozenset() for q in (203, 216, 220)}
+        full, roomy = self.planner(quest_log_limit=3), self.planner(quest_log_limit=4)
+        self.assertFalse(full.offered(full.quests[201], 1, frozenset(), three, frozenset()))  # three held, three allowed
+        self.assertTrue(roomy.offered(roomy.quests[201], 1, frozenset(), three, frozenset()))  # one more place and it is offered
+        self.assertTrue(full.offered(full.quests[201], 1, frozenset(), {203: frozenset(), 216: frozenset()}, frozenset()))
+
+    def test_a_visit_never_holds_more_than_the_log_takes_and_goes_on_when_a_quest_is_handed_in(self):
+        limit = 3
+        full, free = self.planner(quest_log_limit=limit), self.planner()
+        hub = full.quests[201].start_hubs[0]
+        child = full.visit(full.start(hub), hub)
+        self.assertLessEqual(engine.Plan(visits=[child.visit]).log_peak()[0], limit)
+        self.assertLessEqual(len(child.active), limit)
+        first = free.visit(free.start(hub), hub)
+        self.assertGreater(engine.Plan(visits=[first.visit]).log_peak()[0], limit)  # given room the same visit takes in a dozen: the limit is what stops it
+        accepts = [a.quest for a in child.visit.actions if a.kind == "accept"]
+        turnins = [a.quest for a in child.visit.actions if a.kind == "turnin"]
+        self.assertGreater(len(accepts), limit)  # the places freed by hand-ins are used again within the visit
+        self.assertTrue(turnins)
+
+    def test_every_search_keeps_the_log_within_the_limit_to_the_end(self):
+        full, free = self.planner(quest_log_limit=4), self.planner()
+        hub = self.start(full)
+        for preset in ("greedy", "lookahead", "beam"):
+            plan = full.plan(preset, hub)
+            self.assertTrue(plan.complete, preset)
+            self.assertLessEqual(plan.log_peak()[0], 4, preset)
+        self.assertGreater(free.plan("greedy", hub).log_peak()[0], 4)  # without the limit this fixture holds more: the limit is what keeps it down
+
+    def test_a_tidied_route_is_walked_again_within_the_limit(self):
+        free = self.planner(cap=8)
+        hub = self.start(free)
+        raw = free._finish(free.rollout(free.start(hub)))
+        self.assertGreater(raw.log_peak()[0], 3)
+        raw.final.active = {203: frozenset({1})}  # as if a quest had been accepted and never finished: the replay walks the hubs again
+        tight = self.planner(cap=8, quest_log_limit=3)
+        self.assertLessEqual(tight.tidy(raw, hub).log_peak()[0], 3)
+
+    def test_a_full_log_does_not_wait_for_a_level_that_would_open_a_quest_it_cannot_take(self):
+        def ground_to(limit):
+            pl = self.planner(quest_log_limit=limit)
+            st = pl.start(self.start(pl), 1)
+            st.active = {203: frozenset({1})}  # one quest held, its objective open and in reach
+            return pl.grind(st).level
+
+        self.assertLess(ground_to(40), 6)  # with room, quests that wait for level 4 are what it grinds for
+        self.assertEqual(ground_to(1), 6)  # the log is full: no quest can be taken at any level, so it grinds on to the cap
+
+    def test_the_peak_is_counted_action_by_action_with_the_level_and_the_clock_it_was_reached_at(self):
+        def visit(*actions, level=1, seconds=60.0):
+            return engine.Visit(0, [engine.Action(kind, quest, None, None) for kind, quest in actions], seconds, 0.0, False, level)
+
+        plan = engine.Plan(
+            visits=[
+                visit(("accept", 1), ("accept", 2), ("turnin", 1), ("accept", 3), level=2),  # two at most
+                visit(("accept", 4), ("accept", 5), ("turnin", 2), ("accept", 6), level=3, seconds=90.0),  # 2 + 2 = four, then one out and one in
+                visit(("turnin", 3), ("turnin", 4), ("turnin", 5), ("turnin", 6), level=3),
+            ]
+        )
+        self.assertEqual(plan.log_peak(), (4, 2, 60.0))  # the second visit began at level 2, a minute in
+        self.assertEqual(engine.Plan().log_peak(), (0, 1, 0.0))
+
+
+class GrindStepTest(PlannerCase):
+    """A grind is a `.level N` line with a note that says how much there is to grind (user, 2026-10-21: grinding at a gate is fine)."""
+
+    def test_numbers_are_rounded_to_two_figures(self):
+        self.assertEqual(
+            [engine.approx(x) for x in (2437, 2450, 555, 54.6, 8.4, 99.6, 1000, 14213.4, 0.2)], [2400, 2500, 560, 55, 8, 100, 1000, 14000, 0]
+        )
+
+    def test_the_note_says_how_much_experience_and_how_many_kills_that_is_as_an_estimate(self):
+        pl = self.planner()
+        self.assertEqual(
+            pl.grind_note(2437.0, 54.6), "Grind about 2,400 experience before you go on: about 55 kills of creatures near your level (an estimate)"
+        )
+        self.assertEqual(
+            pl.grind_note(30.0, 0.4), "Grind about 30 experience before you go on: about 1 kill of creatures near your level (an estimate)"
+        )
+
+    def test_the_kills_follow_the_experience_bar_of_each_level_the_grind_climbs_through(self):
+        pl = self.planner()
+        # a kill of a creature of the character's own level is worth 45 + 5 * level; level 4 takes 2,100 experience, level 5 takes 2,800
+        self.assertAlmostEqual(pl.grind_kills(4, 5, 1300.0), 1300 / 65)  # 800 of level 4 are already earned
+        self.assertAlmostEqual(pl.grind_kills(4, 6, 1300.0 + 2800.0), 1300 / 65 + 2800 / 70)
+
+    def test_a_grind_is_two_lines_on_the_step_before_it_not_a_step_of_its_own(self):
+        pl = self.planner(cap=8)  # no quest gets a level 4 character to 8: it grinds 10,913 experience at the end
+        plan = pl.plan("greedy", self.start(pl))
+        grind = next(v for v in plan.visits if v.hub is None)
+        self.assertEqual(round(grind.xp), 10913)
+        text = "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+        self.assertIn(
+            "  .level 8 -- reach it first: kill or grind on the way\n"
+            "  .note Grind about 11,000 experience before you go on: about 140 kills of creatures near your level (an estimate)\n",
+            text,
+        )  # 13 + 2800 + 3600 + 4500 experience of levels 4 to 7 at 65, 70, 75 and 80 each: 144 kills, said as 140
+        self.assertRegex(text, r"\.turnin 215 -- After A Dropped One\n  \.level 8 -- reach it first")  # after the step's own work, in the step
+        for step in text.split("step\n")[1:]:
+            self.assertTrue(steps.names(step.splitlines()) - {"level", "note"}, step)  # no step is only a level line and a note
+
+    def test_the_level_line_is_still_the_gate_so_the_quests_after_it_ask_for_nothing_more(self):
+        pl = self.planner(cap=8, quests={**QUESTS, 250: {"n": "Needs Six", "r": 6, "l": 6, **HOME}})
+        plan = pl.plan("greedy", self.start(pl))
+        self.assertIn(250, plan.final.done)
+        text = "\n".join(c.text("West") for c in pl.emit(plan, "HUNTER"))
+        self.assertEqual(text.count(".level 6"), 1)  # the grind to level 6 gates the quest that needs it: the quest's step does not repeat the line
+        self.assertLess(text.index(".level 6"), text.index(".accept 250"))
+
+    def test_a_grind_that_comes_first_goes_on_the_step_after_it_and_two_in_a_row_are_one(self):
+        pl = self.planner()
+        hub = self.start(pl)
+        first = pl._grind_to(pl.start(hub), 3)  # level 1 to 3: 1,300 experience, 400 / 50 + 900 / 55 kills
+        plan = pl._finish(pl.visit(first, hub))
+        step = pl.emit(plan, "HUNTER")[0].steps[0]
+        self.assertEqual(step[0], "  .goto 10,40.0,40.0")  # the step's own position stays first
+        self.assertEqual(step[1], "  .level 3 -- reach it first: kill or grind on the way")
+        self.assertIn("Grind about 1,300 experience before you go on: about 24 kills", step[2])
+        twice = pl._grind_to(pl._grind_to(pl.start(hub), 2), 4)  # 400, then 900 + 1,400: 2,700 experience
+        text = "\n".join(c.text("West") for c in pl.emit(pl._finish(pl.visit(twice, hub)), "HUNTER"))
+        self.assertEqual(text.count("reach it first"), 1)
+        self.assertIn(".level 4 -- reach it first", text)
+        self.assertIn("Grind about 2,700 experience before you go on: about 48 kills", text)  # 8 + 900 / 55 + 1,400 / 60 kills
+
+    def test_a_route_of_nothing_but_a_grind_is_still_written(self):
+        pl = self.planner()
+        plan = engine.Plan(visits=[pl._grind_to(pl.start(self.start(pl)), 2).visit])
+        chapters = pl.emit(plan, "HUNTER")
+        self.assertEqual(len(chapters), 1)
+        self.assertEqual(len(chapters[0].steps), 1)
+        self.assertIn(".level 2 -- reach it first", "\n".join(chapters[0].steps[0]))
+
+
+class ChapterTest(PlannerCase):
+    """Chapters are cut where the route goes to another zone for a while and are named after the zone most of their steps are in."""
+
+    WEST, EAST = 10, 20  # the fixture's zones: Westland and Eastland
+    FAR = [(10, 10), (10, 90), (90, 10), (90, 90), (50, 50), (30, 70)]  # places a few hundred yards apart or more: a step each
+
+    def test_a_change_of_zone_starts_a_chapter_only_when_the_new_zone_lasts(self):
+        a, b, c = "A", "B", "C"
+        cut = engine.split_chapters
+        self.assertEqual(cut([a] * 5 + [b] * 3, 3), [(0, 4, a), (5, 7, b)])
+        self.assertEqual(cut([a] * 5 + [b] * 2 + [a] * 4, 3), [(0, 10, a)])  # a stay of two steps is a detour, and the return goes on with the chapter
+        self.assertEqual(cut([a] * 4 + [b] * 4 + [a] * 4, 3), [(0, 3, a), (4, 7, b), (8, 11, a)])  # a stay of four is not
+        self.assertEqual(cut([b] + [a] * 4, 3), [(0, 4, a)])  # a short first stay is in the chapter that follows, which is named after what most of it is
+        self.assertEqual(cut([a] * 3 + [b] * 2, 3), [(0, 4, a)])  # and a short last one in the chapter before
+        self.assertEqual(cut([a, b, a, b, a, b], 3), [(0, 5, a)])  # nothing lasts: one chapter, named after the zone it began in on a tie
+        self.assertEqual(cut([a] * 3 + [b] * 2 + [c] + [b] * 2 + [c] + [b] * 2, 3), [(0, 10, b)])  # named after the zone most of its steps are in
+        self.assertEqual(cut([a, b], 1), [(0, 0, a), (1, 1, b)])  # one step is enough when asked for
+        self.assertEqual(cut([a, b], 0), [(0, 0, a), (1, 1, b)])
+        self.assertEqual(cut([a] * 3, 100), [(0, 2, a)])
+        self.assertEqual(cut([], 3), [])
+
+    def two_zones(self, west, east, **settings):
+        """A quest giver at each of the `west` and `east` places (Westland and Eastland), each with a quest of its own that it gives and takes
+        back (the first with more, so that a zone has the four quests of the character's side it needs to count as theirs)."""
+        npcs, quests = dict(NPCS), {}
+        for zone, places, first in ((self.WEST, west, 400), (self.EAST, east, 500)):
+            for n, (x, y) in enumerate(places):
+                npc = first + n
+                npcs[npc] = {"n": f"Giver {npc}", "p": [[zone, x, y]], "side": "Horde"}
+                for extra in range(1 + (max(0, 4 - len(places)) if n == 0 else 0)):
+                    quests[npc * 10 + extra] = {
+                        "n": f"Errand {npc}.{extra}", "r": 1, "l": 3, "s": {"npc": [npc]}, "e": {"npc": [npc]}, "side": "Horde", "races": 178
+                    }
+        pl = self.planner(quests=quests, npcs=npcs, cap=3, **settings)
+        return pl, pl.plan("greedy", engine.start_hub_for(pl))
+
+    def summary(self, pl, plan):
+        return [(c.zone, len(c.steps)) for c in pl.emit(plan, "HUNTER")]
+
+    def test_a_chapter_is_named_after_the_zone_most_of_its_steps_are_in(self):
+        pl, plan = self.two_zones(self.FAR[:2], self.FAR[:4])  # two steps in Westland, then four in Eastland: the first hub's zone named it before
+        self.assertEqual(self.summary(pl, plan), [(self.EAST, 6)])
+        pl, plan = self.two_zones(self.FAR[:4], self.FAR[:4])
+        self.assertEqual(self.summary(pl, plan), [(self.WEST, 4), (self.EAST, 4)])  # two stays of four steps: two chapters
+
+    def test_the_chapters_follow_the_route_and_each_one_starts_at_the_level_the_one_before_ended_at(self):
+        pl, plan = self.two_zones(self.FAR[:4], self.FAR[:4])
+        first, second = pl.emit(plan, "HUNTER")
+        self.assertEqual(first.level_in, 1)
+        self.assertEqual(first.level_out, second.level_in)
+        self.assertEqual(second.level_out, plan.final.level)
+        self.assertEqual((first.level_out, plan.final.level), (2, 3))  # four quests of level 3 make level 2; the eight are short of the cap: the last step grinds
+        self.assertTrue(first.text("Westland").startswith("#chapter 1-2 Westland\nstep\n"))
+        self.assertTrue(second.text("Eastland").startswith("#chapter 2-3 Eastland\nstep\n"))
+        self.assertTrue(all(any(line.strip().startswith(".goto 10,") for line in s) for s in first.steps))  # Westland's steps first...
+        self.assertTrue(all(any(line.strip().startswith(".goto 20,") for line in s) for s in second.steps))  # ...then Eastland's
+        self.assertIn(".level 3 -- reach it first", "\n".join(second.steps[-1]))  # the grind is on the last step of the route, not a step of its own
+
+    def test_steps_are_counted_once_they_are_joined(self):
+        near = [(10, 10), (90, 10), (50, 50), (52, 50)]  # the last two are forty yards apart: one pick-up and hand-in step
+        pl, plan = self.two_zones(self.FAR[:4], near, chapter_min_steps=3)
+        self.assertEqual(self.summary(pl, plan), [(self.WEST, 4), (self.EAST, 3)])  # four places, three steps: a stay of three
+        pl, plan = self.two_zones(self.FAR[:4], near, chapter_min_steps=4)
+        self.assertEqual(self.summary(pl, plan), [(self.WEST, 7)])  # counted before joining it would have been four, and a chapter
+
+    def test_the_setting_decides_how_long_a_stay_has_to_be(self):
+        for asked, expected in ((1, [self.WEST, self.EAST]), (3, [self.WEST, self.EAST]), (4, [self.WEST]), (100, [self.WEST])):
+            pl, plan = self.two_zones(self.FAR[:4], self.FAR[:3], chapter_min_steps=asked)
+            self.assertEqual([c.zone for c in pl.emit(plan, "HUNTER")], expected, asked)  # three steps in Eastland are a detour when four are asked for
+
 
 
 class SettingsTest(unittest.TestCase):
