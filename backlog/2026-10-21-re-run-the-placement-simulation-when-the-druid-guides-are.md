@@ -1,12 +1,14 @@
 ---
 title: Re-run the placement simulation when the druid guides are regenerated and update docs/ENGINE.md
 kind: task
-status: open
+status: done
 priority: normal
 area: engine, guides
 source: claude
 raised: 2026-10-21
 raised_in: batch 1, WP-B (Find my place)
+closed: 2026-10-21
+resolution: feat/find-my-place (WP-B): the tables of docs/ENGINE.md are those of the three final guides, run on 2026-10-21; tests/placement_spec.lua holds. The Tauren guide's chapter levels no longer run low (mean -0.04 levels against the simulator's after the half level, 90th percentile of the error 0.50). The suggested lint for the chapter levels is a new item.
 ---
 
 ## What

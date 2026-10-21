@@ -309,13 +309,14 @@ player; it reads no game state, so the specs and the simulation drive it directl
 
 - `:Find(guide, snapshot, opts?)` → result, or nil for a guide without steps. `snapshot = { level, done(questID), active(questID),
   ready(questID)? }`: `done` is flagged completed (or turned in), `active` in the quest log, `ready` in the log with every objective
-  done; a missing function knows nothing. `opts` overrides the constants (`openWeight`, `doneWeight`, `levelWeight`, `bias`) for the
-  simulation. The result: `index` (the step the pointer goes on, 1 .. #steps), `split` (1 .. #steps + 1: everything before it is behind
+  done; a missing function knows nothing. `opts` overrides the constants (`openWeight`, `doneWeight`, `levelWeight`, `bias`, `tolBase`,
+  `tolSpan`, `gateLow`, `gateHigh`, and `curve` for the levels) for the simulation. The result: `index` (the step the pointer goes on, 1 .. #steps), `split` (1 .. #steps + 1: everything before it is behind
   the character), `mode`, `confidence`, `sharpness`, `level`, `expected` (the guide's expected level at the split), `top` (the guide's
   top level), `done`, `active`, `total` (distinct quests of the guide), `skipped` (steps before the pointer that are not done), `ahead`
   (steps at or after it that are done) and `labels` (one per step).
-- `:Labels(guide, snapshot)` → labels, stats; `:Levels(guide)` → lv, top; `:Fit(labels, stats, lv, top, snapshot, opts)` → result: the
-  parts of `:Find`, apart so that the simulation works out the labels once and tries many constants.
+- `:Labels(guide, snapshot)` → labels, stats; `:Levels(guide, curve?)` → lv, top, span; `:Fit(labels, stats, lv, top, span, snapshot,
+  opts)` → result: the parts of `:Find`, apart so that the simulation works out the labels once and tries many constants.
+  `:ExperienceAt(level)` and `:LevelAt(experience)` are the experience table and its inverse (below).
 
 **Labels.** A step is *done* when it has quest directives (`.accept`, `.turnin`, `.complete`) and the snapshot satisfies all of them by
 the rules `ns.Conditions` uses (`.accept`: in the log or done; `.turnin`: done; `.complete`: done, or ready to hand in), *open* when it
@@ -325,12 +326,34 @@ quest the step marks `.optional` counts only when nothing else in the step does,
 **Expected levels.** `lv[i]`, i = 1 .. #steps + 1: each chapter's `levels` interpolated over its steps (its first level at its first
 step, its last at the step after its last), never below an earlier step's, a `.level N` gate seen so far, or the top level of a chapter
 already left. A dungeon chapter's levels say where it is on offer, not where the route is, so they add nothing. `false` where the guide
-says nothing; `top` is the higher of `lv[#steps + 1]` and the guide's declared top level.
+says nothing; `top` is the higher of `lv[#steps + 1]` and the guide's declared top level; `span[i]` is the number of levels the chapter
+of step *i* spans (0 where it has no line).
+
+The line through a chapter is straight in **experience**, not in level (`CURVE "xp"`). The step at the fraction *f* of a chapter is
+where the experience is `XP(low) + f × (XP(high) − XP(low))`, turned back into a level; `XP` is `XP_TO_NEXT` summed, Classic's table,
+which `tools/sim_params.json` assumes (`VERIFY(launch)`: Forever's; only its shape matters, and a different table moves the lines a
+fraction of a level). The reason is that the quests of a chapter give about the same experience each and the first levels cost little, so
+in a chapter that spans many levels (Mulgore, Durotar and the Skyborne island run from level 1 to 10 or 15) a character has most of its
+levels early, which a line straight in level cannot show. Measured on the three shipped guides against the levels `tools/guide_sim.py`
+walks, as the real level minus the line's (2026-10-21, the number of steps in brackets):
+
+| | straight in level | straight in experience |
+|---|---|---|
+| chapters of 0 to 1 levels (424 steps) | mean +0.48, worst 1.00 | the same (the line is the same) |
+| chapters of 2 to 3 levels (254) | mean +0.34, 90th percentile of the error 0.76 | mean +0.32, 0.74 |
+| chapters of 4 to 8 levels (44) | mean +0.19, 0.33 | mean +0.08, 0.23 |
+| chapters of 9 or more levels (169) | mean +1.68, 90th percentile of the error 3.18, worst 4.07 | mean −0.12, 1.10, worst 1.99 |
+
+The constant +0.48 in the short chapters is `BIAS` (a chapter's levels are whole levels). What remains in the long chapters is that the
+quests are not equal: they give more as the character levels, so the line is optimistic at the start of such a chapter (by up to
+about 2 levels in the first steps of the Skyborne island) and a little pessimistic after (the 90th percentile of the real level
+minus the line's is +0.74).
 
 **The fit.** The split k minimises `OPEN_WEIGHT × (open steps before k) + DONE_WEIGHT × (done steps at or after k) + LEVEL_WEIGHT ×
-distance(lv[k] + BIAS, [level, level + 1))` (prefix sums, O(n); ties go to the earliest k, so a trip between the last quest done and the
-next one open is the step shown). It is a changepoint fit, robust to a few skipped quests and quests done early: a step skipped costs
-`OPEN_WEIGHT`, a step done early `DONE_WEIGHT`, a level the guide does not expect `LEVEL_WEIGHT` per level. The pointer, `index`, is
+max(0, distance(lv[k] + BIAS, [level, level + 1)) − tolerance(k))` (prefix sums, O(n); ties go to the earliest k, so a trip between the
+last quest done and the next one open is the step shown). It is a changepoint fit, robust to a few skipped quests and quests done early:
+a step skipped costs `OPEN_WEIGHT`, a step done early `DONE_WEIGHT`, a level the guide does not expect `LEVEL_WEIGHT` per level (less
+the tolerance, below). The pointer, `index`, is
 the split moved past the steps that are done already (the engine would pass them at once, and the chat line names the step the player
 sees). The *mode* says what the placement went by: `none` (no quest of the guide done or in the log and the level 2 or below, unknown, or
 the guide says nothing about levels: the first step), `history` (some quest done or in the log), `level` (none, but a level above 2: a
@@ -339,12 +362,28 @@ has done the guide or is above its top level; the pointer goes on the last step)
 steps with a quest before the split the share that are done, and of the first 6 after it the share that are open, averaged
 (`sharpness`): `high` from 0.85, `medium` from 0.7, else `low`; `level` is always `low`, `none` always `high`.
 
+**The tolerance.** The line is good to a fraction of a level in a short chapter and to a level or more in a long one (the table above),
+and a character who has handed in the quests one after the other should not be pulled to where the line says its level belongs. So in
+`history` mode the first levels of difference are free: `tolerance(k) = (TOL_BASE + TOL_SPAN × span(k)) × gate(share(k))`, where
+`span(k)` is the number of levels the chapter of step *k* spans, `share(k)` is `done / (done + open)` among the steps before *k* (0
+when there are none: nothing shows the character playing the guide up to there) and `gate(s)` rises from 0 at `GATE_LOW` to 1 at
+`GATE_HIGH`. The gate is what keeps the tolerance from helping the wrong characters: one who scattered over the guide or stopped
+following it looks like a follower only up to where its quests stop, and its level is exactly what it has to go by; a history that is
+half gaps has no tolerance at all. With no history (`level` mode) there is none either. Before it, with a line straight in level and no
+tolerance, a character who had followed the Skyborne guide to the step and nothing else was put up to 19 steps from its place (90th
+percentile 10 quest steps, and 0.7 percent three or more levels off) against the simulator's levels, and the Troll and Tauren guides
+1 quest step at the 90th percentile: the line is a level and more off inside the island chapter (levels 1 to 15), and the level term
+outweighed a history that had no gap in it.
+
 | Constant | Value | |
 |---|---|---|
 | `OPEN_WEIGHT` | 0.25 | a step not done before the pointer; players skip quests, in runs, and 0.5 or more drags the pointer back over them. 0 when nothing is done at all (every quest step is open then only for want of evidence) |
 | `DONE_WEIGHT` | 1 | a step done at or after the pointer: it says the pointer is late |
 | `LEVEL_WEIGHT` | 6 | one level between the character and the guide's expected level: a level far from the history's is not put there on the strength of a few quests, and a clean history wins over a level off by one |
-| `BIAS` | 0.5 | a chapter's levels are whole levels, so the straight line runs about half a level under the level a character has at that step (found against the simulator's levels) |
+| `BIAS` | 0.5 | a chapter's levels are whole levels, so the line runs about half a level under the level a character has at that step (0.48 in the short chapters, against the simulator's levels) |
+| `CURVE` | `"xp"` | the line through a chapter's levels is straight in experience (above); `"linear"`, straight in level, is the first version, kept for the simulation to compare with |
+| `TOL_BASE`, `TOL_SPAN` | 0.3, 0.05 | the levels of difference the level term lets pass while the history shows the character playing the guide: 0.3 and 0.05 more for each level the chapter spans (0.75 for Mulgore's or Durotar's 9, 1.0 for the island's 14), about the size of the line's own error there |
+| `GATE_LOW`, `GATE_HIGH` | 0.5, 0.8 | the tolerance is whole when at least 0.8 of the steps before the pointer are done, nothing at 0.5 or less, and rises between |
 | `NO_EVIDENCE_LEVEL` | 2 | up to this level a character with nothing done is at the first step |
 | `SHARP_WINDOW`, `SHARP_HIGH`, `SHARP_MEDIUM` | 6, 0.85, 0.7 | the confidence |
 
@@ -354,39 +393,75 @@ the steps before *t* handed in, those accepted before and handed in after in the
 real play does (10 to 30 percent of the quests skipped, also in runs of six; four quests done early; the level off by one or two; the
 quest log empty; no history at all; and characters who did not follow the guide: half its quests done in no order, or who stopped
 following it part of the way), places it with `:Fit` and measures the error in steps, in quest steps (a trip between two quests cannot be
-told from either) and in levels. The true level at each step comes from three models: the guide's own levels, the same with each
-chapter's pace distorted (the default: it makes the straight line wrong inside a chapter), and the levels `tools/guide_sim.py` walks
-(quest experience from the data pack: the model that found `BIAS`). `tools/placement_report.lua` prints the tables, compares sets of
-constants (`--set`) and searches them (`--tune`); `python tools/placement_report.py` runs it all in one command and prints the tables
-below, which `tests/placement_spec.lua` holds to bounds with fixed seeds. Tried and not kept: a band around the character's level from its
-experience fraction, a dead band on the level term, and limiting the split to a window around the level; none helped on all guides.
-Re-run the tool and paste its tables here after a guide is regenerated.
+told from either) and in levels. The true level at each step comes from four models (`--truth`): the placement's own line (`model`); the
+same line with a smooth bump inside every chapter, alternately ahead of it and behind (`warp`, the default and the one
+`tests/placement_spec.lua` uses: its size, 0.45 levels plus 0.07 per level the chapter spans, follows the line's own error against the
+simulator's levels at the 90th percentile, 0.5 in the short chapters and 1.1 in the long ones; 1.43 in the island); the older stress
+that bends each chapter's pace
+(`warp-linear`, wrong by up to 17 percent of a chapter's span and in the direction the real levels never run); and the levels
+`tools/guide_sim.py` walks (`sim`: quest experience from the data pack, the model that found `BIAS`, which the spec cannot use because the
+pack is private). `tools/placement_report.lua` prints the tables, compares sets of constants (`--set`, `--tol`, `--gate`, `--curve`) and
+searches them (`--tune`), and can tell the placement that every chapter header is wider than it is (`--widen -1,1`: `#chapter 5-8` reads
+`4-9`, the guide of a coarser planner); `python tools/placement_report.py` runs it all in one command and prints the tables below. The
+spec holds the numbers to bounds with fixed seeds: for the characters who followed the guide the 90th percentile of the error, for the
+others the share three or more levels off. Re-run the tool and paste its tables here after a guide is regenerated.
 
-Quest steps from the true place, median / 90th percentile (warp truth, seed 1, 2026-10-21, `OPEN_WEIGHT 0.25, DONE_WEIGHT 1, LEVEL_WEIGHT 6`,
-guides as of this commit; the two druid guides were being regenerated at the time):
+What the level term needed (2026-10-21, after the Skyborne guide, whose island chapter spans levels 1 to 15, placed a character who had
+followed it to the step up to 10 quest steps away; the Troll and Tauren guides, whose longest chapters span 9, were off by 1). Two
+things were wrong, and either one alone leaves the bounds broken: the line was straight in level (above), and the level term outweighed
+a clean history whenever the line was a level off. The experience line alone brings the worst follower of the three guides to 7 quest
+steps at the 90th percentile under `warp` (16 steps at worst); the tolerance with its gate brings it to 0, and the worst run to 4. A
+tolerance without a gate (the same dead band for every character) fixes the followers just as well but lets the level do less for the
+others: against the simulator's levels 6.2 percent of the characters who stopped following the Skyborne guide at 40 percent of the way
+ended three or more levels off, against 0.7 percent with the gate, and 3.8 percent of those who did a sixth of its quests, against
+none. Tried and not kept: a band around the character's level from its experience fraction; limiting the split to a window around
+the level; `BIAS` 0.4 or 0.3 (they bring the no-history tail of the island from 1.6 percent to 0.7, but only because the line is
+optimistic at the island's start, which a different line, not a different half level, would answer; `BIAS` stays the 0.48 that was
+measured in the short chapters).
+
+Quest steps from the true place, median / 90th percentile (warp truth, seed 1, every second step, 3 draws each, 2026-10-21, the
+constants above, the three guides as merged that day):
 
 | The character | Tauren Druid (HARDCORE) | Troll Hunter | Skyborne Druid (HARDCORE) |
 |---|---|---|---|
 | followed the guide to the step, nothing else | 0 / 0 | 0 / 0 | 0 / 0 |
-| also skipped a fifth of the guide's quests | 0 / 3 | 0 / 2 | 0 / 2 |
-| skipped 30 percent, in runs of about six | 0 / 7 | 0 / 4 | 0 / 6 |
-| also did four quests that come later | 0 / 3 | 0 / 4 | 0 / 4 |
-| its level is off by up to two | 0 / 7 | 0 / 11 | 0 / 13 |
-| its quest log is empty | 1 / 4 | 1 / 3 | 1 / 3 |
-| skipped a fifth in runs, did some early, level off by one, log half the time empty | 2 / 8 | 2 / 9 | 2 / 11 |
-| stopped following the guide at 40 percent of the way and levelled elsewhere | 9 / 23 | 5 / 20 | 9 / 24 |
-| did half the quests of the guide that its level allows, in no order | 8 / 23 | 9 / 27 | 10 / 27 |
-| no quest history at all, only the level (level off by one) | 10 / 26 | 7 / 23 | 10 / 24 |
+| also skipped a fifth of the guide's quests | 0 / 3 | 0 / 3 | 0 / 5 |
+| skipped 30 percent, in runs of about six | 0 / 6 | 0 / 6 | 0 / 8 |
+| also did four quests that come later | 0 / 4 | 0 / 1 | 0 / 3 |
+| its level is off by up to two | 0 / 7 | 0 / 8 | 0 / 11 |
+| its quest log is empty | 1 / 3 | 1 / 3 | 1 / 3 |
+| skipped a fifth in runs, did some early, level off by one, log half the time empty | 2 / 8 | 1 / 8 | 2 / 13 |
+| stopped following the guide at 40 percent of the way and levelled elsewhere | 9 / 31 | 6 / 14 | 9 / 23 |
+| did half the quests of the guide that its level allows, in no order | 11 / 26 | 7 / 19 | 10 / 26 |
+| no quest history at all, only the level (level off by one) | 9 / 22 | 7 / 18 | 10 / 23 |
 
-Runs ending three or more levels from the true level: none, except 0.4, 0.2 and 0.2 percent for the character who did half the quests in no
-order. Against the levels the simulator walks (the same table, `--truth sim`): Troll Hunter 0 / 1 for the exact follower, 2 / 9 with all the
-noise, 7 / 23 with no history; the Tauren guide, whose chapter levels are on average 1.6 levels (up to 4.6) below the simulator's, 0 / 8,
-3 / 14 and 7 / 17, and 4.3 percent of its no-history runs three or more levels off. In words: with a real history the pointer is within a
-handful of quest steps (the median is 0 to 2, the 90th percentile 2 to 13 depending on the noise); with none it is in the character's level or the next one (the
-90th percentile is about two levels), which is 7 to 10 quest steps at the median in these guides; it puts a character in a chapter three
-levels from its own only when the guide's own chapter levels are wrong. Limits: the level line is a straight line between a chapter's
-levels; the player's position is not used (a possible addition for the no-history case); a quest the character abandoned looks like a
-quest never taken.
+Runs ending three or more levels from the true level: none, except 0.2 percent of the character with all the noise together (Troll) and
+of the one who did half the quests in no order (Tauren). Against the levels the simulator walks (`--truth sim`; the same table, which
+anyone with the pack can reproduce with `python tools/placement_report.py`): the followers 0 / 0, 0 / 3 with a fifth skipped, 1 or 2 / 8
+with all the noise, and 7 to 10 / 18 to 23 with no history, in all three guides; three or more levels off in no run of the Troll and
+Tauren guides except 0.2 percent of the Troll's no-history runs, and in the Skyborne guide 1.9 percent of the no-history runs, 1.3
+of the characters who did half the quests, 0.6 of those who stopped following it, none of the others. Those are the island's first
+steps, where the line is up to 2 levels too optimistic (above).
+
+What the bounds in the spec are, and what they were measured at (large samples: 10 seeds, every step of every guide, 3 draws each,
+about 9,000 runs per guide and scenario, under `warp`): the character with all the noise together is three or more levels off in 0.010
+percent of the Tauren guide's runs, 0.012 percent of the Troll's and none of the Skyborne's. The spec's bound is 0.3 percent, drawn
+over every step twice: the other checks draw one step in five (about 60 runs), which cannot show a rate that low (one run in 60 is
+1.6 percent, and with the old bound of none at all the spec passed for 38 of 40 other seeds). With no history at all a character was
+never three levels off: none in 27,000 runs, the worst 2.76 levels. With the headers one level too wide at each end the followers
+stay within the same bounds (the spec checks that for all three guides; the 90th percentile in quest steps is 0 for the exact follower,
+4 with a fifth skipped, 9 with all the noise together), while the characters the level has to place suffer as the headers lie: 0 to 2.7 percent of
+the no-history runs and 0.1 to 0.3 percent of the noisy ones are three or more levels off (against the simulator's levels, 8.0 and 1.5
+percent in the worst guide). Headers two levels too wide at each end, chapters four levels wider than they are, are beyond what a
+tolerance of this size can take: the clean follower is then 2 to 3 quest steps off at the 90th percentile (the spec's bound is 2), and
+14 to 20 percent of the no-history characters are three or more levels off, because the level itself is wrong.
+
+In words: with a real history the pointer is within a handful of quest steps (the median is 0 to 2, the 90th percentile 0 to 13
+depending on the noise); with none it is in the character's level or the next one (the 90th percentile is about two levels), which is
+7 to 10 quest steps at the median in these guides; it puts a character in a chapter three levels from its own only when the guide's
+own chapter levels are wrong, or in the first steps of a chapter that spans most of the game's first levels. Limits: the experience
+table is Classic's (`VERIFY(launch)`); the line has no notion of the quests' own sizes (the island's start); the player's position is
+not used (a possible addition for the no-history case); a quest the character abandoned looks like a quest never taken.
 
 ### Engine/Progress.lua — `ns.Progress` (and the engine's start-up)
 
