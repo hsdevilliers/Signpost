@@ -189,6 +189,91 @@ class LearnedLayerTest(unittest.TestCase):
         )
         self.assertEqual(problems, ["flight node 'Nowhere': learned without its flight master's NPC ID"])
 
+    def test_rides_become_transports_one_per_pair_of_docks(self):
+        ride = {"from": {"map": 1411, "x": 50.9, "y": 13.0}, "to": {"map": 1420, "x": 60.8, "y": 58.9}, "kind": "zeppelin"}
+        back = {"from": {"map": 1420, "x": 61.0, "y": 59.1}, "to": {"map": 1411, "x": 51.1, "y": 13.2}, "kind": "zeppelin"}
+        db = {"learned": {"rides": [{**ride, "c": 2, "side": "Horde"}, {**back, "c": 2, "side": "Horde"}]}}
+        tables, problems, stats = learned.learned_layer([db], {"maps": {**MAPS, 1420: {"n": "Tirisfal Glades", "t": 3}}})
+        # there and back over the same docks are one transport, its ends the means of what was recorded, `from` the lower map
+        self.assertEqual(
+            tables["travel"]["transports"],
+            [{"kind": "zeppelin", "from": [1411, 51.0, 13.1], "to": [1420, 60.9, 59.0], "side": "Horde", "src": "learned"}],
+        )
+        self.assertEqual((problems, stats["transports"]), ([], 1))
+
+    def test_a_ride_needs_a_kind_and_the_problem_says_how_to_name_it(self):
+        db = {"learned": {"rides": [{"from": {"map": 1411, "x": 50.9, "y": 13.0}, "to": {"map": 1413, "x": 60.8, "y": 58.9}}]}}
+        tables, problems, _ = learned.learned_layer([db], {"maps": MAPS})
+        self.assertEqual(tables["travel"]["transports"], [])
+        self.assertEqual(len(problems), 1)
+        self.assertIn("ride Durotar <-> The Barrens: boat or zeppelin?", problems[0])
+        self.assertIn("/signpost ride zeppelin", problems[0])
+
+    def test_the_kind_can_come_from_an_area_name_that_says_what_it_is(self):
+        def route(from_area, to_area, kind=None):
+            ride = {"from": {"map": 1411, "x": 10.0, "y": 10.0}, "to": {"map": 1413, "x": 80.0, "y": 80.0}}
+            return {"learned": {"rides": [{**ride, "fromArea": from_area, "toArea": to_area, "kind": kind}]}}
+
+        def kind(db):
+            found = learned.learned_layer([db], {"maps": MAPS})[0]["travel"]["transports"]
+            return found[0]["kind"] if found else None
+
+        self.assertEqual(kind(route("Orgrimmar Zeppelin Tower", "Somewhere")), "zeppelin")
+        self.assertEqual(kind(route("Somewhere", "Booty Bay Harbor")), "boat")
+        self.assertIsNone(kind(route("Valanaar Skydocks", "Thendal Village")))  # "docks" does not say what rides
+        self.assertEqual(kind(route("Orgrimmar Zeppelin Tower", "Somewhere", kind="boat")), "boat")  # the player's word wins
+        self.assertEqual(kind(route("Somewhere", "Elsewhere", kind="ship")), None)  # not a kind the generator writes
+
+    def test_rides_between_docks_the_graph_could_not_use_are_dropped(self):
+        near = {"from": {"map": 1411, "x": 10.0, "y": 10.0}, "to": {"map": 1411, "x": 10.5, "y": 10.5}, "kind": "boat"}
+        continental = {"from": {"map": 1414, "x": 10.0, "y": 10.0}, "to": {"map": 1413, "x": 80.0, "y": 80.0}, "kind": "boat"}
+        broken = {"from": {"map": 1411, "x": 10.0}, "to": {"map": 1413, "x": 80.0, "y": 80.0}, "kind": "boat"}
+        within = {"from": {"map": 1411, "x": 10.0, "y": 10.0}, "to": {"map": 1411, "x": 60.0, "y": 10.0}, "kind": "boat"}
+        db = {"learned": {"rides": [near, continental, broken, "x", within]}}
+        tables, problems, _ = learned.learned_layer([db], {"maps": MAPS})
+        # only the ferry inside one zone, between two docks far apart, is a transport
+        self.assertEqual(
+            tables["travel"]["transports"],
+            [{"kind": "boat", "from": [1411, 10.0, 10.0], "to": [1411, 60.0, 10.0], "side": "both", "src": "learned"}],
+        )
+        self.assertEqual(problems, [])
+
+    def test_ride_sides_and_kinds_are_combined_across_sources(self):
+        ride = {"from": {"map": 1411, "x": 10.0, "y": 10.0}, "to": {"map": 1413, "x": 80.0, "y": 80.0}, "kind": "boat", "c": 1}
+        horde = {"learned": {"rides": [{**ride, "side": "Horde"}]}}
+        alliance = {"learned": {"rides": [{**ride, "side": "Alliance"}]}}
+        unsure = {"learned": {"rides": [{**ride, "side": "Horde"}, {**ride}]}}  # one of them has no side
+        sides = [
+            learned.learned_layer(dbs, {"maps": MAPS})[0]["travel"]["transports"][0]["side"]
+            for dbs in ([horde], [horde, alliance], [unsure])
+        ]
+        self.assertEqual(sides, ["Horde", "both", "both"])
+        zeppelin = {"learned": {"rides": [{**ride, "kind": "zeppelin", "c": 3}]}}
+        tables, problems, _ = learned.learned_layer([horde, zeppelin], {"maps": MAPS})
+        self.assertEqual(tables["travel"]["transports"][0]["kind"], "zeppelin")  # the more often recorded
+        self.assertIn("recorded as both boat and zeppelin", problems[0])
+
+    def test_inns_keep_the_bind_name_a_later_sighting_does_not_have(self):
+        db = {
+            "learned": {
+                "inns": {
+                    6929: {"map": 1411, "x": 51.5, "y": 41.6, "n": "Razor Hill", "t": 5, "c": 2},
+                    "6930": {"map": 1413, "x": 52.0, "y": 29.9, "t": 7},
+                    7000: {"map": 1413, "x": 150.0, "y": 29.9, "t": 7},  # off the map
+                    "x": {"map": 1413, "x": 1.0, "y": 1.0},
+                }
+            }
+        }
+        later = {"learned": {"inns": {6929: {"map": 1411, "x": 51.6, "y": 41.7, "t": 9, "c": 3}}}}
+        tables, _, stats = learned.learned_layer([db, later], {})
+        self.assertEqual(
+            tables["travel"]["inns"],
+            {6929: {"p": [1411, 51.6, 41.7], "n": "Razor Hill"}, 6930: {"p": [1413, 52.0, 29.9]}},
+        )
+        self.assertEqual(stats["inns"], 2)
+        # the order the sources are read in does not matter
+        self.assertEqual(learned.learned_layer([later, db], {})[0]["travel"]["inns"], tables["travel"]["inns"])
+
     def test_several_sources_are_combined(self):
         first = {"learned": {"npcs": {3143: {"n": "Gornek", "map": 1411, "x": 42.0, "y": 68.0, "t": 5, "c": 1}}}}
         second = {"learned": {"npcs": {3143: {"n": "Gornek", "map": 1411, "x": 42.4, "y": 68.0, "t": 9, "c": 1}}}}
@@ -235,6 +320,55 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(travel["crossings"][0]["src"], "learned")
         self.assertEqual(sorted(meta["layers"]), ["client", "learned", "questie"])
         self.assertEqual((stats["npcs"], stats["quests"], stats["crossings"]), (1, 1, 1))
+
+
+class GeneratorReadsLearnedTravelTest(unittest.TestCase):
+    """What the recorder learns reaches the steps the generator writes: pack layer -> built pack -> World -> DSL."""
+
+    def test_a_learned_zeppelin_and_crossing_become_real_steps(self):
+        import guide_travel
+        from signpost_tools.guidefile import Coord
+
+        maps = {
+            1411: {"n": "Durotar", "t": 3, "parent": 1414, "world": [1, 1000, 1000, -1000, -1000]},
+            1413: {"n": "The Barrens", "t": 3, "parent": 1414, "world": [1, 1000, -1000, -1000, -3000]},
+            1420: {"n": "Tirisfal Glades", "t": 3, "parent": 1415, "world": [0, 1000, 1000, -1000, -1000]},
+            1414: {"n": "Kalimdor", "t": 2},
+            1415: {"n": "Eastern Kingdoms", "t": 2},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            pack = Path(tmp)
+            datapack.init_stub(pack)
+            datapack.write_layer(pack, "client", {"maps": maps}, "client dumpmaps")
+            db = {
+                "learned": {
+                    "crossings": [{"from": {"map": 1411, "x": 99.0, "y": 50.0}, "to": {"map": 1413, "x": 1.0, "y": 50.0}, "c": 3}],
+                    "rides": [
+                        {
+                            "from": {"map": 1411, "x": 50.9, "y": 13.0},
+                            "to": {"map": 1420, "x": 60.8, "y": 58.9},
+                            "kind": "zeppelin",
+                            "side": "Horde",
+                            "c": 1,
+                        }
+                    ],
+                }
+            }
+            learned.merge_learned(pack, [db], "test")
+            datapack.build(pack, "test")
+            world = guide_travel.World(guide_travel.load_pack(pack), [], "Horde")
+        start, goal = Coord(1413, 5.0, 50.0), Coord(1420, 70.0, 70.0)
+        plan = guide_travel.plan_travel(world, guide_travel.Place(1413, start, "start"), guide_travel.Place(1420, goal, "goal"))
+        steps = guide_travel.plan_steps(world, plan)
+        self.assertEqual(
+            steps,
+            [
+                [".path 1413,1.0,50.0 ; 1411,99.0,50.0", ".zone 1411 >> Cross into Durotar (Durotar/The Barrens)"],
+                [".zeppelin 1411,50.9,13.0 > 1420,60.8,58.9 >> Take the zeppelin to Tirisfal Glades"],
+            ],
+        )
+        # an Alliance character gets neither
+        self.assertEqual(guide_travel.World(guide_travel.load_pack(pack), [], "Alliance").transports, [])
 
 
 class AccumulationTest(unittest.TestCase):
@@ -293,6 +427,22 @@ class AccumulationTest(unittest.TestCase):
         learned.merge_learned(self.pack, [first], "test")
         archived = json.loads((self.pack / "layers" / learned.ARCHIVE_NAME).read_text(encoding="utf-8"))["source-1"]
         self.assertEqual(archived["learned"]["npcs"]["3143"]["x"], 45.0)
+
+    def test_rides_and_inns_evicted_from_saved_variables_survive_the_next_import(self):
+        ride = {"from": {"map": 1411, "x": 10.0, "y": 10.0}, "to": {"map": 1413, "x": 80.0, "y": 80.0}, "kind": "boat", "c": 2}
+        first = {"learned": {"rides": [ride], "inns": {6929: {"map": 1411, "x": 51.5, "y": 41.6, "n": "Razor Hill", "c": 1, "t": 5}}}}
+        learned.merge_learned(self.pack, [first], "test")
+        # a later read of the same file no longer has them (the recorder keeps only the newest)
+        learned.merge_learned(self.pack, [{"learned": {"npcs": {1: self.npc("Other", 20.0)}}}], "test")
+        tables = self.layer()["travel"]
+        self.assertEqual([t["kind"] for t in tables["transports"]], ["boat"])
+        self.assertEqual(tables["inns"]["6929"]["n"], "Razor Hill")
+        # and the same ride seen again, counted more often, is still one record
+        again = {"learned": {"rides": [{**ride, "c": 5}]}}
+        learned.merge_learned(self.pack, [again], "test")
+        archive = json.loads((self.pack / "layers" / learned.ARCHIVE_NAME).read_text(encoding="utf-8"))["source-1"]
+        self.assertEqual([r["c"] for r in archive["learned"]["rides"]], [5])
+        self.assertEqual(len(self.layer()["travel"]["transports"]), 1)
 
     def test_the_archive_keeps_only_what_the_layer_reads_of_the_event_log(self):
         entry = seen("GOSSIP_SHOW", GORNEK, "Gornek", pos(1411, 42.5, 50.0))
