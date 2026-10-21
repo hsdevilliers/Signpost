@@ -28,6 +28,7 @@ The answer is in docs/FOREVER-API-NOTES.md (the open probe moves to Verified wit
 ## Notes
 
 - Raised by the review of the Tauren Druid planner route (batch 1, WP-A2), on the lead's instruction of 2026-10-21: no route assumes the spell until this is answered.
+- Generation 3 of the Tauren route (807be15) makes three Moonglade round trips (levels 11, 20 to 22 and 30; 20 to 26 minutes each way in the planner's price), six placeholder steps; the last 43 minutes of the route are the third, for two class quests.
 - Since batch 1 (WP-F) the guides' Moonglade steps are the generator's, from `Classes/DRUID.lua` (`travelHints`, key 1450): "cast Teleport: Moonglade
   if you have it (VERIFY(beta): where a druid learns it), else the way is not in the data", the way back "use your hearthstone or a flight path if you
   have one (VERIFY(beta): the way back is not in the data)", and a `.note` that the road overland is not to be walked (from Classic memory: through

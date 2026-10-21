@@ -1,12 +1,14 @@
 ---
 title: The Tauren Druid route leaves out two quests offered where it stands (1104 Salt Flat Venom, 6442)
 kind: finding
-status: open
+status: done
 priority: normal
 area: planner, guides
 source: claude
 raised: 2026-10-21
 raised_in: review of the Tauren Druid planner route, batch 1 (WP-A2), 2026-10-21
+closed: 2026-10-21
+resolution: Fixed by the regenerated guide (807be15, thorough alt 3): it accepts 745 and 1104 and the same-area check finds 0 gaps; 6442 is not offered where the route stands. The search chose it, nothing forces it, so the post-check in docs/reviews/horde-tauren-druid-walk.md stays
 ---
 
 ## What
