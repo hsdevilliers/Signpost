@@ -12,7 +12,7 @@ ns.Guides:Register({
 #chapter 1 Read this first
 step
   .note HARDCORE route made from quest data (QuestieDB's Classic baseline plus its Forever layers), not yet from play. It leaves out dungeons, group quests, escorts and elite or named targets the data can show, but it cannot know every danger: heal up, keep an escape ready and skip a step that looks too hard.
-  .note Leaving Zephras Isle is unverified. In the quest data the island story ends with What Comes Next and The Earthen Ring (it starts with Ayessa Dawnsinger on the island and ends with Alaana Stormwalker in Mulgore), and this route leaves the island at level 12 without them. If you cannot leave, finish that chain first.
+  .note Leaving Zephras Isle (VERIFY(beta): from the quest data and fan guides, nothing seen in the game): this route finishes the island story first. It ends with the finale at the Shrine of Akir (a scripted boss fight: go in healed and buffed), then The Fate of Zephras, What Comes Next and The Earthen Ring from Ayessa Dawnsinger, and you leave by airship from Valanaar's southwest dock (a wait of about 7 to 8 minutes) for Skywatcher Plateau beside Thunder Bluff. If the airship is not where this says, trust what you see.
   .note Not in the data: where a Windshaper learns Cure Poison (14) and Aquatic Form (16), because the Tauren quest chains are not open to a Skyborne (ask your druid trainer), and how to reach Moonglade for Cat Form at level 20.
 #skipquest 435 >> HARDCORE: escort quest (Deathstalker Erland is attacked on the way); the data has no objective for it, so the planner took it for a delivery
 #skipquest 746 >> HARDCORE: the forge is hard to reach without a group

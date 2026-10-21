@@ -470,6 +470,30 @@
       "confidence": "low"
     },
     {
+      "id": 92947,
+      "name": "Making Our Move",
+      "action": "note",
+      "text": "VERIFY(beta): the finale of the island story starts here, at the Shrine of Akir (near 61,51), where the Al'Aketh guardian, spiritcaller and blademaster stand together. Pull them one at a time, and be healed and rested before The Inner Sanctum and Confront Lorthuna. This chain is the way off the island.",
+      "source": "docs/FOREVER-API-NOTES.md, 'Skyborne exit' (beta-era fan guides and the Warcraft Wiki, nothing seen in the game); the data pack (the kill objectives and their positions)",
+      "confidence": "low"
+    },
+    {
+      "id": 93958,
+      "name": "The Inner Sanctum",
+      "action": "note",
+      "text": "VERIFY(beta): the last stop before the boss fight of Confront Lorthuna. Heal, drink, buff and rest first.",
+      "source": "docs/FOREVER-API-NOTES.md, 'Skyborne exit' (beta-era fan guides and the Warcraft Wiki, nothing seen in the game)",
+      "confidence": "low"
+    },
+    {
+      "id": 92646,
+      "name": "Confront Lorthuna",
+      "action": "note",
+      "text": "VERIFY(beta): a scripted boss fight at the Shrine of Akir. Fan guides say Rohash is summoned and Kirin Tor and Earthen Ring reinforcements arrive. Go in fully healed and buffed with your escape ready, fight beside the reinforcements, and leave if it goes badly. It is part of the chain that takes you off the island, so there is no way round it that we know of.",
+      "source": "docs/FOREVER-API-NOTES.md, 'Skyborne exit' (beta-era fan guides and the Warcraft Wiki, nothing seen in the game)",
+      "confidence": "low"
+    },
+    {
       "id": 5930,
       "name": "Great Bear Spirit",
       "action": "note",
