@@ -33,21 +33,27 @@ step
   .complete 5728,2 -- Hidden Enemies
   .turnin 5728 -- Hidden Enemies
   .accept 5729 -- Hidden Enemies
+  .note Hidden Enemies: follows a group quest: needs a group too
   .optional 5728 -- group quest: Hidden Enemies
+  .optional 5729 -- follows a group quest: Hidden Enemies
 step
   .goto 1454,49.47,50.59
   .turnin 829 -- Neeru Fireblade
   .turnin 5729 -- Hidden Enemies
   .accept 809 -- Ak'Zeloth
   .accept 5730 -- Hidden Enemies
+  .note Hidden Enemies: follows a group quest: needs a group too
   .accept 5761 -- Slaying the Beast
   .todo "Slaying the Beast: objective 1 has no position in the pack"
   .complete 5761,1 -- Slaying the Beast
   .turnin 5761 -- Slaying the Beast
+  .optional 5729 -- follows a group quest: Hidden Enemies
+  .optional 5730 -- follows a group quest: Hidden Enemies
   .optional 5761 -- group quest: Slaying the Beast
 step
   .goto 1454,31.73,37.82
   .turnin 5730 -- Hidden Enemies
+  .optional 5730 -- follows a group quest: Hidden Enemies
 step
   .todo "Walk from Orgrimmar to The Barrens: the guide has no waypoints for this yet, so find your own way. This step is done when you arrive in The Barrens."
   .zone 1413 >> Go to The Barrens

@@ -18,20 +18,24 @@ step
   .note Vorsha the Lasher: escort: stay with the NPC and let it finish; the data does not say where it goes or what attacks it
   .goto 1440,12.22,34.22
   .turnin 6641 -- Vorsha the Lasher
-step
   .goto 1440,11.56,34.29
   .turnin 6562 -- Trouble in the Deeps
   .accept 6563 -- The Essence of Aku'Mai
+  .note The Essence of Aku'Mai: dungeon quest: needs a group
   .accept 6921 -- Amongst the Ruins
-  .todo "Amongst the Ruins: objective 1 has no position in the pack"
+  .note Amongst the Ruins: dungeon quest: needs a group
   .complete 6921,1 -- Amongst the Ruins
   .turnin 6921 -- Amongst the Ruins
+  .optional 6562 -- dungeon quest: Trouble in the Deeps
+  .optional 6563 -- dungeon quest: The Essence of Aku'Mai
+  .optional 6921 -- dungeon quest: Amongst the Ruins
 step
   .goto 1440,13.66,30.9
   .complete 6442 -- Naga at the Zoram Strand
 step
   .goto 1440,13.59,13.14
   .complete 6563 -- The Essence of Aku'Mai
+  .optional 6563 -- dungeon quest: The Essence of Aku'Mai
 step
   .goto 1440,31.74,38.0
   .complete 216 -- Between a Rock and a Thistlefur
@@ -47,6 +51,7 @@ step
   .turnin 6442 -- Naga at the Zoram Strand
   .goto 1440,11.56,34.29
   .turnin 6563 -- The Essence of Aku'Mai
+  .optional 6563 -- dungeon quest: The Essence of Aku'Mai
 step
   .goto 1440,73.06,61.48
   .accept 6441 -- Satyr Horns

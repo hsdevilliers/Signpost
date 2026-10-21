@@ -39,7 +39,9 @@ step
   .accept 86576 -- Bloodfury Trinkets
   .goto 1442,47.36,64.25
   .accept 6562 -- Trouble in the Deeps
+  .note Trouble in the Deeps: dungeon quest: needs a group
   .accept 6393 -- Elemental War
+  .optional 6562 -- dungeon quest: Trouble in the Deeps
 step
   .goto 1442,45.12,59.84 >> Go to the flight master
   .fp 1442,Sun Rock Retreat
