@@ -636,6 +636,22 @@ step
 		)
 	end)
 
+	-- The card lists the current step's own quest in its body; the Optional: line is for the group quests coming up, and
+	-- must not repeat that one (R-engine-2 #3).
+	it("does not offer, beside the step of a group quest, the quest that step lists itself", function()
+		local ns = start(nil, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
+		assert.are.same({ "Quest #9500 (group quest)" }, ns.StepFrame:OptionalLines(ns.Progress:Current())) -- from group:1
+		for _, stepNumber in ipairs({ 2, 3, 4 }) do
+			assert.is_true(ns.Progress:JumpTo(stepNumber)) -- held there, the quest not taken
+			local step = ns.Progress:Current()
+			assert.are.equal("group:" .. stepNumber, step.id)
+			local body = ns.StepFrame.DescribeLines(step)
+			assert.are.equal(1, #body)
+			assert.is_truthy(body[1]:find("Quest #9500", 1, true)) -- the body names it
+			assert.are.same({}, ns.StepFrame:OptionalLines(step), step.id) -- and the line beside it does not
+		end
+	end)
+
 	it("does not pass a group quest the player took, and offers nothing once it is in the log", function()
 		local ns, world, mock = start(nil, { chapters = { group = GROUP }, guide = GROUP_GUIDE })
 		assert.are.equal("group:1", current(ns))

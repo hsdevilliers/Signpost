@@ -232,7 +232,8 @@ end
 -- The group quests coming up, as "<quest> (group quest)": the quests of the optional-only steps among the next
 -- OPTIONAL_AHEAD steps of the route (ns.Conditions:OptionalOnly) that the player has neither in the quest log nor done,
 -- each once, at most MAX_OPTIONAL_LINES. A quest the player took is the business of its own step, and a step the route
--- has passed is not in the window; the current step's own lines are its body.
+-- has passed is not in the window; the current step's own lines are its body, so a quest one of its own directives
+-- names (the group quest's accept, with its "do it" step next) is not offered again beside them.
 function StepFrame:OptionalLines(current)
 	local progress, conditions, directives = ns.Progress, ns.Conditions, ns.Directives
 	local guide = progress and progress.Guide and progress:Guide()
@@ -243,6 +244,12 @@ function StepFrame:OptionalLines(current)
 		return lines
 	end
 	local seen = {}
+	for _, directive in ipairs(type(current.directives) == "table" and current.directives or {}) do
+		local args = type(directive) == "table" and directive.args
+		if type(args) == "table" and type(args.questID) == "number" then
+			seen[args.questID] = true
+		end
+	end
 	for i = index + 1, math.min(index + OPTIONAL_AHEAD, #steps) do
 		local ok, only = ns.SafeCall(conditions.OptionalOnly, conditions, steps[i], ns.Context)
 		for _, questID in ipairs(ok and type(only) == "table" and only.available or {}) do

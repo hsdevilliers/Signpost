@@ -646,7 +646,8 @@ writes `travel.inns`; `tools/guide_travel.py` turns them into `.boat`/`.zeppelin
   marks), never with objective counters, and no other line has one; every active sticky directive (the current step's
   too) is an "Ongoing:" line; below those, up to two "Optional: <quest> (group quest)" lines name the group quests
   coming up (`StepFrame:OptionalLines(step)`: the quests of `ns.Conditions:OptionalOnly(...).available` of the next three
-  steps of the route, each once; a font string of its own, not counted in the ten body lines); an in-transit line while
+  steps of the route, each once, and never a quest one of the current step's own directives names, which its body lists already;
+  a font string of its own, not counted in the ten body lines); an in-transit line while
   boarded. A secure `SignpostItemButton` (parented to UIParent, changed only out of combat) uses the step's `.use` item
   (`args.itemID`).
 - Settings via `RegisterDefaults("account", "stepFrame", { shown, locked, scale, alpha, hideInCombat, hideWhenDead,
