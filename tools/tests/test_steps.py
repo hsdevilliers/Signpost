@@ -86,6 +86,26 @@ class GroupTest(unittest.TestCase):
         self.assertEqual(steps.group(once, near), once)
 
 
+class SpansTest(unittest.TestCase):
+    def test_every_step_says_which_of_the_steps_it_was_made_of(self):
+        a, b = step(".goto 1,10,10", ".accept 5 -- A"), step(".goto 1,12,11", ".accept 6 -- B")
+        far, gate, done = step(".goto 1,60,60", ".accept 7 -- C"), step(".level 4 -- reach it first"), step(".goto 1,61,60", ".complete 7 -- C")
+        spans = steps.group_spans([a, b, far, gate, done], near)
+        self.assertEqual([(first, last) for _, first, last in spans], [(0, 1), (2, 2), (3, 3), (4, 4)])  # the pick-ups joined, nothing else did
+        self.assertEqual([text for text, _, _ in spans], steps.group([a, b, far, gate, done], near))  # `group` is these steps and no more
+
+    def test_a_run_of_doing_steps_reports_its_first_and_its_last(self):
+        runs = [step(".goto 1,10,10", ".complete 5 -- A"), step(".goto 1,11,12", ".complete 6 -- B"), step(".goto 1,12,12", ".complete 7 -- C")]
+        spans = steps.group_spans(runs + [step(".goto 1,60,60", ".complete 8 -- D")], near)
+        self.assertEqual([(first, last) for _, first, last in spans], [(0, 2), (3, 3)])
+        self.assertEqual(spans[0][0], step(".goto 1,10,10", ".complete 5 -- A", ".complete 6 -- B", ".complete 7 -- C"))
+
+    def test_a_goto_line_is_known_by_its_directive(self):
+        self.assertTrue(steps.is_goto("  .goto 1411,43.29,68.53"))
+        self.assertFalse(steps.is_goto("  .accept 5 -- .goto 1,2,3"))
+        self.assertFalse(steps.is_goto("  .level 4 -- reach it first"))
+
+
 class WholeQuestTest(unittest.TestCase):
     def test_a_quest_whose_every_objective_is_in_the_step_is_one_complete_line(self):
         out = steps.group(

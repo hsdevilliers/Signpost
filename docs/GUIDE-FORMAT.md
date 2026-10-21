@@ -51,7 +51,7 @@ Use `[[ ... ]]`, or `[=[ ... ]=]` when the text itself contains `]]`.
 | `#class <list>`, `#race <list>`, `#faction <name>` | guide | informational; selection uses the `Register` table |
 | `#include <chapterId>` | guide or chapter | splice that registered chapter's text here, before gating; nested includes are fine, a cycle or unknown id is an error |
 | `#chapter <levels> <name> [#dungeon]` | guide or chapter | start a chapter; `<levels>` is `N` or `N-M`; `#dungeon` makes it a dungeon chapter (Skip toggle, PLAN §3.3) |
-| `#skipquest <questID> >> <reason>` | guide or chapter | the class/profession quest coverage lint accepts this quest as skipped on purpose |
+| `#skipquest <questID> >> <reason>` | guide or chapter | the class/profession quest coverage lint accepts this quest as skipped on purpose; the Route Planner also writes one, with the reason and the numbers, for every quest it picked up on the way and did not finish (`not finished by this route: ...`, docs/PLANNER.md) |
 | `#track <key>` | track | first statement of a track file |
 
 Steps in a guide's own text before its first `#chapter` form an implicit chapter named after the guide, levels from
@@ -125,6 +125,16 @@ from, explore objectives their area.
 
 A `.complete` line shows the quest and nothing else (`Complete "<quest>"`, or `Complete objective 2 of "<quest>"` for the
 per-objective form): never an objective's counters ("Mottled Boar slain: 3/10"), in any step. The quest log has them.
+
+A **grind step** is not a kind of step of its own: when a route has to kill for a level before anything else opens, the guide writes `.level N` (satisfied when
+the player has reached level N) and a `.note` that says how much that is, on the step the grind follows (the Route Planner writes it so, docs/PLANNER.md):
+
+```
+.level 12 -- reach it first: kill or grind on the way
+.note Grind about 2,400 experience before you go on: about 55 kills of creatures near your level (an estimate)
+```
+
+The numbers are the model's, rounded to two figures, and promise nothing: rested experience, the quests in the log and the creatures at hand change them.
 
 Travel directives (`Engine/Travel.lua`):
 

@@ -54,3 +54,17 @@ and the planner cannot say so.
 - The estimate `to_go` is the greedy walk's pace at each level; `pending_charge` charges an undone class quest for the level the character will
   have when it gets there. Both are optimistic about travel.
 - A search by quest (the class chains as milestones) rather than by hub visit may behave better than any estimate.
+
+## Update (planner worker WP-E1, batch 1, 2026-10-21)
+
+- The first "Done when" (a measure of the spread, so that a route that is not clearly better than the others is not trusted) is met by the `grains` table of the
+  report: each grain of progress is searched on its own, its best route is written out the way a guide would have it, and the report says how far apart they are,
+  with a warning above 5%. It is not enough to close the item: the other two points stand.
+- Measured with it (`--preset thorough --runs 10 --no-check`, docs/PLANNER.md "Measurements"): Troll Hunter at 1, 2, 3, 4, 6 and 8 parts to a level: 26h37, 22h04,
+  21h50, 34h36, 21h43, 21h54 (59% apart); Skyborne at 2, 4, 8: 27h56, 41h11, 26h43 (54%); Tauren at 2, 4, 8: 45h46, 40h46, 44h45 (12%). Four parts is the worst
+  grain on two guides and the best on the third. The best of the three default grains is 7.4% (Skyborne) and 8.7% (Tauren) shorter than the beam's single grain.
+- Settings that look alike differ by hours in other ways too: the hub radius (150, 250, 400 yards) and the walk inside a hub (a flat 8 s or by the map's distance)
+  move the Skyborne beam from 27h42 to 42h34 and the Troll Hunter beam from 21h01 to 29h03 (planner totals; full simulation 17h20 to 24h54 and 16h50 to 22h27).
+- The class-quest charge is 15% of the Skyborne beam's total (4h20 of 28h52) and 40% of the Tauren beam's (17h40 of 44h40), and it counts levels, not time
+  (`the-class-quest-charge-counts-levels-so-experience-gained`): single-run differences of a few percent in the planner total are not evidence. Completeness
+  (a tidy after the search) changes the Skyborne total by 2 to 7% through that charge while the play time moves by less than 0.5%.

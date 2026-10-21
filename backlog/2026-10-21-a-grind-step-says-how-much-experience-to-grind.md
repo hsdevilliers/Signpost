@@ -1,12 +1,14 @@
 ---
 title: A grind step says how much experience to grind
 kind: feature
-status: open
+status: done
 priority: low
 area: planner, guides
 source: claude
 raised: 2026-10-21
 raised_in: the user's answer about grinding at level gates, 2026-10-21
+closed: 2026-10-21
+resolution: WP-E1 (feat/planner-features): a grind is written as .level N plus a .note with the experience and the kills (an estimate) on the step before it; the report lists every grind; tests GrindStepTest; docs/PLANNER.md and docs/GUIDE-FORMAT.md. The drafter's own .level gates stay without the note on purpose (reason in the item).
 ---
 
 ## What
@@ -39,3 +41,8 @@ wanted and how long it will take, and the player's own experience bar shows prog
   does not charge grinding, and the question item about it is closed.
 - The experience a player needs depends on rested experience, the quest rewards already in the log and the creatures at hand: the note must not
   promise a number of kills.
+
+- Done (WP-E1, feat/planner-features): Planner.emit writes the note on the step before a grind (the step the character stands in), never as a step of its own;
+  report section `grinding`; tests GrindStepTest. The wording says 'before you go on', not 'here': the step before may be in a town. The drafter's own .level gates
+  are left as they are on purpose: the three shipped guides are written by the planner (the drafter's chapters are replaced when a guide is planned), and the drafter
+  does not price a grind.
