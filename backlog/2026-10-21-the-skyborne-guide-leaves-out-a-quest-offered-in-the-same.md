@@ -38,3 +38,9 @@ A quest offered where the player already stands, with objectives in the area of 
 
 - For this quest it is not missing data: the pack has quest 92462 (giver and ender NPC 251368, one kill objective, the follow-up 92463), the game's own offer of it was recorded in the user's save, and the planner keeps it. A fresh beam run takes it; the installed route does not. So here it is the planner's route choice (the winning finalist leaves out a free pick-up), not the data.
 - The user's other cause can still be true for other Forever-new quests: see the item "Are Forever-new quests missing from the data pack" (the audit that tells the two causes apart).
+
+## State after batch 1 (the coordinator, 2026-10-21)
+
+- The cause was the planner's `tidy`: a route that accepts a quest next to the work of another one, but never makes the short trip to its own work, had the unfinished quest deleted silently. Batch 1 (WP-E1) removed the silence: every quest `tidy` takes out has a record, is printed in the report and written as a `#skipquest <id> >> not finished by this route: <reason>` line in the guide, and `--completeness F` / `--completeness-trip T` (default off) finish what the route accepts when the trip is short and pays at least F of the route's pace.
+- The installed guides were made with completeness OFF, so 92462 and 92463 are still left out of the Skyborne guide, now with the reason in plain sight (92462: its work is 20 s away and pays 2.07 XP/s against the route's 2.93, 71%; completeness 0.71 or less would finish it). The tables that show what each setting does on the three guides are in docs/PLANNER.md, Measurements. The choice of the default is the user's (backlog item "Completeness: which values of F and T should be the defaults?"); when it is made, the guides are regenerated and this item can be closed.
+- `python tools/audit_quests.py --guide horde-windshaper-druid` lists the same-area omissions of a guide with the rule that explains each.
