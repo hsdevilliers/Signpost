@@ -257,7 +257,8 @@ describe("a character new to a guide", function()
 			end,
 		})
 		assert.is_truthy(ns.Progress:Current()) -- the engine runs
-		-- the load itself went through, not a later evaluation picking up the pieces: the engine's own auto-skip found the place
+		-- the load itself went through, not a later evaluation picking up the pieces: the engine's own auto-skip
+		-- found the place
 		assert.are.same({ "valley:6:load" }, log.steps)
 		assert.is_truthy(ns.db.errors[1].msg:find("broken placement", 1, true)) -- and the error is on record
 		wipe(ns.db.errors) -- seen; the after_each check is for unexpected errors
