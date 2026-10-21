@@ -28,9 +28,9 @@ Measured (beam, default settings, planner total with the charges, written route'
 
 ## Why
 
-At the default (40) the Troll Hunter beam is 16 minutes (1.2%) slower for quests the guide never holds; if the client says the limit is 25 the Troll Hunter
-is 5% and the Skyborne 8.7% slower. The size is that of the search's own roughness (`the-planner-s-search-is-rough...`), but it has a cause that can be removed:
-the search counts quests it will take out again.
+At the real limit (40, confirmed by the user in the game) the Troll Hunter beam is 16 minutes (1.2%) slower for quests the guide never holds (at 25, Classic's,
+it would be 5% for the Troll Hunter and 8.7% for the Skyborne). The size is that of the search's own roughness (`the-planner-s-search-is-rough...`), but it has
+a cause that can be removed: the search counts quests it will take out again.
 
 ## Done when
 

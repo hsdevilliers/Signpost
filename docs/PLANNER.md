@@ -101,10 +101,9 @@ beam compares its best finished routes as they would be written, and against the
   stay before the first long one), and a chapter is named after the zone most of its steps are in (a step's zone is that of its first `.goto`), which is what the
   Journal's route list shows. Chapter ids keep their shape, `<guide>-NN-<zone>` (`split_chapters` in `tools/planner.py`).
 - **The quest log holds a fixed number of quests** (`--quest-log N`, default 40): no quest is accepted while it is full, by every search (a visit, `options`,
-  `overdue_hubs` and the replay of a tidied route all go through `Planner.offered`), and a quest handed in at the NPC who gave it needs a free place too. 40 is the
-  working value the user accepted for Forever (2026-10-21: "I believe the quest log limit has been bumped up from 25 to 40 for WoW Forever", then "accept a 40
-  quest cap for wow forever"; Classic's is 25). VERIFY(beta): it has not been read from the client yet (the probe `SignpostDB.probe.questLogMax`, API notes "Open
-  probes"); change the default only with that reading. The limit counts every quest a partial route holds, including the ones tidy takes out of the written route
+  `overdue_hubs` and the replay of a tidied route all go through `Planner.offered`), and a quest handed in at the NPC who gave it needs a free place too. 40 is
+  Forever's capacity (Classic's is 25), confirmed by the user in the game, 2026-10-21 (they had said so before: "I believe the quest log limit has been bumped
+  up from 25 to 40 for WoW Forever", then "accept a 40 quest cap for wow forever"). The limit counts every quest a partial route holds, including the ones tidy takes out of the written route
   again, so it steers the search harder than it constrains the guide (below). The report gives the most quests held at once, by the planner and counted again on
   the written route's own steps.
 - **No quest is left in the log**: a route that accepted something it never finished has it taken out and the same hubs are walked
@@ -158,8 +157,8 @@ skips a planned guide) and runs StyLua. Read `git diff`, run `tools/check.ps1` a
   quests (the druids), and a wider beam is not always better. `thorough` runs several grains and keeps the best, and its report says how far apart the grains'
   best routes are (`grains`: trust the best route no more than that; a warning above 5%). Read the baseline line of the report too, which says how much faster the
   result is than the greedy route, and distrust a route that is not clearly faster. "Measurements" below has the numbers.
-- **The quest log limit is a working value**: 40 is what the user accepted for Forever (Classic's is 25), and nothing read from the client confirms it yet
-  (VERIFY(beta); the probe `SignpostDB.probe.questLogMax`). It counts what the search holds, which is more than the written route holds ("Measurements").
+- **The quest log limit counts what the search holds**, which is more than the written route holds ("Measurements"): 40 is Forever's capacity (confirmed by
+  the user in the game, 2026-10-21; Classic's is 25).
 - **Data holes become `.todo` steps**: an objective with no position in the pack is worked where its quest starts, and the step
   says so; a border with no route yet gets a travel step the lint reports.
 - **Group quests** in a normal route are tagged `.optional`, not yet shown as a line beside the step.

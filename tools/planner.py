@@ -65,9 +65,8 @@ class Settings:
     unknown_work: float = 300.0  # seconds given to a class quest whose objectives the pack does not have (taming, an escort...)
     instant_quests: bool = False  # keep quests with no objective that are handed in at the NPC that gave them: the pack probably lacks them
     # The most quests the log holds at once; an accept is refused while it is full (a quest handed in at the NPC that gave it needs a free place
-    # too). Classic's is 25. VERIFY(beta): 40 is the value the user accepted (2026-10-21: "I believe the quest log limit has been bumped up from
-    # 25 to 40 for WoW Forever", then "accept a 40 quest cap for wow forever"); nothing is read from the client yet (the probe `questLogMax`,
-    # SignpostDB.probe.questLogMax, reads it); change the default only with that evidence.
+    # too). Classic's is 25, Forever's is 40: confirmed by the user in the game, 2026-10-21 (they had said so before: "I believe the quest log
+    # limit has been bumped up from 25 to 40 for WoW Forever").
     quest_log_limit: int = 40
     chapter_min_steps: int = 3  # a change of zone starts a new chapter only when the new zone lasts at least this many steps (counted once joined)
 

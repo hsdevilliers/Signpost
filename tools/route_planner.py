@@ -513,8 +513,8 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
          f"{len(job.exclude)} skips (tools/hardcore_rules.json and the guide's own list)")
         if s.hardcore
         else f"a normal route: quests up to {pl.accept_over} levels above you are accepted and worked on up to {pl.work_over}; group quests are tagged optional",
-        f"the quest log holds at most {s.quest_log_limit} quests; no quest is accepted while it is full (--quest-log N; Classic's is 25, the user "
-        f"accepted 40 for Forever as the working value, still to be confirmed by reading it from the client)",
+        f"the quest log holds at most {s.quest_log_limit} quests; no quest is accepted while it is full (--quest-log N; Forever's is 40, confirmed "
+        f"by the user in the game, 2026-10-21; Classic's is 25)",
         f"{len(job.mandatory)} class quests are mandatory: each is done or accounted for with a #skipquest reason; there is no deadline, "
         f"but each costs the route {s.class_push / 60:.0f} min for every level it is undone past the level it opens at"
         + (f" (+{s.class_grace})" if s.class_grace else "")
@@ -727,7 +727,7 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
     out(f"done          {len(done)} quests turned in" + (f", {len(optional)} of them group quests tagged optional" if optional else ""))
     held, held_level, held_clock = plan.log_peak()
     out(f"quest log     the most quests held at once: {held} (at level {held_level}, {hms(held_clock)} in); the log holds {pl.s.quest_log_limit} "
-        f"(--quest-log N; the default, {engine.Settings.quest_log_limit}, is the working value the user accepted for Forever, not yet read from the client)")
+        f"(--quest-log N; Forever's is {engine.Settings.quest_log_limit}, confirmed by the user in the game)")
     slow = pl.dropped.get("slower than grinding", [])
     out(f"left out      {len(slow)} quests were slower than grinding; the slowest, by experience per minute against grinding at the level it is done at:")
     scored = sorted((pl.quests[q] for q in slow), key=lambda q: q.rate / max(pl.model.grind_xp_per_second(max(q.req, q.level - 1, 1)), 1e-9))
@@ -1029,8 +1029,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--group-yards", type=float, default=250.0,
                         help="yards within which neighbouring steps of one kind are written as one: pick up, doing, hand in (default 250)")
     parser.add_argument("--quest-log", type=int, default=engine.Settings.quest_log_limit, metavar="N",
-                        help="quests the log holds at once; no quest is accepted while it is full (default %(default)s: the working value the user accepted "
-                             "for Forever, Classic's is 25; VERIFY(beta), still to be read from the client)")
+                        help="quests the log holds at once; no quest is accepted while it is full (default %(default)s: Forever's, confirmed by the user "
+                             "in the game; Classic's is 25)")
     parser.add_argument("--chapter-steps", type=int, default=engine.Settings.chapter_min_steps, metavar="N",
                         help="a change of zone starts a new chapter when the new zone lasts at least this many steps once the steps are joined (default %(default)s)")
     parser.add_argument("--threshold", type=float, default=1.0, help="times the grinding rate a quest must give to be kept (default 1)")
