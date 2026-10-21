@@ -207,9 +207,13 @@ else the client's `isPrimaryProfession`, else the slot.
   `step.directives[i]`; `detail.manual = true` when only the player's `>` can complete it. A step with nothing but
   sticky directives is complete at once.
 - `:Targets(step, context, states)` → targets of the step's directives (sticky ones marked `sticky = true`), without
-  those of satisfied directives (a `.goto` keeps its pin); an NPC/object pin within a `.goto`'s radius merges into it,
-  same-NPC pins merge, a directive with a `pin` kind and no position marks the first `.goto` pin. A **doing step** has
-  none: its `.goto` and `.complete` are not asked for pins (a sticky place directive keeps its own).
+  those of satisfied directives and without the **`.goto`s that have nothing left to ask**: a pick-up or hand-in step
+  lists each NPC's `.goto` before that NPC's directives, so once every completable directive after a `.goto` (up to the
+  next `.goto`) is satisfied, that place's pin goes (a marker shows where to go next, never where the player has been). A
+  `.goto` with no such directive after it (a waypoint, a lone `.goto`, one beside notes) keeps its pin until the step is
+  done; sticky directives belong to no `.goto`. An NPC/object pin within a `.goto`'s radius merges into it, same-NPC pins
+  merge, a directive with a `pin` kind and no position marks the first `.goto` pin. A **doing step** has none: its
+  `.goto` and `.complete` are not asked for pins (a sticky place directive keeps its own).
 - `:IsDoingStep(step)` → boolean: the step has a `.complete` and no place directive (any directive but `.goto` and
   `.complete` that is a travel directive, `def.kind == "travel"`, or whose def has a `pin` other than `"objective"`; only
   the step's own directives count, not its sticky ones). GUIDE-FORMAT "Step kinds" has the rule and the directives.

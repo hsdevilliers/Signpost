@@ -453,9 +453,37 @@ local function absorbNear(gotoPin, pins, gotoSet)
 	end
 end
 
+-- The `.goto`s of a step that have nothing left to ask (entries()' indexes): a pick-up or hand-in step lists each NPC's
+-- `.goto` before that NPC's directives, so once every completable directive after a `.goto` up to the next one is
+-- satisfied, its place is done with and its pin goes (the player's rule: a marker shows where to go next, never where
+-- they have been). A `.goto` with no such directive (a waypoint, a lone `.goto`, one beside notes) keeps its pin until
+-- the step is done. Sticky directives are ongoing beside later steps and belong to no `.goto`.
+local function finishedGotos(list, context)
+	local done, anchor, count, open = {}, nil, 0, false
+	local function close()
+		if anchor and count > 0 and not open then
+			done[anchor] = true
+		end
+	end
+	for index, entry in ipairs(list) do
+		if not entry.sticky then
+			if entry.directive.name == "goto" then
+				close()
+				anchor, count, open = index, 0, false
+			elseif anchor and entry.def and isCompletable(entry.def) then
+				count = count + 1
+				open = open or not satisfied(entry, context)
+			end
+		end
+	end
+	close()
+	return done
+end
+
 -- The step's pins, docs/ENGINE.md `target`s: its directives' targets (sticky ones marked sticky = true), without those
--- of satisfied directives (a .goto always keeps its pin). A directive with a `pin` kind that has no position (no data
--- pack, say) marks the step's first .goto pin with its kind and label instead; an NPC or object pin within a .goto's
+-- of satisfied directives and without the `.goto`s that have nothing left to ask (finishedGotos). A directive with a
+-- `pin` kind that has no position (no data pack, say) marks the step's first .goto pin with its kind and label
+-- instead; an NPC or object pin within a .goto's
 -- radius merges into the .goto's; pins for the same NPC or object at the same spot merge. Every pin with a quest lists
 -- its quests in `quests` (several after a merge). A doing step (see "Step kinds") draws none: its `.goto` and
 -- `.complete` are not asked for pins at all (no other core directive of such a step has any; a sticky place directive
@@ -468,10 +496,11 @@ function Conditions:Targets(step, context, states)
 	local pins, gotoPins, gotoSet, claims = {}, {}, {}, {}
 	local list = entries(step, states)
 	local doing = isDoing(list)
-	for _, entry in ipairs(list) do
+	local finished = finishedGotos(list, context)
+	for index, entry in ipairs(list) do
 		local def, directive = entry.def, entry.directive
 		local isGoto = directive.name == "goto"
-		local quiet = doing and (isGoto or directive.name == "complete")
+		local quiet = (doing and (isGoto or directive.name == "complete")) or finished[index] == true
 		if def and not quiet and not (isCompletable(def) and not isGoto and satisfied(entry, context)) then
 			local label = lineOf(entry, context)
 			local _, produced = call(def.targets, directive.args, context, entry.state)
