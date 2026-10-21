@@ -318,6 +318,15 @@ local function readService(index, fns, known, report)
 	return service
 end
 
+-- A service the module can compare: a table whose spell ID is a number and whose name and rank are text. Anything else
+-- in the saved variables (a hand-edited or damaged file) is dropped instead of raising an error at the next window.
+local function validService(service)
+	return type(service) == "table"
+		and (service.id == nil or type(service.id) == "number")
+		and (service.n == nil or type(service.n) == "string")
+		and (service.r == nil or type(service.r) == "string")
+end
+
 local function serviceKey(service)
 	if service.id then
 		return "s" .. service.id
@@ -338,7 +347,7 @@ local function mergeServices(stored, fresh, cap)
 	local seen, result = {}, {}
 	local function add(list)
 		for _, service in ipairs(list) do
-			local key = type(service) == "table" and serviceKey(service)
+			local key = validService(service) and serviceKey(service)
 			if key and not seen[key] and #result < cap then
 				seen[key] = true
 				result[#result + 1] = service

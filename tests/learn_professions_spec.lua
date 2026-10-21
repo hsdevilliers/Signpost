@@ -230,6 +230,41 @@ describe("Core/LearnProfessions", function()
 			}, ns.db.learned.trainers[3154].services)
 		end)
 
+		it(
+			"drops stored services that are not a table with a numeric spell ID and text names, and raises nothing",
+			function()
+				local ns, mock, world, win = load({
+					before = function()
+						G.SignpostDB = {
+							dbVersion = 1,
+							learned = {
+								trainers = {
+									[3154] = {
+										t = 1,
+										services = {
+											"junk",
+											{ id = "x", n = "Text ID" },
+											{ id = 5, n = {} },
+											{ id = 6, r = 7 },
+											{ id = 8, n = "Kept" },
+										},
+									},
+								},
+							},
+						}
+					end,
+				})
+				talkTo(world, TRAINER, "Trainer")
+				win.trainer.services = { { name = "Fresh", spell = 9, cost = 1 } }
+				mock.fire("TRAINER_SHOW")
+				assert.are.same(
+					{ { id = 8, n = "Kept" }, { id = 9, n = "Fresh", cost = 1 } },
+					ns.db.learned.trainers[3154].services
+				)
+				assert.are.same({}, mock.errors)
+			end
+		)
+
 		it("keeps at most LIMITS.servicesPerTrainer services", function()
 			local ns, mock, world, win = load()
 			ns.Learn.LIMITS.servicesPerTrainer = 2
@@ -850,7 +885,10 @@ describe("Core/LearnProfessions", function()
 			assert.are.same(written.recipes, recorded.recipes)
 			-- and it is a scenario with something in it
 			assert.are.equal(3, #recorded.trainers[3154].services)
-			assert.are.same({ { skill = 40, cat = "optimal" }, { skill = 55, cat = "medium" } }, recorded.recipes[2149].obs)
+			assert.are.same(
+				{ { skill = 40, cat = "optimal" }, { skill = 55, cat = "medium" } },
+				recorded.recipes[2149].obs
+			)
 		end)
 	end)
 
