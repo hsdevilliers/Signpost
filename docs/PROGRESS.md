@@ -177,7 +177,7 @@ Acceptance
 Tasks
 - [ ] Barrens → Thousand Needles chapters; `#dungeon` chapters auto-inserted at level with pre-quests placed earlier.
 - [ ] Profession modules and tracks for the Troll Hunter's default plan (Skinning, Leatherworking, First Aid, Cooking, Fishing) to
-  skill 150, chapters marked with `.hub`; the detected plan and declined professions in the Settings tab; Hunter Class tab.
+  skill 150 (tracks first cut in batch 1, chapters not yet marked with `.hub`); the detected plan and declined professions in the Settings tab; Hunter Class tab.
 - [ ] §3.8 profession seam test (the guide with a stub Herbalism + Alchemy plan), then delete the stubs.
 - [ ] Zone/dungeon chapters from Razor Hill onward moved to `Guides/Chapters/` and `#include`d.
 - [ ] §3.5 seam acceptance test (stub Orc Warrior guide + empty `Classes/WARRIOR.lua`), then delete the stub.
@@ -253,16 +253,17 @@ Acceptance
   chain (Kodo Hide Bag), Stonetalon-only eggs and level-6 kills at level 1 were all in the route. Fixed in the tools (profession-gated and
   off-zone quests blocked, objectives wait for the level, tighter pinning, the hardcore margin is 1, exclusive alternatives get a
   `#skipquest`) and in `hardcore_rules.json` (14 rules); `tools/rebuild_drafts.py` + `tools/drafts.json` rebuild every chapter.
-- [ ] Moonglade/Bear Form: where Teleport: Moonglade is learned and the way back (docs/HARDCORE.md); `.todo` semantics (open question there);
-  Cat Form (level 20, new in Forever, docs/CLASS-QUESTS.md) is a `.todo` until IDs are recorded; Windshaper guide (needs recorded data); levels 20-60.
+- [ ] Moonglade/Bear Form: where Teleport: Moonglade is learned and the way back (docs/HARDCORE.md, an open probe; the Moonglade trips are
+  placeholder steps in both druid guides); the guide is the Route Planner's route to level 30 since batch 1; levels 31-60.
 
 ## Troll Hunter guide (Release 1)
 
 - [x] `Classes/HUNTER.lua` (hunter-only chains of the pack: Etched notes, the level-10 pet chain per race, The Hunter's Charm; trainer spells
   empty; no `.tame`/`.ammo` directives: the pet chain is plain quest objectives) and `Guides/HordeTrollHunter.lua` with `durotar-1-12`
   (drafted, hardcore rules applied). `guide_lint --strict` with the pack: 0 errors.
-- [ ] Orgrimmar and the Barrens for Trolls (levels 12-20+), the Forever-new hunter quests (docs/CLASS-QUESTS.md), profession tracks and the
-  `#professions` header, levels 20-60.
+- [x] The route to level 30 is the Route Planner's (batch 1: regenerated with the final tools); the profession tracks and the `#professions`
+  header are in (first cut, Classic's numbers).
+- [ ] The Forever-new hunter quests (docs/CLASS-QUESTS.md), levels 31-60.
 
 ## Hardcore (user, 2026-10-20)
 
@@ -292,8 +293,10 @@ Acceptance
   Forever) and Classic's rank caps marked VERIFY(launch). `tests/profession_modules_spec.lua` checks them as the client loads them; the test
   helper loads `Professions/` as content, like `Guides/`. An optional `rankSpells = { spellIDs }` field (Automation/Trainer.lua) is not set:
   without it the trainer automation buys nothing for `.trainprof`.
-- [ ] The route tracks (`Guides/Professions/<key>.lua`) and the `.hub` markers in the chapters they anchor to: with the guide content (the pack
-  knows the profession trainers by NPC title, e.g. Thuwd for Skinning in Orgrimmar).
+- [x] The route tracks (`Guides/Professions/<key>.lua`, first cut, batch 1): Skinning, Leatherworking, First Aid, Cooking and Fishing for the
+  Troll Hunter, trainers from the pack's NPC titles, every number Classic's (VERIFY(launch)).
+- [ ] The `.hub` markers in the chapters: the planner writes none, so a track step anchors to a town the route visits (`@zone`) and the
+  early trainers (Razor Hill, Sen'jin, the Valley) are not used; the recipe data comes from the recorder (play).
 
 ## Report this step and the Options entry (2026-10-20)
 
@@ -457,12 +460,12 @@ prerequisite, the lint did not model prerequisites, and its 20 or so level warni
   Monte Carlo, level 30 reached in 96% of the runs), 51 `.todo` steps, 0h30 of grinding at level gates, 0 lint errors, no availability findings. The
   search is still rough (a few hours between near-identical settings): backlog item. The report says when the beam finished no route of its own.
 - [x] Joined steps keep what a player without the data pack needs (review of PR #38): a pick-up or hand-in step keeps the `.goto` of every place in it
-  (the simulator walks them in order; the engine puts the step's quests on the first pin only: backlog item), a doing step keeps one; a step with a gate
+  (the simulator walks them in order; since batch 1 the engine gives each NPC of the step its own pin and label), a doing step keeps one; a step with a gate
   or `.hub` line of its own is never joined; the simulator grinds to a `.level` gate where the line stands, after the hand-ins written before it in a
   joined step.
 - [x] Install a planned route on purpose (`route_planner.py --install`, `tools/route_install.py`): the Troll Hunter guide is the planner's
-  route (levels 1 to 30), replacing `durotar-1-12` and `barrens-10-20-hunter`; the druid chapters were rebuilt with grouped steps. Not yet:
-  the druid guides from planner routes (they stay drafted to level 20; 21 to 30 is open).
+  route (levels 1 to 30), replacing `durotar-1-12` and `barrens-10-20-hunter`; the druid chapters were rebuilt with grouped steps. Both druid
+  guides are planner routes to level 30 since batch 1 (see "Batch 1" below).
 
 ## Backlog (user, 2026-10-20)
 
