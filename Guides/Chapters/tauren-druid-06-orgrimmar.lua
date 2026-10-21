@@ -1,12 +1,12 @@
--- PLANNED: the thorough alt 1 route for Tauren Druid (HARDCORE): tools/route_planner.py tauren --preset all --install --quiet (docs/PLANNER.md)
+-- PLANNED: the thorough alt 3 route for Tauren Druid (HARDCORE): tools/route_planner.py tauren --preset all --install --quiet (docs/PLANNER.md)
 -- Do not edit by hand: the next install replaces it. Change the route with tools/route_planner.py.
 -- Built on the data pack: QuestieDB's Classic-era baseline plus its Forever layers (new quests, zones, class chains). The layers give IDs, levels and races, not complete objectives or restrictions: docs/FOREVER-API-NOTES.md.
 local ADDON_NAME, ns = ...
 
 ns.Chapters:Register(
-	"tauren-druid-04-orgrimmar",
+	"tauren-druid-06-orgrimmar",
 	[[
-#chapter 14-14 Orgrimmar
+#chapter 15-16 Orgrimmar
 step
   .goto 1454,36.82,29.06
   .accept 97326 -- Rocks to Rests
