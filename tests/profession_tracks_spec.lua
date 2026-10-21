@@ -404,8 +404,8 @@ local function event(world, mock, name, ...)
 	world.advance(1.1)
 end
 
--- Makes the step just before a track step current and presses `>`, so the engine arrives at the track step as it does on
--- the way (a jump would hold the step by hand).
+-- Makes the step just before a track step current and presses `>`, so the engine arrives at the track step as it
+-- does on the way (a jump would hold the step by hand).
 local function arriveAt(ns, world, stepId)
 	local guide = ns.Progress:Guide()
 	local index = guide.byId[stepId].index
@@ -416,7 +416,8 @@ local function arriveAt(ns, world, stepId)
 	world.advance(1.1)
 end
 
--- What the engine hands the step card and the pins for a step: its own lines, its ongoing (sticky) lines and its markers.
+-- What the engine hands the step card and the pins for a step: its own lines, its ongoing (sticky) lines and its
+-- markers.
 local function show(ns, step)
 	local states = ns.Progress:State(step.id)
 	local lines, info = ns.Conditions:Describe(step, ns.Context, states)
