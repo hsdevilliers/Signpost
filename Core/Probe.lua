@@ -307,6 +307,10 @@ local EVENTS = {
 	"PLAYER_XP_UPDATE",
 	"SKILL_LINES_CHANGED",
 	"TRADE_SKILL_LIST_UPDATE",
+	-- the trade skill events the profession recorder listens to (Core/LearnProfessions.lua)
+	"TRADE_SKILL_SHOW",
+	"TRADE_SKILL_DATA_SOURCE_CHANGED",
+	"TRADE_SKILL_UPDATE",
 	"NEW_RECIPE_LEARNED",
 	"LEARNED_SPELL_IN_SKILL_LINE",
 	"LEARNED_SPELL_IN_TAB",
@@ -547,6 +551,82 @@ end)
 
 section("professions", function()
 	return Util.Professions()
+end)
+
+-- The functions the profession recorder (Core/LearnProfessions.lua) reads, in both shapes: the modern one
+-- (C_TrainerUI, C_TradeSkillUI) and the Classic one (globals). Neither shape is "expected absent", so they are listed
+-- here, apart from the APIs above, and not counted as missing in the summary.
+local RECORDER_APIS = {
+	-- trainer window: the globals exist on beta 1.60.1.70450; C_TrainerUI and GetTrainerServiceSkillReq were not probed
+	"C_TrainerUI.GetNumTrainerServices",
+	"C_TrainerUI.GetTrainerServiceInfo",
+	"C_TrainerUI.GetTrainerServiceCost",
+	"C_TrainerUI.GetTrainerServiceLevelReq",
+	"C_TrainerUI.GetTrainerServiceSkillLine",
+	"C_TrainerUI.GetTrainerServiceSkillReq",
+	"C_TrainerUI.GetTrainerServiceItemLink",
+	"GetNumTrainerServices",
+	"GetTrainerServiceInfo",
+	"GetTrainerServiceCost",
+	"GetTrainerServiceLevelReq",
+	"GetTrainerServiceSkillLine",
+	"GetTrainerServiceSkillReq",
+	"GetTrainerServiceItemLink",
+	"C_TooltipInfo.GetTrainerService",
+	-- trade skill window, modern shape
+	"C_TradeSkillUI.GetAllRecipeIDs",
+	"C_TradeSkillUI.GetRecipeInfo",
+	"C_TradeSkillUI.GetRecipeSchematic",
+	"C_TradeSkillUI.GetBaseProfessionInfo",
+	"C_TradeSkillUI.GetChildProfessionInfo",
+	"C_TradeSkillUI.GetTradeSkillLine",
+	"C_TradeSkillUI.IsTradeSkillLinked",
+	"C_TradeSkillUI.IsTradeSkillGuild",
+	-- trade skill window, Classic shape
+	"GetTradeSkillLine",
+	"GetNumTradeSkills",
+	"GetTradeSkillInfo",
+	"GetTradeSkillRecipeLink",
+	"GetTradeSkillItemLink",
+	"GetTradeSkillNumReagents",
+	"GetTradeSkillReagentInfo",
+	"GetTradeSkillReagentItemLink",
+	"IsTradeSkillLinked",
+	"IsTradeSkillGuild",
+}
+local RECORDER_NAMESPACES = { "C_TrainerUI", "C_TradeSkillUI" }
+local RECORDER_ENUMS = { "Enum.TradeskillRelativeDifficulty", "Enum.CraftingReagentType", "Enum.TooltipDataType" }
+
+-- types: what each name is (nil: the client lacks it). namespaces: every function the client's own C_TrainerUI and
+-- C_TradeSkillUI hold, so a name nobody thought of shows up. enums: the values of the enums the recorder reads.
+-- last: what the last trainer and trade skill windows answered (the recorder's own report, this session).
+section("recorder", function()
+	local result = { types = {}, namespaces = {}, enums = {}, last = {} }
+	for _, name in ipairs(RECORDER_APIS) do
+		result.types[name] = type(Util.Resolve(name))
+	end
+	for _, name in ipairs(RECORDER_NAMESPACES) do
+		local namespace = Util.Resolve(name)
+		if type(namespace) == "table" then
+			local names = {}
+			for key, value in pairs(namespace) do
+				if type(key) == "string" and type(value) == "function" then
+					names[#names + 1] = key
+				end
+			end
+			table.sort(names)
+			result.namespaces[name] = names
+		end
+	end
+	for _, name in ipairs(RECORDER_ENUMS) do
+		local enum = Util.Resolve(name)
+		if type(enum) == "table" then
+			result.enums[name:match("[^%.]+$")] = enum
+		end
+	end
+	local recorder = ns.Learn and ns.Learn.Professions
+	result.last = recorder and recorder.report or {}
+	return result
 end)
 
 section("player", function()

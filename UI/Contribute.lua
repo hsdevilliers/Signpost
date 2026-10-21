@@ -26,7 +26,7 @@ end
 -- VERIFY(beta): layout and templates in the real client (FOREVER-API-NOTES "Open probes"); specs run on a mock.
 -- VERIFY(beta): layout and templates in the real client (FOREVER-API-NOTES "Open probes"); specs run on a mock.
 function Window:Create()
-	local frame = UI:CreateDialogFrame(WINDOW_NAME, 500, 400)
+	local frame = UI:CreateDialogFrame(WINDOW_NAME, 500, 440)
 	UI:SetDialogTitle(frame, L["Help improve Signpost"])
 	local host = UI:DialogHost(frame)
 
@@ -39,9 +39,12 @@ function Window:Create()
 		"GameFontHighlight",
 		top,
 		-8,
-		L["Where NPCs, quest givers, flight masters, trainers, vendors and zone borders are, so the guides get better. "]
-			.. L["Only IDs, the names of NPCs, objects and flight nodes, and map positions are recorded. "]
-			.. L["No chat and no player or pet names."]
+		L["Where NPCs, quest givers, flight masters, trainers, vendors and zone borders are, "]
+			.. L["what trainers teach and charge, and the recipes in your profession windows, "]
+			.. L["so the guides get better. "]
+			.. L["Only IDs, names of NPCs, objects, flight nodes, spells and recipes, trainer prices "]
+			.. L["and map positions are recorded. "]
+			.. L["No chat, none of your gold and no player or pet names."]
 	)
 
 	local check = CreateFrame("CheckButton", nil, host, "UICheckButtonTemplate")
@@ -108,14 +111,18 @@ function Window:Refresh()
 		return
 	end
 	local counts = ns.Learn and ns.Learn:Counts() or {}
+	local professions = ns.Learn and ns.Learn.Professions and ns.Learn.Professions:Counts() or {}
 	frame.State:SetText(
 		string.format(
-			L["Recorded so far: %d NPCs, %d objects, %d quests, %d flight nodes, %d zone crossings."],
+			L["Recorded so far: %d NPCs, %d objects, %d quests, %d flight nodes, %d zone crossings, "]
+				.. L["%d trainer services, %d recipes."],
 			counts.npcs or 0,
 			counts.objects or 0,
 			counts.quests or 0,
 			counts.taxi or 0,
-			counts.crossings or 0
+			counts.crossings or 0,
+			professions.services or 0,
+			professions.recipes or 0
 		)
 	)
 end

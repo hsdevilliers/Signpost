@@ -305,6 +305,41 @@ Professions (Core/Player.lua, Engine/Professions.lua, Engine/Directives.lua, Cor
 - [ ] Where Expert First Aid, Cooking and Fishing are taught (the data names no trainer or book for them), who sells a fishing pole, and
   where to fish (the data has no fishing spots, so `.fish` is unused).
 
+Profession recorder (Core/LearnProfessions.lua; built on the mock, none of it seen in the client; each call goes through `Util.Call`
+and has a `VERIFY(beta)` comment). How to answer: recording on (a dev build always; a release build after the box in Journal >
+Settings), open the trainer window of each profession you have and of your class, open each profession window you have (again after
+a skill-up), type `/signpost probe` and `/signpost learned`, `/reload`, then `python tools/read_savedvars.py probe recorder learned`
+(`probe.recorder` lists which functions exist in both shapes and what the client's own `C_TrainerUI` and `C_TradeSkillUI` hold;
+`recorder` is the last window's report: which API answered, how many services or recipes had each field).
+- [ ] Trainer functions, which shape exists: `C_TrainerUI.GetNumTrainerServices/GetTrainerServiceInfo/GetTrainerServiceCost/
+  GetTrainerServiceLevelReq/GetTrainerServiceSkillLine/GetTrainerServiceSkillReq/GetTrainerServiceItemLink` or the globals of the
+  same names (the globals except `GetTrainerServiceSkillReq` were present on 1.60.1.70450; the `C_TrainerUI` namespace and
+  `GetTrainerServiceSkillReq` were never probed). What `GetTrainerServiceInfo(i)` answers (`name, rank text, type` as in Classic,
+  or one table) and the values of the type (`available`, `unavailable`, `used`, `header`).
+- [ ] A service's spell: `GetTrainerServiceItemLink(i)` is a `spell:`/`enchant:` link, or an `item:` link of what it makes (then the
+  spell is `C_TooltipInfo.GetTrainerService(i).id`, the open probe above). `GetTrainerServiceSkillLine(i)` answers a skill line ID or
+  the profession's name (the recorder reads both); `GetTrainerServiceCost(i)` is copper; `GetTrainerServiceSkillReq(i)` answers
+  `skill name, required rank`.
+- [ ] Trade skill window, modern shape: `C_TradeSkillUI.GetAllRecipeIDs`, `GetRecipeInfo(id)` (`name`, `learned`, `relativeDifficulty`
+  with `Enum.TradeskillRelativeDifficulty` Optimal 0, Medium 1, Easy 2, Trivial 3), `GetRecipeSchematic(id, false)` (`outputItemID`,
+  `reagentSlotSchematics[].reagents[1].itemID` and `.quantityRequired`, `Enum.CraftingReagentType.Basic`). Classic shape:
+  `GetNumTradeSkills`, `GetTradeSkillInfo` (name, type `optimal/medium/easy/trivial/header`), `GetTradeSkillRecipeLink`,
+  `GetTradeSkillItemLink`, `GetTradeSkillNumReagents`, `GetTradeSkillReagentInfo`, `GetTradeSkillReagentItemLink`. Which shape
+  answers on Forever (the recorder tries the modern one first and the Classic one when it lists nothing).
+- [ ] Which profession the window shows and the character's skill in it: `C_TradeSkillUI.GetChildProfessionInfo()` and
+  `GetBaseProfessionInfo()` (`professionID`, `parentProfessionID`, `skillLevel`, `maxSkillLevel`), `C_TradeSkillUI.GetTradeSkillLine()`
+  (skill line ID, name, rank, max rank, modifier, parent ID) or the global `GetTradeSkillLine()` (name, rank, max rank). Whether the
+  window shows the child skill lines the probe found (2937-2948, one per primary profession: the recorder files a recipe under the
+  parent) and whether the skill values agree with `GetProfessionInfo`'s rank (`recorder.tradeSkill.skillFrom` says which source was used).
+- [ ] Other players' windows: `C_TradeSkillUI.IsTradeSkillLinked()` / `IsTradeSkillGuild()` (or the globals) exist and are true for a
+  linked or a guild trade skill window (the recorder never reads such a window).
+- [ ] Events: which of `TRADE_SKILL_SHOW`, `TRADE_SKILL_LIST_UPDATE`, `TRADE_SKILL_DATA_SOURCE_CHANGED`, `TRADE_SKILL_UPDATE` register
+  (the probe's event list has them all) and which fire when a window opens and after a craft; the recorder reads once, 0.5 s after the
+  last of them. `TRAINER_UPDATE` after a purchase or a filter change.
+- [ ] Do the values make sense: a service's cost in copper against the trainer's window; a recipe's difficulty against the window's
+  colour at the same skill; `python tools/import_savedvars.py --merge-learned --pack <a copy of the pack>` files the services under the
+  right profession (class trainers are reported as "no profession" until the classes table takes them).
+
 Travel (Engine/Travel.lua, Engine/Context.lua, Core/Learn.lua, tools/guide_travel.py, tools/wowhead_export.py)
 - [ ] Boarding signals on a boat or zeppelin, each an assumption (with the transport probe above): the map position or
   `UnitPosition` going away on board, a continent-level best map over open sea, another instance, a loading screen or

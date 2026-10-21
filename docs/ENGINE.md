@@ -416,6 +416,58 @@ the record seen longest ago goes). `:Get(table, key)`, `:Counts()`, `:Count(name
 positions override the other layers, quest/vendor/trainer links are unioned with them, vendor items only for items the
 route touches.
 
+**Profession part (`Core/LearnProfessions.lua`, `Learn.Professions`; built on the mock, none of it seen in the client).**
+Same opt-in as the rest (`Learn:Recording()`: the player's yes on a release build, dev builds always), same guards (a
+player or a pet is never an NPC, secret values are skipped), read-only (no window is clicked or filtered), nothing leaves
+the SavedVariables file. No player name, no chat and none of the player's gold is read; `known` and the skill value are
+the only things about the character, and the importer drops `known`.
+- `trainers[npcID].services = { { id = spellID, item = itemID, n = name, r = rank text, cost = copper, lvl = required level,
+  need = required skill, line = skill line ID, known = true }, ... }`, filed at `TRAINER_SHOW` (always) and
+  `TRAINER_UPDATE` (not within a second of a read that found services). A service is one entry by spell ID, else by name and
+  rank; the latest reading of a service replaces the older one, and a service the window does not list stays (the window's
+  own filters hide some). Headers and rows that told nothing beyond an ID are skipped (`trainers[npcID].spells` keeps the
+  IDs). Class trainers are recorded too (`line` absent). At most `LIMITS.servicesPerTrainer` (150) per trainer.
+- `recipes[spellID] = { n, line = skill line ID, item = what it makes, reagents = { [itemID] = count }, obs = { { skill,
+  cat }, ... }, t }`, filed from the trade skill window one `SCAN_DELAY` (0.5 s) after the last of `TRADE_SKILL_SHOW`,
+  `TRADE_SKILL_LIST_UPDATE`, `TRADE_SKILL_DATA_SOURCE_CHANGED`, `TRADE_SKILL_UPDATE`. `cat` is the difficulty the game showed
+  at the character's skill (`optimal` orange, `medium` yellow, `easy` green, `trivial` grey; only for recipes the character
+  knows), `skill` the character's skill in that profession (the first sane value of the child profession, the modern
+  `GetTradeSkillLine` rank, the Classic `GetTradeSkillLine` rank, `ns.Player.professions` and the base profession, in that
+  order); of the observations only the lowest and highest skill seen in each difficulty are kept (at most eight), which is
+  all the colour thresholds can be read from. A linked or guild trade skill window is never read. At most `LIMITS.recipes`
+  (2000) recipes (the one seen longest ago goes), `reagentsPerRecipe` (12) reagents each. Without a skill line for the
+  window nothing is filed.
+- Client API, every call through `Util.Call`, both shapes tried: trainer `C_TrainerUI.<name>` else the global of the same
+  name (`GetNumTrainerServices`, `GetTrainerServiceInfo` (name, rank text, type, or one table), `GetTrainerServiceCost`,
+  `GetTrainerServiceLevelReq`, `GetTrainerServiceSkillLine` (an ID or the profession's name), `GetTrainerServiceSkillReq`,
+  `GetTrainerServiceItemLink`, spell IDs also from `C_TooltipInfo.GetTrainerService`); trade skill the modern
+  `C_TradeSkillUI.GetAllRecipeIDs/GetRecipeInfo/GetRecipeSchematic` and `GetChildProfessionInfo/GetBaseProfessionInfo/
+  GetTradeSkillLine`, else (when it lists nothing) the Classic globals `GetNumTradeSkills`, `GetTradeSkillInfo`,
+  `GetTradeSkillRecipeLink`, `GetTradeSkillItemLink`, `GetTradeSkillNumReagents/ReagentInfo/ReagentItemLink`,
+  `GetTradeSkillLine`. Unverified: API notes, "Open probes", "Profession recorder".
+- `SignpostDB.recorder = { trainer = {...}, tradeSkill = {...} }` is the last window's report (which API answered, how many
+  services or recipes were read, how many had a name, a cost, a level, a skill, a skill line, an item, reagents or a
+  difficulty, where the skill value came from, why a window was skipped): counts and function names only, so that the real
+  client's behaviour is readable with `tools/read_savedvars.py recorder`. `/signpost probe` adds a `recorder` section (which
+  functions exist in both shapes, everything the client's `C_TrainerUI` and `C_TradeSkillUI` hold, the enums) and the report.
+- `/signpost learned` and the consent window count `trainer services` and `recipes` (`Learn.Professions:Counts()`).
+  Size: a window holds a few dozen services or recipes at about 100 to 250 bytes each, so a play-through of the default
+  professions is well under 200 KB (an estimate, not measured); the caps allow a few MB at most.
+- Importer (`tools/signpost_tools/learned.py`): `professions[skillLine].services[npcID]` and `.recipes[spellID]` in the
+  pack's schema (`Data/Schema.lua`). A service belongs to the profession it names, else to the trainer's one (a service that
+  names none, at a trainer of several professions, is not filed); class trainers are reported in the gap report until the
+  classes table takes them. Merge rules (the record's `t` orders the readings, across the sources of one import and across
+  imports): the newest reading of a service replaces the older one, and for a recipe the newest reading's fields win field
+  by field; the services and recipes another layer holds stay unless a learned reading replaces them; the observations of
+  every reading are unioned and compacted again (`compact_observations`); `skill_bounds(obs)` reads where each colour starts
+  as far as they say. Only
+  the schema's fields are read: a name or text in a SavedVariables file cannot reach the archive or the pack. The reagents of
+  learned recipes count as route items, so the vendors that sell them are kept.
+- Specs: `tests/learn_professions_spec.lua` (the mock `tests/mocks/profession_windows.lua` scripts every API variant, present
+  or absent), `tools/tests/test_learned_professions.py`, and the fixture `tests/fixtures/profession-recorder/Signpost.lua`,
+  which the Lua spec writes with `SIGNPOST_WRITE_FIXTURES=1 busted tests/learn_professions_spec.lua` and fails on when the
+  recorder stops writing exactly it, and which the Python test imports (the round trip).
+
 ### UI/StepFrame.lua and UI/Pins.lua — `ns.StepFrame`, `ns.Pins`
 
 - React to `GUIDE_LOADED`, `STEP_CHANGED`, `STICKY_CHANGED` (at once), `CONTEXT_CHANGED`, `TRANSPORT_STATE` (coalesced,

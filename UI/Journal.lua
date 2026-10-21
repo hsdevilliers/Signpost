@@ -569,7 +569,7 @@ local function settingsList()
 			set = plainSetting("pins", "showNext", refreshPins),
 		},
 		{
-			label = L["Help improve the guides: record where NPCs and quests are while I play"],
+			label = L["Help improve the guides: record NPCs, quests, trainers and recipes"],
 			get = function()
 				return ns.Contribute and ns.Contribute:Enabled()
 			end,
