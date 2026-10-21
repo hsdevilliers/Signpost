@@ -540,7 +540,8 @@ def report_setup(job: Job, out: Out, pl: engine.Planner, options) -> None:
         else "a quest the route picked up and did not finish is taken out when the route is written, and listed with the reason (--completeness F finishes the "
              "ones that are a short walk away and pay at least F of the route's pace; off)",
         (f"{len(job.required)} quests are required (--require, \"require\" in tools/drafts.json): {', '.join(str(q) for q in job.required)}. Each is done "
-         f"whatever it costs, with the quests it needs; none is left out for being slow, taken out when the route is written, or kept out by a full quest log")
+         f"whatever it costs, with the quests it needs (all of them are pushed like a class chain's); none is left out for being slow, taken out when the "
+         f"route is written, or kept out by a full quest log, and one that only has to be handed in, in another zone, is handed in next (the route leaves for it)")
         if job.required
         else "no quest is required (--require ID,... or \"require\" in the guide's entry of tools/drafts.json makes the route do the quests it names)",
         f"{len(job.mandatory)} class quests are mandatory: each is done or accounted for with a #skipquest reason; there is no deadline, "
@@ -823,7 +824,12 @@ def report_quests(out: Out, pl: engine.Planner, job: Job, plan: engine.Plan) -> 
             else f"{q} {pl.quests[q].name} NOT DONE"
             for q in job.required if q in pl.quests
         ]
-        for line in labelled("required      ", f"{len(job.required)} required by the guide; done at level: " + "; ".join(parts)):
+        needed = len(pl.required) - len(pl.asked)
+        for line in labelled(
+            "required      ",
+            f"{len(job.required)} required by the guide" + (f" and {needed} quests they need, all routed and none left out" if needed else "")
+            + "; done at level (the level it opens at): " + "; ".join(parts),
+        ):
             out(line)
     if pl.s.hardcore:
         highest = max((pl.quests[q].level - 0 for q in done), default=0)
@@ -1083,6 +1089,7 @@ def write_outputs(job: Job, outcome: Outcome, pl: engine.Planner, out_dir: Path,
             dict(quest=q, name=pl.quests[q].name, opens=pl.quests[q].req, level=pl.quests[q].level, done_at=outcome.plan.levels_done().get(q))
             for q in job.required if q in pl.quests
         ],
+        required_needed=sorted(pl.required - pl.asked),
         quest_log_limit=pl.s.quest_log_limit,
         quest_log_peak=outcome.plan.log_peak()[0],
         completeness=pl.s.completeness,

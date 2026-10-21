@@ -170,7 +170,7 @@ class Visit:
 class PState:
     """A situation. States are shared along a path through `parent` and never changed once made."""
 
-    __slots__ = ("hub", "zone", "level", "xp", "clock", "penalty", "late", "gated", "done", "active", "gone", "parent", "visit", "depth", "ground")
+    __slots__ = ("hub", "zone", "level", "xp", "clock", "penalty", "late", "gated", "done", "active", "gone", "parent", "visit", "depth", "ground", "work_here")
 
     def __init__(self) -> None:
         self.hub: int | None = None
@@ -188,6 +188,7 @@ class PState:
         self.visit: Visit | None = None
         self.depth = 0
         self.ground = 0.0
+        self.work_here: bool | None = None  # whether a required quest has work in this zone (`Planner._work_here`), found when first asked
 
     @property
     def total(self) -> float:
@@ -275,7 +276,8 @@ class Planner:
         self.places_at: dict[int, list] = {}
         self.window: list[PQuest] = []  # kept quests by required level
         self.mandatory: set[int] = set()  # the class quests and the required ones: each is done, or (a class quest) accounted for
-        self.required: set[int] = set()  # the quests the guide requires: mandatory like a class quest, and never given up (docs/PLANNER.md)
+        self.asked: set[int] = set()  # the quests the guide names as required (`Planner.build(required=...)`)
+        self.required: set[int] = set()  # ... and the quests they need: all mandatory like a class quest, and never given up (docs/PLANNER.md)
         self._closes_required: set[int] = set()  # the quests that would close a required one (its exclusive alternatives): never taken
         self.notes: dict[int, str] = {}
         self.skip_reasons: dict[int, str] = {}
@@ -324,6 +326,7 @@ class Planner:
         planner = cls(pack, world, model, availability.Rules(quests, character), settings)
         planner.notes = dict(notes or {})
         planner.skip_reasons = dict(exclude or {})
+        planner.asked = set(required)
         planner.required = set(required)
         planner.mandatory = set(mandatory) | planner.required
         planner.home = home
@@ -342,6 +345,7 @@ class Planner:
                 if earlier in planner.quests and later in planner.quests and earlier not in planner.quests[later].pre_all:
                     planner.quests[later].pre_all += (earlier,)
         say(f"{len(planner.quests)} of {len(quests)} quests can be routed for this character")
+        planner._expand_required()
         planner._prune_territory(character.faction)
         planner._prune_unreachable()
         planner._check_required()
@@ -524,6 +528,24 @@ class Planner:
             if isinstance(nxt, int) and nxt in self.quests:
                 self.quests[nxt].parents += (q.id,)
 
+    def _expand_required(self) -> None:
+        """The quests a required quest needs are required too: all mandatory, so that the search does them (and is pushed to, like a class chain's
+        quests) and not only keeps them. Of the alternatives a quest takes (any one of its `preSingle`) the one that pays best stands for them."""
+        todo = [qid for qid in self.required if qid in self.quests]
+        while todo:
+            q = self.quests[todo.pop()]
+            needed = list(q.pre_all) + ([q.parent] if q.parent is not None else [])
+            options = [p for p in q.pre_any if p in self.quests]
+            if options and not any(p in self.required for p in options):
+                nominal = lambda p: min(self.s.cap, max(self.quests[p].req, self.quests[p].level - 1, 1))  # noqa: E731
+                needed.append(max(options, key=lambda p: self._quest_rate(self.quests[p], nominal(p))))
+            for p in needed:
+                if p in self.quests and p not in self.required:
+                    self.required.add(p)
+                    self.mandatory.add(p)
+                    self.quests[p].mandatory = True
+                    todo.append(p)
+
     def _why_not(self, qid: int, depth: int = 0) -> str:
         """Why a quest is not among the ones this character's route can use: the reason `_consider` or a prune gave it, and for a quest whose
         prerequisite cannot be routed, which prerequisite and why."""
@@ -547,14 +569,17 @@ class Planner:
         """Every required quest must be one the character's route can use; if not, a clear error names each and says why (not the availability
         rules' fault alone: a HARDCORE route's elite rule, an exclusion or a prerequisite that cannot be routed stops a quest the same way)."""
         problems: list[str] = []
-        for qid in sorted(self.required):
+        for qid in sorted(self.asked):
             record = self.pack.table("quests").get(qid)
             name = f" ({record['n']})" if isinstance(record, dict) and record.get("n") else ""
             if qid not in self.quests:
                 problems.append(f"quest {qid}{name}: {self._why_not(qid)}")
                 continue
-            for other in self.quests[qid].excl:
-                if other in self.required and other > qid:
+            q = self.quests[qid]
+            if max(q.req, q.level - self.accept_over) > self.s.cap:
+                problems.append(f"quest {qid}{name}: it can be accepted from level {max(q.req, q.level - self.accept_over)}, above the route's cap of {self.s.cap}")
+            for other in q.excl:
+                if other in self.asked and other > qid:
                     problems.append(f"quests {qid}{name} and {other} are exclusive alternatives: both cannot be required")
         if problems:
             raise RequiredQuestError("a required quest cannot be offered to this character:\n  " + "\n  ".join(problems))
@@ -814,8 +839,56 @@ class Planner:
         st.hub, st.zone, st.level = start_hub, self.hubs[start_hub].zone, level
         return st
 
+    def _work_here(self, st: PState) -> bool:
+        """Whether a required quest has work in the zone the route stands in: one the game would offer that starts here, one with an open objective
+        here, one whose hand-in is here. The route does not leave a zone with that undone (it may do anything else there first), so a required
+        chain is finished before the route goes on, and one level-gated waits for the level in the zone."""
+        if st.work_here is None:
+            found = False
+            for qid in self.required:
+                if qid in st.done or qid in st.gone:
+                    continue
+                q = self.quests[qid]
+                open_ = st.active.get(qid)
+                if open_ is None:
+                    if not self.ready(q, st.done, st.active, st.gone):
+                        continue
+                    hubs = q.start_hubs
+                elif open_:
+                    hubs = tuple(h for o in q.objectives if o.index in open_ for h in o.hubs)
+                else:
+                    hubs = q.end_hubs
+                if any(self.hubs[h].zone == st.zone for h in hubs):
+                    found = True
+                    break
+            st.work_here = found
+        return st.work_here
+
+    def leaving(self, st: PState) -> list[int]:
+        """The hubs the route must go to now: it holds a required quest that has only to be handed in, and only in another zone (the ride out
+        of a story zone, such as the exit quest of a start island), and has no required work left in this one, so it leaves for it with nothing
+        else done first."""
+        if not self.required or st.hub is None or self._work_here(st):
+            return []
+        found: list[int] = []
+        for qid, open_ in st.active.items():
+            if qid in self.required and not open_:
+                hubs = self.quests[qid].end_hubs
+                if hubs and all(self.hubs[h].zone != st.zone for h in hubs):
+                    found += hubs
+        return sorted(set(found))
+
     def options(self, st: PState) -> dict[int, float]:
         """The hubs with something to do now, with a rough worth for ranking: the experience at stake there."""
+        leaving = self.leaving(st)
+        if leaving:
+            return {h: 1.0 for h in leaving}
+        worth = self._options(st)
+        if self.required and st.hub is not None and self._work_here(st):
+            worth = {h: w for h, w in worth.items() if self.hubs[h].zone == st.zone}  # the zone lock
+        return worth
+
+    def _options(self, st: PState) -> dict[int, float]:
         level, done, active, gone = st.level, st.done, st.active, st.gone
         worth: dict[int, float] = {}
         capped = level >= self.s.cap
@@ -964,8 +1037,8 @@ class Planner:
     def lateness(self, q: PQuest, level: int) -> float:
         """What a class quest costs the route for being undone at this level: a push to do it early, not a deadline. The route
         picks it up when it passes the giver, and makes the trip for a far one soon after it opens."""
-        if not q.mandatory:
-            return 0.0
+        if not q.mandatory or q.id in self.required:
+            return 0.0  # (a required quest is not pushed: a chain of thirty quests would drown the real time; the zone lock schedules it)
         return min(max(0, level - q.req - self.s.class_grace), self.s.class_levels) * self.s.class_push
 
     def pending_mandatory(self, st: PState) -> list[int]:
@@ -1018,6 +1091,8 @@ class Planner:
         charged for, and one that is far away costs for the levels the trip takes."""
         s, pace, total = self.s, self._pace(st.level), 0.0
         for qid in self.pending_mandatory(st):
+            if qid in self.required:
+                continue
             q = self.quests[qid]
             hubs = self._next_hubs(q, st)
             trip = 0.0 if st.hub in hubs else min((self.travel(st.hub, h) for h in hubs), default=0.0)
@@ -1053,6 +1128,9 @@ class Planner:
     def overdue_hubs(self, st: PState, most: int = 4) -> list[int]:
         """The nearest hubs where a class quest past the level it opens at can be got on with (its giver, an open objective, its
         ender), so the search always considers the trip: a far hub never makes the best-ranked few on experience for the walk."""
+        if self.leaving(st):
+            return []
+        locked = bool(self.required) and st.hub is not None and self._work_here(st)
         found: dict[int, float] = {}
         for qid in self.pending_mandatory(st):
             q = self.quests[qid]
@@ -1071,7 +1149,7 @@ class Planner:
             else:
                 continue
             for h in hubs:
-                if h != st.hub:
+                if h != st.hub and not (locked and self.hubs[h].zone != st.zone):
                     found[h] = min(found.get(h, float("inf")), self.travel(st.hub, h))
         return sorted(found, key=found.get)[:most]
 
@@ -1083,6 +1161,8 @@ class Planner:
             child = self.visit(st, h)
             if child is not None:
                 out.append(child)
+        if out and self.leaving(st):
+            return out  # the route is leaving for a hand-in: nothing else is an option, not even a grind
         g = self.grind(st) if not out else (self.grind(st, voluntary=True) if st.level < self.s.cap else None)
         if g is not None:
             out.append(g)
