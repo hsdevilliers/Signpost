@@ -73,7 +73,7 @@ coordinates match the pack.
 | MUST-FIX, Tauren HARDCORE: the Moonglade legs said "Walk ... find your own way" at levels 11, 20 and 30 (from Classic memory the road runs through level 48+ zones) | Fixed in the generator: a druid guide words every Moonglade leg as "cast Teleport: Moonglade if you have it (VERIFY(beta)), else the way is not in the data", with a note not to walk it; regenerated |
 | HARDCORE grind gates do not say why; one grind sits in Moonglade | Backlog |
 | Named dangers the HARDCORE route still takes (Copperplug, Bael'dun, the Tear of the Moons, Hillsbrad) | Backlog |
-| Find my place errs in the long first chapters (a level 8 Tauren is put at step 29, not 21) | Backlog, and the level term was made robust (see below) |
+| Find my place errs in the long first chapters (a level 8 Tauren is put at step 29, not 21) | Fixed: the level line runs along experience and a clean history outweighs the level gap (last section); the backlog item is closed |
 | Earthen Echo 98823 and the Gloomrise quests may not be a hunter's | Backlog |
 | Five Orgrimmar quests from profession NPCs have no skill field | Backlog (verify at the first visit) |
 | Developer text in `.todo` lines, an 11-line step, a far pin | Backlog |
