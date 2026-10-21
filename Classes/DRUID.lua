@@ -51,6 +51,17 @@ ns.Classes:Register("DRUID", {
 			quests = { 98340, 98405, 98342, 98739, 98362 },
 			races = { "Tauren" },
 		},
+		-- The druid weapon quest at 24 (docs/CLASS-QUESTS.md: fan guides name "Earthen Echo" for the Horde, a two-handed mace
+		-- reached through the Titan relics in the Wetlands dungeon). The pack has only this one record (Bashana Runetotem in
+		-- Thunder Bluff to Muln Earthfury in Mulgore, level 31 from 24, no objective, no class mask): the guide skips it with a
+		-- reason (a dungeon in the sources). VERIFY(beta): that it is the druid's, what it asks, and the rest of the chain.
+		{
+			id = "earthen-echo",
+			name = "Earthen Echo (druid weapon quest, unverified)",
+			level = 24,
+			quests = { 98823 },
+			races = { "Tauren" },
+		},
 		-- The Windshaper shares the first and last quests with the Tauren chain (98340, 98362); the Windborne ones in between
 		-- (The Great Windborne Cat Spirit x2, Blessings of the Great Windborne Cat Spirit) are its own, with the Avatar of
 		-- Saeyleenan.

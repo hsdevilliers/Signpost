@@ -19,9 +19,7 @@
             "--exclude",
             7820,
             "--exclude-reason",
-            "no known source for the cloth; not worth a detour",
-            "--exclude",
-            76240
+            "no known source for the cloth; not worth a detour"
           ]
         },
         {

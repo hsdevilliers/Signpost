@@ -50,6 +50,222 @@
       "confidence": "high"
     },
     {
+      "id": 98251,
+      "name": "Never Coming Back",
+      "action": "skip",
+      "reason": "probably a Warlock class quest (its giver Va'xug Firefure also gives A Void Path, which ends at the Eye of Kilrogg); the data has no class mask for Forever quests, so the game would not offer it to a druid or a hunter",
+      "source": "the data pack's giver and ender NPCs (inferred, not seen in game); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 98252,
+      "name": "A Void Path",
+      "action": "skip",
+      "reason": "probably a Warlock class quest (it ends at the Eye of Kilrogg, a Warlock spell); the data has no class mask for Forever quests, so the game would not offer it to a druid or a hunter",
+      "source": "the data pack's giver and ender NPCs (inferred, not seen in game); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 65601,
+      "name": "Love Hurts",
+      "action": "skip",
+      "reason": "probably a Warlock class quest: the other quests of its giver Cazul (1507, 1508) are Warlock-only, and Hearts of the Lovers and The Binding, the same story from the same NPCs, are Warlock quests the planner already drops",
+      "source": "the data pack's quest givers and class masks (inferred, not seen in game); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 99108,
+      "name": "Sparring Match",
+      "action": "skip",
+      "reason": "probably a Warrior class quest: its giver Krang Stonehoof is the Warrior trainer and his only other quest (1505) is Warrior-only; the data has no class mask for Forever quests",
+      "source": "the data pack's quest givers and class masks (inferred, not seen in game); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 76156,
+      "name": "Stalk With The Earthmother",
+      "action": "skip",
+      "reason": "probably a Rogue class quest (with 76160 and 76240): its giver Boarton Shadetotem is listed as a Rogue trainer in the data and gives nothing else; the data has no class mask for Forever quests",
+      "source": "the data pack's NPC record for Boarton Shadetotem, sub name 'Rogue Trainer?' (inferred, not seen in game); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 76160,
+      "name": "Stalk With The Earthmother",
+      "action": "skip",
+      "reason": "probably a Rogue class quest (the second of three from Boarton Shadetotem, a Rogue trainer in the data); the data has no class mask for Forever quests",
+      "source": "the data pack's NPC record for Boarton Shadetotem, sub name 'Rogue Trainer?' (inferred, not seen in game); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 76240,
+      "name": "Stalk With The Earthmother",
+      "action": "skip",
+      "reason": "probably a Rogue class quest (the third of three from Boarton Shadetotem, a Rogue trainer in the data); the data has no class mask for Forever quests",
+      "source": "the data pack's NPC record for Boarton Shadetotem, sub name 'Rogue Trainer?' (inferred, not seen in game); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 6523,
+      "name": "Protect Kaya",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Kaya Flathoof, Stonetalon Mountains); the data has no objective for it, so the planner took it for a free delivery",
+      "source": "own knowledge of the game (Classic), from memory; the pack's record has no objective and its giver and ender stand in two zones; first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 6544,
+      "name": "Torek's Assault",
+      "action": "skip",
+      "reason": "HARDCORE: probably an escort or an event (Torek in Ashenvale); the data has no objective for it and its giver and ender stand 13 map units apart, so the planner took it for a free delivery",
+      "source": "own knowledge of the game (Classic), from memory and unsure; the pack's record has no objective; first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 6641,
+      "name": "Vorsha the Lasher",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Muglash, Ashenvale); the data has no objective for it, so the planner took it for a free delivery",
+      "source": "own knowledge of the game (Classic), from memory; the pack's record has no objective and the backlog item on escorts names it; first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 6482,
+      "name": "Freedom to Ruul",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Ruul Snowhoof, Ashenvale); the data has no objective for it, so the planner took it for a free delivery",
+      "source": "own knowledge of the game (Classic), from memory; the pack's record has no objective and its giver and ender stand 33 map units apart; first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 4770,
+      "name": "Homeward Bound",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Pao'ka Swiftmountain, Thousand Needles); the data has no objective for it, so the planner took it for a free delivery",
+      "source": "own knowledge of the game (Classic), from memory; the pack's record has no objective and its giver and ender stand apart; first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 4904,
+      "name": "Free at Last",
+      "action": "skip",
+      "reason": "HARDCORE: escort quest (Lakota Windsong, Thousand Needles); the data has no objective for it, so the planner took it for a free delivery",
+      "source": "own knowledge of the game (Classic), from memory; the pack's record has no objective and its giver and ender stand 25 map units apart; first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "medium"
+    },
+    {
+      "id": 6562,
+      "name": "Trouble in the Deeps",
+      "action": "skip",
+      "reason": "HARDCORE: leads to The Essence of Aku'Mai, a Blackfathom Deeps dungeon quest",
+      "source": "the data pack: the quest's zone is Blackfathom Deeps (221); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 6563,
+      "name": "The Essence of Aku'Mai",
+      "action": "skip",
+      "reason": "HARDCORE: dungeon quest (the Sapphires of Aku'Mai lie inside Blackfathom Deeps; the pack puts them at the entrance)",
+      "source": "the data pack: the quest's zone is Blackfathom Deeps (221) and its objects are the dungeon's; first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "high"
+    },
+    {
+      "id": 92422,
+      "name": "The Wrath of Rath'mael",
+      "action": "skip",
+      "reason": "HARDCORE: kills Rath'mael, a named Forever target with no position and no elite flag in the data",
+      "source": "the data pack has no elite flag for any Forever creature (0 of 419); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 92706,
+      "name": "WANTED: Bruuz",
+      "action": "skip",
+      "reason": "HARDCORE: bounty on Bruuz, a named Forever target with no elite flag in the data",
+      "source": "the data pack has no elite flag for any Forever creature (0 of 419); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 97003,
+      "name": "Chol'aruk the Ravener",
+      "action": "skip",
+      "reason": "HARDCORE: kills Chol'aruk the Ravener, a named Forever target with no elite flag in the data",
+      "source": "the data pack has no elite flag for any Forever creature (0 of 419); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 96261,
+      "name": "The Broodmother",
+      "action": "skip",
+      "reason": "HARDCORE: kills Broodmother Valraxx, the boss of the new Gloomrise lair in northern Mulgore (level 31 quest); the data has no elite flag for her",
+      "source": "the data pack has no elite flag for any Forever creature (0 of 419); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 96259,
+      "name": "Defending the Dead",
+      "action": "skip",
+      "reason": "HARDCORE: kills Gloomrise soldiers and hatchlings in the new Gloomrise lair in northern Mulgore (level 30 quest, no elite flags for Forever creatures)",
+      "source": "the data pack has no elite flag for any Forever creature (0 of 419); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 96260,
+      "name": "Stronger than Steel",
+      "action": "skip",
+      "reason": "HARDCORE: needs silk from Gloomrise spinners in the new Gloomrise lair in northern Mulgore (level 30 quest, no elite flags for Forever creatures)",
+      "source": "the data pack has no elite flag for any Forever creature (0 of 419); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 96241,
+      "name": "Talkin' bout Toxins, Mon",
+      "action": "skip",
+      "reason": "HARDCORE: collects toxin samples at the entrance of the new Gloomrise lair in northern Mulgore (level 30 quest, no elite flags for Forever creatures)",
+      "source": "the data pack has no elite flag for any Forever creature (0 of 419); first review of the Tauren Druid planner route, 2026-10-21",
+      "confidence": "low"
+    },
+    {
+      "id": 98823,
+      "name": "Earthen Echo",
+      "action": "skip",
+      "reason": "HARDCORE: probably the druid weapon quest (a level 24 chain through the Titan relics in the Wetlands dungeon, from fan guides); the data has only its giver and ender and no objective",
+      "source": "docs/CLASS-QUESTS.md (buyboost.com: a druid two-handed mace at 24, Horde 'Earthen Echo'); the pack's record: Bashana Runetotem to Muln Earthfury, level 31, from level 24; not seen in game",
+      "confidence": "low"
+    },
+    {
+      "id": 5922,
+      "name": "Moonglade",
+      "action": "note",
+      "text": "Moonglade is far from here. VERIFY(beta): cast Teleport: Moonglade (Classic's druid trainer teaches it at level 10; where Forever teaches it is unconfirmed, docs/HARDCORE.md). The way back is the hearthstone or Nighthaven's flight master (the client lists Horde flight nodes there).",
+      "source": "the earlier drafted Tauren Druid chapters (the Moonglade .todo steps the planner's install does not keep); docs/FOREVER-API-NOTES.md open probe 'Druid forms in Forever'",
+      "confidence": "low"
+    },
+    {
+      "id": 6126,
+      "name": "Lessons Anew",
+      "action": "note",
+      "text": "Moonglade again: Teleport: Moonglade, as in the note on the first Moonglade quest (VERIFY(beta)). This chain goes back and forth between Thunder Bluff, Moonglade and the Crossroads.",
+      "source": "the earlier drafted Tauren Druid chapters; the chain's NPCs in the data pack",
+      "confidence": "low"
+    },
+    {
+      "id": 98340,
+      "name": "The Great Cat Spirit",
+      "action": "note",
+      "text": "Moonglade again: Teleport: Moonglade (VERIFY(beta), see the note on the first Moonglade quest).",
+      "source": "the earlier drafted Tauren Druid chapters",
+      "confidence": "low"
+    },
+    {
+      "id": 98342,
+      "name": "The Great Cat Spirit",
+      "action": "note",
+      "text": "VERIFY(beta): the three relics lie in the Stormrage Barrow Dens (south-east Moonglade). Fan guides say the spirits there attack on sight and the relics are party loot: go in at full health (a statue at the door gives a stealth blessing) and leave if hurt.",
+      "source": "docs/CLASS-QUESTS.md (worstguidesever.com and foreverchanges.pro, beta descriptions); the relics' positions are in the data pack",
+      "confidence": "low"
+    },
+    {
       "id": 6002,
       "name": "Body and Heart",
       "action": "note",
