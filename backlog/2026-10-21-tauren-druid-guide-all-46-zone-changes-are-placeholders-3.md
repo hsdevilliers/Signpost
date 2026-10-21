@@ -1,5 +1,5 @@
 ---
-title: Tauren Druid guide: all 46 zone changes are placeholders (3 Moonglade and 2 Eastern Kingdoms round trips)
+title: Tauren Druid guide: 26 zone changes are placeholders (3 Moonglade and 2 Eastern Kingdoms round trips)
 kind: finding
 status: open
 priority: normal
@@ -11,7 +11,7 @@ raised_in: review of the Tauren Druid planner route, batch 1 (WP-A2), 2026-10-21
 
 ## What
 
-The installed Tauren Druid route (generation 2, docs/reviews/horde-tauren-druid-walk.md) has 46 zone changes, each a `.todo` + `.zone` placeholder: 30 say "the travel graph has no route yet", 16 "border ... has no crossing coordinates yet". Three pairs of them are Moonglade round trips (at levels 11, 18 to 19 and 20; 22 to 25 minutes each way in the planner's price) and two pairs cross the sea to the Eastern Kingdoms (Undercity and Silverpine at 20 to 22, Undercity and Hillsbrad at 28 to 29). Nothing in the guide says how to get there: on foot from Thunder Bluff to Moonglade (Teleport: Moonglade is unconfirmed), and by the Orgrimmar zeppelin to the Undercity.
+The installed Tauren Druid route (generation 3, 807be15, docs/reviews/horde-tauren-druid-walk.md) has 26 zone changes that are a `.todo` + `.zone` placeholder (44 travel steps in all: the other 18 are real flight paths and flights). Travel is 11h15 of its 27h43. Six placeholders are three Moonglade round trips (levels 11, 20 to 22 and 30; 20 to 26 minutes each way in the planner's price; worded "cast Teleport: Moonglade if you have it ... Do not walk it" since WP-F), eight are two trips to the Eastern Kingdoms (Undercity at 19 to 20, Silverpine, Undercity and Hillsbrad at 22 to 25; four of them say "they are on different continents"), and twelve are walks inside Kalimdor. Nothing in the guide says how to get there: Teleport: Moonglade is unconfirmed, and nothing says how to reach the Undercity (the Orgrimmar zeppelin, as I remember Classic).
 
 ## Why
 
@@ -23,4 +23,4 @@ The travel data (WP-F: crossings, flight paths, zeppelins, the way to Moonglade)
 
 ## Notes
 
-- Raised by the review of the Tauren Druid planner route (batch 1, WP-A2). The numbers are from generation 2 (61901c9).
+- Raised by the review of the Tauren Druid planner route (batch 1, WP-A2). Generation 2 (61901c9) had 46 placeholders (three Moonglade and two Eastern Kingdoms round trips as now); the numbers above are generation 3's, counted in the chapters.
