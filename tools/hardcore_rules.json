@@ -173,7 +173,7 @@
       "id": 94913,
       "name": "Moonglade",
       "action": "note",
-      "text": "Moonglade is far from here and this route goes there at level 20, with the Cat Form quests. VERIFY(beta): cast Teleport: Moonglade (Classic's druid trainer teaches it at level 10; where Forever teaches it is unconfirmed). The way back is the hearthstone or a flight master (the client lists Horde flight nodes at Moonglade).",
+      "text": "Moonglade is a long way from here. VERIFY(beta): cast Teleport: Moonglade (Classic's druid trainer teaches it at level 10; where Forever teaches it is unconfirmed). The way back is the hearthstone or a flight master (the client lists Horde flight nodes at Moonglade).",
       "source": "the earlier drafted Skyborne Druid chapters (the Moonglade .todo steps the planner's install does not keep); docs/HARDCORE.md; the client's flight nodes in the data pack's maps",
       "confidence": "low"
     },
@@ -192,6 +192,62 @@
       "text": "Elites roam among these harpies: Bloodfury Ripper (elite, near 31,62) and Sister Riven (rare elite, near 30,69). Kill only the ordinary harpies and keep away from those two.",
       "source": "the data pack (NPC ranks and positions: 12579 and 5930)",
       "confidence": "high"
+    },
+    {
+      "id": 869,
+      "name": "Raptor Thieves",
+      "action": "note",
+      "text": "Takk the Leaper, a rare elite raptor (near 59.6,8.3), is one of the creatures that drop the heads: take them from the ordinary raptors and keep away from him.",
+      "source": "the data pack (item Raptor Head's drop sources; NPC 5842 Takk the Leaper has the rank rare elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 865,
+      "name": "Raptor Horns",
+      "action": "note",
+      "text": "Takk the Leaper, a rare elite raptor (near 59.6,8.3), drops the horns too: take them from the ordinary raptors and keep away from him.",
+      "source": "the data pack (item Intact Raptor Horn's drop sources; NPC 5842 Takk the Leaper has the rank rare elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 845,
+      "name": "The Zhevra",
+      "action": "note",
+      "text": "Swiftmane, a rare elite zhevra (near 61.2,34.5), drops the hooves too: take them from the ordinary zhevras and keep away from him.",
+      "source": "the data pack (item Zhevra Hooves' drop sources; NPC 5831 Swiftmane has the rank rare elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 855,
+      "name": "Centaur Bracers",
+      "action": "note",
+      "text": "Rocklance (rare elite, near 56.5,41.7) and Warlord Krom'zar (elite) are among the Kolkar that drop the bracers: kill ordinary Kolkar one at a time and leave those two alone.",
+      "source": "the data pack (item Centaur Bracers' drop sources; NPC 5841 Rocklance has the rank rare elite, NPC 9456 Warlord Krom'zar elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 1104,
+      "name": "Salt Flat Venom",
+      "action": "note",
+      "text": "Vile Sting, a rare elite scorpid (near 70.6,72.9), drops the venom too: take it from the ordinary scorpids and keep away from him.",
+      "source": "the data pack (item Salty Scorpid Venom's drop sources; NPC 5937 Vile Sting has the rank rare elite)",
+      "confidence": "medium"
+    },
+    {
+      "id": 6441,
+      "name": "Satyr Horns",
+      "action": "note",
+      "text": "The horns drop from the satyrs of the camps, among them the named Prince Raze (near 81.6,48.5) and Geltharis (near 78,42.4), whom the data does not rank: take the ordinary satyrs one at a time and leave the named ones if a fight looks bad.",
+      "source": "the data pack (item Satyr Horns' drop sources and their positions); the named satyrs carry no rank in the data",
+      "confidence": "low"
+    },
+    {
+      "id": 1150,
+      "name": "Test of Endurance",
+      "action": "skip",
+      "reason": "HARDCORE: kills the named Grenka Bloodscreech, a target with no position and no elite flag in the data",
+      "source": "the data pack (NPC 4490 has no position and no rank); the same reasoning as the other named targets on this list; first review of the Skyborne Druid planner route, 2026-10-21",
+      "confidence": "low"
     },
     {
       "id": 5930,
