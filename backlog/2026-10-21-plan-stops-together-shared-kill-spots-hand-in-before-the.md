@@ -1,11 +1,13 @@
 ---
 title: Plan stops together: shared kill spots, hand in before the extra trip, one stop per cluster (Skyborne start)
 kind: task
-status: open
+status: done
 priority: high
 area: planner, guides
 source: user
 raised: 2026-10-21
+closed: 2026-10-27
+resolution: PR #52: the three stop rules (one stop within 150 yards, shared spots within 100 yards across a hub line, the completeness stop after the cluster) are the planner's defaults; the Skyborne opening replays as one stop; the Troll Hunter is planned again (16 chapters, 20h37 simulated, +0.8%, lint 0/0). Only the Troll Hunter: the user decided on 2026-10-27 that the two HARDCORE druid guides wait (HARDCORE arrives later), so their replan is the new task plan-the-two-hardcore-druid-guides-again-with-the-stop-rules. Not walked in the game.
 ---
 
 ## What
