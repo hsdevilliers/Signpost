@@ -155,7 +155,7 @@ describe("the shipped guides", function()
 
 			-- Two real steps of the Troll Hunter route, read by their quests (the planner may renumber them).
 			if def.id == "horde-troll-hunter" then
-				local function stepWith(...)
+				local function findStep(...)
 					local want = { ... }
 					for _, step in ipairs(guide.steps) do
 						local have = {}
@@ -172,7 +172,12 @@ describe("the shipped guides", function()
 							return step
 						end
 					end
-					error("the Troll Hunter route has no step with " .. table.concat(want, ", "))
+					return nil
+				end
+
+				local function stepWith(...)
+					return findStep(...)
+						or error("the Troll Hunter route has no step with " .. table.concat({ ... }, ", "))
 				end
 
 				local function summary(pins)
@@ -209,42 +214,72 @@ describe("the shipped guides", function()
 				it(
 					"hands in at several NPCs and offers a group quest at the last, which never holds the step",
 					function()
-						-- Silverpine Forest: hand-ins and a pick-up at a few NPCs, the last one offering Assault on Fenris
-						-- Isle (442), a group quest. How many NPCs the planner puts in the step changes with each
-						-- regeneration, so the step is read, not assumed: one pin for each of its .goto lines, the group
-						-- quest named on the last.
-						local step = stepWith("turnin446", "accept442")
-						local context = mocks.context()
-						assert.is_nil(ns.Conditions:OptionalOnly(step, context)) -- other quests decide it: not optional-only
-						local gotos = 0
-						for _, directive in ipairs(step.directives) do
-							if directive.name == "goto" then
-								gotos = gotos + 1
+						-- A step of this kind is looked for by its shape, because the planner changes which quests and how
+						-- many NPCs a step holds with each regeneration: hand-ins (or ordinary pick-ups) at a few NPCs,
+						-- the last one offering a group quest, and the group quest's own doing and hand-in steps
+						-- elsewhere in the route.
+						local function groupOffer()
+							for _, step in ipairs(guide.steps) do
+								local pin, gotos, hands, offers, optional = 0, 0, false, {}, {}
+								for _, directive in ipairs(step.directives) do
+									local quest = directive.args and directive.args.questID
+									if directive.name == "goto" then
+										pin, gotos = pin + 1, gotos + 1
+									elseif quest and directive.name == "optional" then
+										optional[quest] = true
+									elseif quest and directive.name == "accept" then
+										offers[#offers + 1] = { quest = quest, pin = pin }
+									elseif quest and directive.name == "turnin" then
+										hands = true
+									end
+								end
+								for _, offer in ipairs(offers) do
+									if
+										hands
+										and gotos >= 2
+										and (optional[offer.quest] or (step.optional and step.optional[offer.quest]))
+										and offer.pin == gotos
+										and findStep("complete" .. offer.quest)
+										and findStep("turnin" .. offer.quest)
+									then
+										return step, offer.quest, gotos
+									end
+								end
 							end
 						end
-						assert.is_true(gotos >= 3)
+
+						local step, group, gotos = groupOffer()
+						assert.is_truthy(
+							step,
+							"the Troll Hunter route has a step that hands in and offers a group quest at its last NPC"
+						)
+						local context = mocks.context()
+						assert.is_nil(ns.Conditions:OptionalOnly(step, context)) -- other quests decide it: not optional-only
 						local pins = ns.Conditions:Targets(step, context, {})
-						assert.are.equal(gotos, #pins)
-						assert.are.equal("turnin", pins[#pins].kind)
-						assert.are.same({ 448, 442 }, pins[#pins].quests)
+						assert.are.equal(gotos, #pins) -- one pin for each of its .goto lines
+						local named = false
+						for _, quest in ipairs(pins[#pins].quests or {}) do
+							named = named or quest == group
+						end
+						assert.is_true(named) -- the group quest is named on the last NPC's pin
 						-- everything but the group quest done: the group quest, offered at the last NPC, was never needed to move on
 						for _, directive in ipairs(step.directives) do
 							local quest = directive.args and directive.args.questID
-							if quest and quest ~= 442 then
+							if quest and quest ~= group then
 								context.completed[quest] = true
 							end
 						end
 						assert.is_true((ns.Conditions:IsComplete(step, context, {})))
 						-- and its own steps: the quest is not taken, so they are passed; once taken, they are not
-						local doing, handIn = stepWith("complete442"), stepWith("turnin442")
+						local doing, handIn = stepWith("complete" .. group), stepWith("turnin" .. group)
 						for _, optional in ipairs({ doing, handIn }) do
-							assert.are.same({ 442 }, ns.Conditions:OptionalOnly(optional, context).quests)
+							assert.are.same({ group }, ns.Conditions:OptionalOnly(optional, context).quests)
 							assert.is_true((ns.Conditions:IsComplete(optional, context, {})))
 						end
-						context.log[442] = true
-						context.objectives[442] = { { text = "Fenris Keep: 0/1", finished = false } }
+						context.log[group] = true
+						context.objectives[group] = { { text = "Somewhere: 0/1", finished = false } }
 						assert.is_false((ns.Conditions:IsComplete(doing, context, {})))
-						context.ready[442] = true
+						context.ready[group] = true
 						assert.is_true((ns.Conditions:IsComplete(doing, context, {})))
 						assert.is_false((ns.Conditions:IsComplete(handIn, context, {}))) -- ready, not handed in
 					end

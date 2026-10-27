@@ -453,49 +453,56 @@ No grain is the best everywhere (4 parts is the worst on the Troll Hunter and th
 all of them, and the best route as written. The best of 2, 4 and 8 is 7.4% (Skyborne) and 8.7% (Tauren) shorter than the beam's one grain, and on the Troll Hunter 6 parts is
 less than 1% better than the best of the default three, so the default grains stay. Every guide is over the 5% warning: the best route found is a good one, not a proven one.
 
-## Design note: shared hunting spots (not built)
+## Stops together and shared spots (built 2026-10-27)
 
-Requested with the completeness work (backlog `shared-hunting-spots-do-the-objectives-of-several-quests-at`; user, 2026-10-21: "I assume the later shared hunting spots
-will be written up as a backlog item"). Completeness is the net under the search (a quest the search picked up and did not finish is finished or named); this is
-the other half: the search itself choosing the ground that serves most of the quests it has open.
+Backlog `plan-stops-together-shared-kill-spots-hand-in-before-the` and `shared-hunting-spots-do-the-objectives-of-several-quests-at`. The user walked the first minutes of
+the Skyborne guide (2026-10-21) and found the stops wrong: Infestation Investigation's kills were a second trip although its kill ground is 66 yards from the one Harmony in
+Balance used, the hand-in came three steps late, and the quests offered at the givers were taken over several visits. The search accepted every quest it passed and worked an
+objective at the first hub of the route that had a spot of it, so nothing asked which spot also served another quest, and a hub boundary 66 yards wide kept two quests apart.
 
-**The problem.** Every kind of objective reduces to a list of spots on the map (`PObjective.spots`, `_consider`): the creatures to kill, the creatures that drop the
-item, the containers or ground pick-ups the item lies in, the objects to use, the area to reach (an `explore` objective carries positions of its own). A visit works an
-objective at the first hub of the route that has one of its spots (`Planner._index` puts each spot in `objs_by_place`; `visit()` works what is at the hub whatever else
-is open). An objective with spots in two grounds is therefore done in whichever the route reaches first, even when another open quest has spots only in the other, and
-that quest then needs a trip of its own which the search may never make. Traced case (the Skyborne start): Harmony in Balance (92461) has kill spots in hubs 566 and 570
-and was done at 566; Infestation Investigation (92462) has spots only in 570, 21.9 s of travel east (1.96 XP/s for that trip against 2.46 for the next area). Done together
-at the east spot, one trip would have served both.
+**The traced case, corrected.** Harmony in Balance (92461) has kill spots (45.22, 25.13) and (45.02, 22.27) in hub 546, the givers' hub, and (44.41, 27.44) in hub 550; Infestation
+Investigation (92462) has (45.17, 27.55) and (46.33, 25.78), both in hub 550. The spot Harmony was worked at, (45.22, 25.13), is 66 yards from (46.33, 25.78) but on the other
+side of the hub line (the first version of this note put it in hub 550). The hand-in at Rorian (hub 543, 105 yards from hub 546) came a visit later for the same reason.
 
-**The idea.** Do what lives in one hunting ground in one trip: for an objective with spots in several hubs, choose the spot that also serves another open quest (one the
-route holds, or is about to open at this hub), so a single trip does both. Never a longer walk for one quest than today's rule would make.
+**Three rules** (`Settings`; 0 switches a rule off; `--stop-yards`, `--share-yards`, `--share-trip`):
+1. **One stop** (`stop_yards`, 150). `Planner.extras(hub)`: the quest givers and enders of other hubs on the map within 150 yards of this hub's centre are walked in the same
+   `visit` (hand in what is ready, take what is offered, then go). Objectives are not worked at those places, only NPCs are met.
+2. **Shared spots** (`share_yards` 100, `share_trip` 30). After an objective is worked, every other open objective with a spot within 100 yards of it is worked there too, hub line or
+   not (`_neighbours`; the written step's pin is that objective's own nearest spot). An objective with spots in several hubs is held back from this one (`_defer`) when another of
+   its spots, in a hub at most 30 s of walking away, has more other open or offered quests near it (`_shared` counts a quest only while an objective of it near that spot is still
+   open); never back to the hub the route came from (no ping-pong), and never in a tidy replay (the replay walks the hubs the route had).
+3. **The completeness stop after the cluster** (`Planner._after_cluster`). Tidy puts a stop at the objectives of an unfinished quest after the visit that picked it up; it now goes
+   after the run of following visits at hubs within 150 yards of the pick-up's hub, so a ready hand-in is not left behind it. The run ends before a visit at a hub where a quest
+   stopped for has its objectives or its hand-in, and before a visit that reaches the cap.
 
-**Where it would sit, and a first rule.**
-1. The candidates are already known: `PObjective.hubs` lists the hubs that have a spot.
-2. For a visit at hub A, an objective with spots in A and B is held back from A when a quest the route holds (in the log, or offered in this visit) has an objective whose
-   *only* spots are in B (`len(o.hubs) == 1`) and B is within the trip (`completeness_trip` is the natural measure, or the walk the next area costs): the objective is
-   worked in B with the other. Otherwise it is worked in A as now. One rule, no search choice: the answer is the same for every route through the same situation, so the
-   state key and the pruning stay valid.
-3. The value of a hub for the search (`options`, `rank`) counts the held-back objectives at B as work to be done there; `_quest_rate` charges the walk once for the
-   quests that share a ground.
-4. Completeness is the safety net: an objective held back for a ground the route then does not go to is a quest left unfinished, which completeness finishes or names.
+**What it does to a route.** The Skyborne opening is one stop of about 15 minutes: pick up Coming of Age, hand it in, take Harmony in Balance and Infestation Investigation, kill for
+both at one spot, hand in Harmony, take the next quests, all in one visit. The simple greedy walk goes from 458 visits to 425 and the beam from 240 to 241 (it takes about 5% more
+quests); returns to a place within 150 yards of one left earlier while something there was ready or offered ("trips back") go from 36, 39 and 50 (greedy: Troll Hunter, Tauren
+Druid, Skyborne Druid) and 20, 25 and 34 (beam) to 0, 0, 0 and 0, 0, 1.
 
-**Every kind of objective, not only kills.**
-- Kills: the same creatures serve any number of quests; the kills of the larger objective count for the others (the model counts 8 kills per objective, so two
-  quests on one creature are 8 kills, not 16: a refinement of `Model.objective`, which prices each objective alone).
-- Items dropped by creatures: the creature is a spot of the item. One kill session serves a kill objective and an item objective on the same creature; the drop chance
-  makes the item the longer of the two, so the session is as long as the item needs.
-- Items in containers or on the ground, and objects to use: spots like any other; no respawn wait inside a visit. A ground pick-up beside a kill area is the cheapest
-  quest of all to share (a few seconds on the way through), and the one whose positions the data is likeliest to lack (backlog
-  `objectives-with-no-position-in-the-data-are-planned-as-done`: such an objective has no spot to share, and is planned at the giver).
-- Areas to reach (explore): an area on the way costs nothing and is shared with any quest whose spots are there.
+**Measured** (default settings, data pack of 2026-10-21, one deterministic run for greedy and one beam run each, one runner at a time; play time to level 30 in hours, planner's estimate):
 
-**How to test it.** A fixture with a quest A that has spots in two hubs and a quest B that has spots only in the farther one: today A is done in the near hub and B costs a
-trip of its own (or is left unfinished); with the rule both are done in the far hub in one trip. One such fixture per kind of objective (kill, creature drop, container or
-ground item, object, explore), a mutation check of the rule (held back when it should not be, not held back when it should), and the numbers on the three guides (quests
-added, planner and simulated time change); on the Skyborne the route should do 92461 and 92462 together at the east spot if the totals improve.
+| guide | greedy off, on | beam off, on | trips back, beam off, on | beam visits, off, on |
+| --- | --- | --- | --- | --- |
+| Troll Hunter | 24.82, 24.00 | 20.69, 20.76 | 20, 0 | 244, 215 |
+| Tauren Druid | 31.59, 31.78 | 29.24, 32.64 | 25, 0 | 231, 236 |
+| Skyborne Druid | 31.99, 31.63 | 26.03, 24.67 | 34, 1 | 240, 241 |
 
-**Risks.** A held-back objective makes a visit leave work behind, so the quest log holds the quest longer (the log limit binds sooner); the model prices kills per objective,
-not per creature, so the saving is counted at the visit level only; and the rule changes the search, not only the written route, so the usual roughness applies (a beam
-that is rough anyway can land on a worse route for a better rule: read the grains, "The search is rough").
+The beam is chaotic (see "The search is rough"): the Tauren Druid's +11.6% is one run, and with the clock off (no slow-quest skip, completeness by distance only) the same
+guide's beam was 8% faster with the rules on. Judge a guide by the route the install writes, not by one beam run. The installed Troll Hunter (the only guide planned again with the rules; the two druid guides wait for HARDCORE): 16 chapters (was 21), 20h36 planned and 20h37 simulated (was 20h20 simulated, +0.8%), 47 `.todo`, lint 0 errors and 0 warnings, no availability findings. With the clock off the rules cost no walking either: yards walked
+changed by -11%, -2% and +25% on the beam (noise) and by less than 1% on greedy.
 
+**What it does not do.**
+- The model still prices each objective alone: two quests on one creature are counted as two sets of kills, so the saving is a saved trip, not saved kills.
+- The walk between the places of one visit is a flat 8 s for each change of place, so an extra up to 150 yards away (about 21 s) is undercharged.
+- The spots are points from the data pack's Classic baseline, not the areas the game draws on the map and minimap, which is what the user reads. A pair of quests the game shows
+  overlapping may be further apart in our data (and the reverse).
+- The "trips back" count measures within 150 yards, which is also the rule's radius, so 0 is close to guaranteed; the opening of the written guide is the better evidence.
+- A stop of 22 actions has more lines than the step card shows (ten): the step writer joins neighbouring steps of one kind (250 yards, `Settings.group_yards`) and the Journal shows
+  all of it. VERIFY(launch): how a stop that big reads on the card, and whether the stops are the ones a player would make.
+- Nothing here has been walked in the game. The Tauren Druid and Skyborne Druid guides still carry the routes planned before the rules (backlog
+  `plan-the-two-hardcore-druid-guides-again-with-the-stop-rules`).
+
+**Tests** (`StopsTogetherTest` in tools/tests/test_planner.py): the Skyborne shape in a synthetic world (two kill spots 66 yards apart in different hubs, a hand-in 126 yards from the
+pick-up), each rule alone and together, the radius, no ping-pong, no deferral in a replay, the stop's run (not past the quest's own hand-in or the cap, measured from the pick-up),
+and `_shared` counting open objectives only; every rule is mutation-checked (a test fails when the rule is broken).

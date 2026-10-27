@@ -7,6 +7,18 @@ Signpost keeps positions and the names of places, and four small things about yo
 you already know a service a trainer offers, how long a boat or zeppelin ride took, and your faction. No names, no chat, no gold
 (docs/SHARING-DATA.md has the whole list). `/signpost contribute` shows whether recording is on (a development build always records).
 
+## First session after launch: the Troll Hunter (about 10 minutes, then the borders below if you like)
+
+Only the Troll Hunter is being tested (HARDCORE comes later; the two druid guides wait). Make a fresh Troll Hunter, tick "Help improve the guides", and look at:
+1. `/signpost status` first: it shows the client's Interface number (if it is not 16001, say so before anything else: docs/GAME-UPDATES.md) and whether any Lua error was caught.
+2. The first step where you start: does it list everything offered at the starting camp, with a pin for each, and does it fit on the step card? (A stop can hold more than ten lines;
+   the Journal shows all of it.) Is there anything offered there that it did not list?
+3. After the first kills: does the guide tell you to hand in before you leave, and are quests that are given at the same place taken in one visit?
+4. Find my place at login (the launcher menu): does it put you at step 1 on a new character?
+5. Does the quest tracker follow the current step? Do the done marks tick?
+6. Anything that felt like a wrong instruction: note the step and what the game did instead (`/signpost report` if you have the words).
+When you stop: `/signpost probe`, then `/reload`, and tell Claude; it reads the save with `tools/read_savedvars.py` and reports what the game really did.
+
 ## Run across these borders, there and back (a minute each; keep running, you need not stop)
 1. Mulgore <-> Thunder Bluff: up into Thunder Bluff and down again (27)
 2. Tirisfal Glades <-> Undercity: into the Undercity by its main entrance and out again (23)
