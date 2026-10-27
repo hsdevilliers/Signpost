@@ -1654,6 +1654,8 @@ class StopsTogetherTest(PlannerCase):
         3102: {"n": "Infestation Mob", "p": [[10, 40, 49.3]], "side": "none"},  # 66 yards from the Harmony mob, 186 from the giver: the next hub
         3103: {"n": "Roamer", "p": [[10, 40, 44], [10, 40, 52.5]], "side": "none"},  # a spot in each hub
         1004: {"n": "Ender", "p": [[10, 41, 49.3]], "side": "Horde"},  # beside the Infestation mob: the next hub
+        1005: {"n": "Far Ender", "p": [[10, 40, 57.5]], "side": "Horde"},  # 134 yards from the Ender, its own hub
+        3104: {"n": "Far Mob", "p": [[10, 40, 60]], "side": "none"},
     }
     KILLS = {
         401: {"n": "Harmony", "r": 1, "l": 1, "o": [{"id": 3101, "k": "kill"}], **HOME},
@@ -1735,11 +1737,53 @@ class StopsTogetherTest(PlannerCase):
         self.assertIn(410, self.kinds(plain.visit(plain.start(giver), giver).visit, "complete"))  # (the first spot reached, as before)
 
     def test_it_does_not_walk_back_to_where_it_came_from_for_a_better_spot(self):
-        pl = self.world(self.SPOTS, stop_yards=0, share_yards=100, share_trip=60.0)
-        giver, there = pl.quests[402].start_hubs[0], pl.quests[402].objectives[0].hubs[0]
-        arrived = pl.visit(pl.start(giver), giver)
-        coord = pl.quests[410].objectives[0].spots[0]
-        self.assertFalse(pl._defer(pl.quests[410], pl.quests[410].objectives[0], coord, there, giver, 1, set(), arrived.active, set()))
+        pl = self.world({**self.KILLS, 410: self.SPOTS[410]}, stop_yards=0, share_yards=100, share_trip=60.0)
+        giver, there = pl.quests[401].start_hubs[0], pl.quests[402].objectives[0].hubs[0]
+        roamer = pl.quests[410]
+        here = roamer.objectives[0].spots[1]  # the spot in the next hub, where the Infestation quest has just been done: nothing else is near it now
+        active = {qid: {o.index for o in pl.quests[qid].objectives} for qid in (401, 410)}  # (the Harmony mob is near the other spot, in the giver's hub)
+        args = (roamer, roamer.objectives[0], here, there)
+        self.assertTrue(pl._defer(*args, None, 1, {402}, active, set()))  # the other spot has more near it: it would be worked there...
+        self.assertFalse(pl._defer(*args, giver, 1, {402}, active, set()))  # ...but not when the route has just come from there (no ping-pong)
+
+    def test_a_completeness_stop_is_not_moved_past_a_visit_that_needs_it_first(self):
+        pl = self.world(self.KILLS, stop_yards=150, share_yards=0)
+        a, b, c = pl.quests[401].start_hubs[0], pl.quests[403].end_hubs[0], pl.quests[404].end_hubs[0]
+        plan = types.SimpleNamespace(visits=[engine.Visit(h, [], 0.0, 0.0) for h in (a, b, c)])
+        # quest 403 is picked up at a and handed in at b (126 yards away): the stop for it comes before the visit that would hand it in unfinished
+        self.assertEqual(pl._after_cluster(plan, {0: [c]}, {0: {403}}), {0: [c]})
+        self.assertEqual(pl._after_cluster(plan, {0: [c]}, {0: {401}}), {1: [c]})  # (401 is given, worked and handed in at a: the run goes on)
+        capped = types.SimpleNamespace(visits=[engine.Visit(a, [], 0.0, 0.0), engine.Visit(b, [], 0.0, 0.0, level=pl.s.cap), engine.Visit(c, [], 0.0, 0.0)])
+        self.assertEqual(pl._after_cluster(capped, {0: [c]}), {0: [c]})  # b reaches the cap: that visit would skip the objectives
+
+    def test_the_run_is_measured_from_the_pick_up_and_not_from_the_last_visit(self):
+        quests = {**self.KILLS, 405: {"n": "Drift", "r": 1, "l": 1, "s": START, "e": {"npc": [1005]}, "side": "Horde"}}
+        pl = self.world(quests, stop_yards=200, share_yards=0)
+        a, b, d, c = pl.quests[401].start_hubs[0], pl.quests[403].end_hubs[0], pl.quests[405].end_hubs[0], pl.quests[404].end_hubs[0]
+        self.assertGreater(pl._yards(pl.hubs[a].center, pl.hubs[d].center), 200)  # d is further from the pick-up than the stop reaches...
+        self.assertLessEqual(pl._yards(pl.hubs[b].center, pl.hubs[d].center), 200)  # ...though only a short walk from b
+        plan = types.SimpleNamespace(visits=[engine.Visit(h, [], 0.0, 0.0) for h in (a, b, d)])
+        self.assertEqual(pl._after_cluster(plan, {0: [c]}), {1: [c]})
+
+    def test_a_quest_whose_near_objective_is_done_does_not_count_as_shared(self):
+        quests = {**self.SPOTS, 406: {"n": "Two Parts", "r": 1, "l": 1, "o": [{"id": 3102, "k": "kill"}, {"id": 3104, "k": "kill"}], **HOME}}
+        pl = self.world(quests, stop_yards=0, share_yards=100)
+        roamer, two = pl.quests[410], pl.quests[406]
+        spot = roamer.objectives[0].spots[1]  # beside the Infestation mob (64 yards); the second objective of 406 is 150 yards further
+        near, far = (o.index for o in two.objectives)
+        self.assertEqual(pl._shared(roamer, spot, 1, {402}, {406: {near, far}}, set()), 1)
+        self.assertEqual(pl._shared(roamer, spot, 1, {402}, {406: {far}}, set()), 0)  # the near objective is done: nothing is left to share there
+
+    def test_nothing_is_held_back_in_a_tidy_replay(self):
+        pl = self.world({**self.KILLS, 410: self.SPOTS[410]}, stop_yards=0, share_yards=100, share_trip=60.0)
+        giver, there = pl.quests[401].start_hubs[0], pl.quests[402].objectives[0].hubs[0]
+        roamer = pl.quests[410]
+        here = roamer.objectives[0].spots[1]
+        active = {qid: {o.index for o in pl.quests[qid].objectives} for qid in (401, 410)}
+        args = (roamer, roamer.objectives[0], here, there, None, 1, {402}, active, set())
+        self.assertTrue(pl._defer(*args))
+        pl.forbidden = {999}  # a tidy replay walks the hubs the route had: the visit that would take the objective is not coming
+        self.assertFalse(pl._defer(*args))
 
     def test_a_completeness_stop_goes_after_the_nearby_visits_that_follow_the_pick_up(self):
         pl = self.world(self.KILLS, stop_yards=150, share_yards=0)

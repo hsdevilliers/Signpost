@@ -833,7 +833,7 @@ class Planner:
         if hub not in self._extras:
             here, found = self.hubs[hub], []
             for other in self.hubs:
-                if other.id == hub or other.map != here.map or self._yards(here.center, other.center) > self.s.stop_yards + self.s.hub_radius:
+                if other.id == hub or other.map != here.map or self._yards(here.center, other.center) > self.s.stop_yards + 2 * self.s.hub_radius:
                     continue
                 for c in self.places_at.get(other.id, ()):
                     key = (c.map, c.x, c.y)
@@ -850,7 +850,7 @@ class Planner:
             home, found = self.hub_of[key], []
             here = self.hubs[home]
             for other in self.hubs:
-                if other.map != here.map or self._yards(here.center, other.center) > self.s.share_yards + 2 * self.s.hub_radius:
+                if other.map != here.map or self._yards(here.center, other.center) > self.s.share_yards + 4 * self.s.hub_radius:
                     continue
                 for place in self.places_at.get(other.id, ()):
                     pairs = self.objs_by_place.get((place.map, place.x, place.y))
@@ -862,17 +862,20 @@ class Planner:
     def _shared(self, q: PQuest, c: Coord, level: int, done, active, gone) -> int:
         """How many other quests have an objective spot near this one and are open or about to be: the quests one trip to the spot would serve."""
         others = set()
-        for q2, _o2 in self._neighbours(c):
+        for q2, o2 in self._neighbours(c):
             if q2.id == q.id or q2.id in others or q2.id in done or q2.id in gone or not self.soon(q2, level):
                 continue
-            if q2.id in active or self.offered(q2, level, done, active, gone):
+            if q2.id in active:
+                if o2.index in active[q2.id]:  # (an objective already done is nothing left to share)
+                    others.add(q2.id)
+            elif self.offered(q2, level, done, active, gone):
                 others.add(q2.id)
         return len(others)
 
     def _defer(self, q: PQuest, o: PObjective, here: Coord, hub: int, came: int | None, level: int, done, active, gone) -> bool:
         """With `Settings.share_yards`: whether this objective is better worked at a spot of another hub, a short walk away, that is near more of the
         other open objectives than this one is (the route comes to it there: the hub is one of the objective's `hubs`)."""
-        if len(o.spots) < 2:
+        if len(o.spots) < 2 or self.forbidden:  # (a tidy replay walks the hubs the route had: nothing is held back for a visit that is not coming)
             return False
         best = self._shared(q, here, level, done, active, gone)
         for c in o.spots:
@@ -1358,7 +1361,7 @@ class Planner:
             removed |= unseen | stuck
             lifts, stops = self._finishable(plan, removed - gave_up) if self.s.completeness > 0 else ({}, {})
             if self.s.stop_yards > 0 and stops:
-                stops = self._after_cluster(plan, stops)
+                stops = self._after_cluster(plan, stops, lifts)
             lifted_before = {qid for ids in lifts.values() for qid in ids}
             self.forbidden = set(removed)
             st = self.start(start_hub)
@@ -1480,15 +1483,27 @@ class Planner:
             stops.setdefault(picked, []).extend(visiting)
         return lifts, stops
 
-    def _after_cluster(self, plan: Plan, stops: dict) -> dict:
-        """A completeness stop goes after the run of visits that follow the pick-up at hubs within `Settings.stop_yards` of it (the hand-ins and
-        pick-ups of the stop the route is standing in), not right after the pick-up, which would leave a ready hand-in for a later trip."""
+    def _after_cluster(self, plan: Plan, stops: dict, lifts: dict | None = None) -> dict:
+        """A completeness stop goes after the run of visits that follow the pick-up at hubs within `Settings.stop_yards` of the hub it was picked up at
+        (the hand-ins and pick-ups of the stop the route is standing in), not right after the pick-up, which would leave a ready hand-in for a later
+        trip. The run ends before a visit to a hub where a quest stopped for has its objectives or its hand-in (the stop has to come first: it would
+        be handed in unfinished), and before a visit that reaches the cap (it would skip the objectives). `lifts` are the quests of each pick-up."""
         moved: dict[int, list] = {}
         for index, hubs in stops.items():
+            origin = plan.visits[index].hub
+            guard = set(hubs)
+            for qid in (lifts or {}).get(index, ()):
+                q = self.quests[qid]
+                guard.update(q.end_hubs)
+                for o in q.objectives:
+                    guard.update(o.hubs)
             end = index
-            while end + 1 < len(plan.visits):
-                a, b = plan.visits[end].hub, plan.visits[end + 1].hub
-                if a is None or b is None or self.hubs[a].map != self.hubs[b].map or self._yards(self.hubs[a].center, self.hubs[b].center) > self.s.stop_yards:
+            while origin is not None and end + 1 < len(plan.visits):
+                nxt = plan.visits[end + 1]
+                if (
+                    nxt.hub is None or nxt.hub in guard or nxt.level >= self.s.cap or self.hubs[origin].map != self.hubs[nxt.hub].map
+                    or self._yards(self.hubs[origin].center, self.hubs[nxt.hub].center) > self.s.stop_yards
+                ):
                     break
                 end += 1
             moved.setdefault(end, []).extend(hubs)
