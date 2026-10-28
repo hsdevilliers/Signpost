@@ -94,6 +94,15 @@ class Settings:
     # report says why (a record for each in `plan.stats["left_out"]`).
     completeness: float = 0.6
     completeness_trip: float = 45.0
+    # Stops (backlog `plan-stops-together-...`, the user's first fresh-character test, 2026-10-21): a guide does everything one area offers in one
+    # stop. `stop_yards`: the quest givers and enders within that many yards of a hub's centre are part of one visit to the hub (hand in everything
+    # ready, take everything offered, then go), and a completeness stop goes after the run of nearby visits that follow the pick-up, not right
+    # after it. `share_yards`: while an objective is worked, the other open objectives with a spot within that many yards are worked there too, hub
+    # boundary or not, and an objective with spots in several hubs is worked at the spot nearest the most others when that hub is at most
+    # `share_trip` seconds away. 0 switches a rule off.
+    stop_yards: float = 150.0
+    share_yards: float = 100.0
+    share_trip: float = 30.0
 
 
 @dataclass
@@ -294,6 +303,8 @@ class Planner:
         self._reward: dict[tuple, float] = {}
         self._rates: dict[tuple, bool] = {}
         self._order: dict[tuple, list] = {}
+        self._extras: dict[int, list] = {}  # hub -> the nearby places of other hubs a visit to it also walks (`extras`)
+        self._near_spots: dict[tuple, list] = {}  # an objective place -> the (quest, objective) pairs with a spot within `share_yards` of it
         self.nodes_made = 0
         self.skip_zones: dict[int, str] = {}  # map -> why no quest of it is routed (a battleground)
         self._giver_index: dict[int, list] = {}  # start NPC -> (quest, name, class mask) of every quest of the pack
@@ -814,6 +825,67 @@ class Planner:
             self._order[key] = walk
         return self._order[key]
 
+    def extras(self, hub: int) -> list:
+        """With `Settings.stop_yards`: the places of other hubs on the map where a quest is given or handed in, within that many yards of this hub's
+        centre, nearest first. A visit to the hub walks them too, so the quest givers and enders of one stop are one visit."""
+        if self.s.stop_yards <= 0:
+            return []
+        if hub not in self._extras:
+            here, found = self.hubs[hub], []
+            for other in self.hubs:
+                if other.id == hub or other.map != here.map or self._yards(here.center, other.center) > self.s.stop_yards + 2 * self.s.hub_radius:
+                    continue
+                for c in self.places_at.get(other.id, ()):
+                    key = (c.map, c.x, c.y)
+                    if (key in self.starts_by_place or key in self.ends_by_place) and self._yards(here.center, c) <= self.s.stop_yards:
+                        found.append(c)
+            found.sort(key=lambda c: self._yards(here.center, c))
+            self._extras[hub] = found
+        return self._extras[hub]
+
+    def _neighbours(self, c: Coord) -> list:
+        """The (quest, objective) pairs with a spot within `Settings.share_yards` of this one."""
+        key = (c.map, c.x, c.y)
+        if key not in self._near_spots:
+            home, found = self.hub_of[key], []
+            here = self.hubs[home]
+            for other in self.hubs:
+                if other.map != here.map or self._yards(here.center, other.center) > self.s.share_yards + 4 * self.s.hub_radius:
+                    continue
+                for place in self.places_at.get(other.id, ()):
+                    pairs = self.objs_by_place.get((place.map, place.x, place.y))
+                    if pairs and self._yards(c, place) <= self.s.share_yards:
+                        found.extend(pairs)
+            self._near_spots[key] = found
+        return self._near_spots[key]
+
+    def _shared(self, q: PQuest, c: Coord, level: int, done, active, gone) -> int:
+        """How many other quests have an objective spot near this one and are open or about to be: the quests one trip to the spot would serve."""
+        others = set()
+        for q2, o2 in self._neighbours(c):
+            if q2.id == q.id or q2.id in others or q2.id in done or q2.id in gone or not self.soon(q2, level):
+                continue
+            if q2.id in active:
+                if o2.index in active[q2.id]:  # (an objective already done is nothing left to share)
+                    others.add(q2.id)
+            elif self.offered(q2, level, done, active, gone):
+                others.add(q2.id)
+        return len(others)
+
+    def _defer(self, q: PQuest, o: PObjective, here: Coord, hub: int, came: int | None, level: int, done, active, gone) -> bool:
+        """With `Settings.share_yards`: whether this objective is better worked at a spot of another hub, a short walk away, that is near more of the
+        other open objectives than this one is (the route comes to it there: the hub is one of the objective's `hubs`)."""
+        if len(o.spots) < 2 or self.forbidden:  # (a tidy replay walks the hubs the route had: nothing is held back for a visit that is not coming)
+            return False
+        best = self._shared(q, here, level, done, active, gone)
+        for c in o.spots:
+            h = self.hub_of[(c.map, c.x, c.y)]
+            if h == hub or h == came or self.travel(hub, h) > self.s.share_trip:  # (not back to where the route came from: no ping-pong)
+                continue
+            if self._shared(q, c, level, done, active, gone) > best:
+                return True
+        return False
+
     # the rules ------------------------------------------------------------------------------------------------------
 
     def worth_now(self, q: PQuest, level: int) -> bool:
@@ -960,9 +1032,13 @@ class Planner:
         interact = objective = longest_wait = gained = owed = 0.0
         sweeps = 0
         progressed = True
+        walk_places = self.order(hub, st.hub)
+        extra = self.extras(hub)
+        extra_keys = {(c.map, c.x, c.y) for c in extra}
+        walk_places = walk_places + extra if extra else walk_places
         while progressed and sweeps < 8:
             progressed, sweeps = False, sweeps + 1
-            for place in self.order(hub, st.hub):
+            for place in walk_places:
                 key = (place.map, place.x, place.y)
                 changed = True
                 while changed:
@@ -990,10 +1066,12 @@ class Planner:
                         active[q.id] = {o.index for o in q.objectives}
                         gone.update(x for x in q.excl if x not in done)
                         changed = True
-                    for q, o in self.objs_by_place.get(key, ()):
+                    for q, o in () if key in extra_keys else self.objs_by_place.get(key, ()):
                         if progress.level >= s.cap and q.id not in self.core:
                             continue
                         if q.id in active and o.index in active[q.id] and self.soon(q, progress.level):
+                            if s.share_yards > 0 and self._defer(q, o, place, hub, st.hub, progress.level, done, active, gone):
+                                continue
                             seconds, wait, xp = self.objective(q.id, o.index, progress.level)
                             objective += seconds - wait
                             longest_wait = max(longest_wait, wait)
@@ -1001,6 +1079,21 @@ class Planner:
                             actions.append(Action("complete", q.id, o.index, place))
                             active[q.id].discard(o.index)
                             changed = True
+                            if s.share_yards > 0:  # the other open objectives with a spot near this one are worked here too, hub or no hub
+                                for q2, o2 in self._neighbours(place):
+                                    if (
+                                        q2.id in active and o2.index in active[q2.id] and o2.spots and self.soon(q2, progress.level)
+                                        and not (progress.level >= s.cap and q2.id not in self.core)
+                                    ):
+                                        near = min(o2.spots, key=lambda c: self._yards(place, c))
+                                        if self._yards(place, near) > s.share_yards:
+                                            continue
+                                        seconds, wait, xp = self.objective(q2.id, o2.index, progress.level)
+                                        objective += seconds - wait
+                                        longest_wait = max(longest_wait, wait)
+                                        gained += progress.gain(xp)
+                                        actions.append(Action("complete", q2.id, o2.index, near))
+                                        active[q2.id].discard(o2.index)
                     progressed = progressed or changed
         if not actions:
             return None
@@ -1267,6 +1360,8 @@ class Planner:
             gave_up |= stuck
             removed |= unseen | stuck
             lifts, stops = self._finishable(plan, removed - gave_up) if self.s.completeness > 0 else ({}, {})
+            if self.s.stop_yards > 0 and stops:
+                stops = self._after_cluster(plan, stops, lifts)
             lifted_before = {qid for ids in lifts.values() for qid in ids}
             self.forbidden = set(removed)
             st = self.start(start_hub)
@@ -1387,6 +1482,32 @@ class Planner:
             lifts.setdefault(picked, set()).add(qid)
             stops.setdefault(picked, []).extend(visiting)
         return lifts, stops
+
+    def _after_cluster(self, plan: Plan, stops: dict, lifts: dict | None = None) -> dict:
+        """A completeness stop goes after the run of visits that follow the pick-up at hubs within `Settings.stop_yards` of the hub it was picked up at
+        (the hand-ins and pick-ups of the stop the route is standing in), not right after the pick-up, which would leave a ready hand-in for a later
+        trip. The run ends before a visit to a hub where a quest stopped for has its objectives or its hand-in (the stop has to come first: it would
+        be handed in unfinished), and before a visit that reaches the cap (it would skip the objectives). `lifts` are the quests of each pick-up."""
+        moved: dict[int, list] = {}
+        for index, hubs in stops.items():
+            origin = plan.visits[index].hub
+            guard = set(hubs)
+            for qid in (lifts or {}).get(index, ()):
+                q = self.quests[qid]
+                guard.update(q.end_hubs)
+                for o in q.objectives:
+                    guard.update(o.hubs)
+            end = index
+            while origin is not None and end + 1 < len(plan.visits):
+                nxt = plan.visits[end + 1]
+                if (
+                    nxt.hub is None or nxt.hub in guard or nxt.level >= self.s.cap or self.hubs[origin].map != self.hubs[nxt.hub].map
+                    or self._yards(self.hubs[origin].center, self.hubs[nxt.hub].center) > self.s.stop_yards
+                ):
+                    break
+                end += 1
+            moved.setdefault(end, []).extend(hubs)
+        return moved
 
     def _left_out(self, qid: int, found: tuple | None, tried: bool) -> dict:
         """Why a quest the search picked up is not in the written route, with the numbers: the record `plan.stats["left_out"]` and the `#skipquest`

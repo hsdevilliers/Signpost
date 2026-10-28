@@ -1,11 +1,13 @@
 ---
 title: Shared hunting spots: do the objectives of several quests at the spot that serves most of them
 kind: feature
-status: open
+status: done
 priority: normal
 area: planner
 source: user
 raised: 2026-10-21
+closed: 2026-10-27
+resolution: PR #52: built as the shared-spots rule (open objectives with a spot within 100 yards are worked together across a hub line; an objective with spots in several hubs goes where more other quests are, at most 30 s away); mutation-checked tests; numbers and limits in docs/PLANNER.md, Stops together and shared spots. The model still prices each objective alone.
 ---
 
 ## What

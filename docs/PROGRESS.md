@@ -510,5 +510,14 @@ planner or in the simulator; **nothing was seen in the real client** unless a li
   planned again with completeness on (its island part ends with the exit chain and the airship, from research, unverified). Compare play time only: a beam total is chaotic.
 - [x] The user chose the completeness defaults (T 45 s, F 0.6, 2026-10-21): they are the planner's defaults now and the Skyborne guide is planned again with them
   (92462 and 92463 are in). The Troll Hunter (one small quest more) and the Tauren Druid (none) wait for the regeneration pass.
+- [x] Stops together (the user's first fresh-character test, 2026-10-21; built 2026-10-27, docs/PLANNER.md "Stops together and shared spots"): the planner does everything one
+  area offers in one stop (`stop_yards` 150, `share_yards` 100, `share_trip` 30, on by default; 0 switches them off): the quest givers and enders within 150 yards are one visit, open
+  objectives with a spot within 100 yards of the one being worked are worked there too (across a hub line), and a completeness stop goes after the nearby visits that follow the
+  pick-up, not before a ready hand-in. The Skyborne opening is one stop. The **Troll Hunter is planned again with them**: 16 chapters (was 21), 20h36 planned, 20h37 simulated (was
+  20h20, +0.8%), 47 `.todo`; lint 0 errors 0 warnings, availability clean; returns to a place within 150 yards with something ready or offered ("trips back", planner measure): beam 20 -> 0.
+  Tests: `StopsTogetherTest` (13 cases, every rule mutation-checked); an independent review found three real problems (a stop moved past a hand-in or the cap, a quest whose near
+  objective was done counted as shared, deferral in a tidy replay), all fixed with tests. The Tauren Druid and Skyborne Druid keep the routes planned before the rules: HARDCORE
+  arrives later (Blizzard's roadmap: winter 2026, no date) and the user decided (2026-10-27) to work only the Troll Hunter until it has been tested in the game after launch (backlog
+  `plan-the-two-hardcore-druid-guides-again-with-the-stop-rules`, `release-1-scope-troll-hunter-first-...`). Orc Warlock and Tauren Shaman guides: deferred for token cost (backlog).
 - [ ] To see in the game: the placement at login, the step card's new lines and pins, the launcher (menu, compartment, key bindings, the Settings column), the
-  tracker's watch functions, the recorders, the Skyborne exit, Teleport: Moonglade.
+  tracker's watch functions, the recorders, the Skyborne exit, Teleport: Moonglade. The first session after launch (the Troll Hunter only): docs/PLAY-CHECKLIST.md, "First session after launch".

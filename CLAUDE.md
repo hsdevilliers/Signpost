@@ -18,6 +18,10 @@ Full plan: `docs/PLAN.md`. Client/API discoveries: `docs/FOREVER-API-NOTES.md`. 
   professions as a **normal** route, and Tauren Druid and Horde Skyborne ("Windshaper") Druid as **HARDCORE** routes (user, 2026-10-20:
   the Troll Hunter is the normal variant; the word HARDCORE is written in capitals wherever the player sees it: guide names, skip
   reasons). Version 1 of every guide stops at **level 30** for now (the beta cap, the range that can be verified in play).
+- **HARDCORE is not at launch (user, 2026-10-27).** The HARDCORE ruleset arrives later (Blizzard's roadmap says winter 2026, no date), so the two
+  HARDCORE druid guides are not needed on 2026-11-04. Work **only the Troll Hunter** until it has been tested in the game after launch; whether
+  Release 1 then ships the Troll Hunter alone is the user's call (backlog `release-1-scope-troll-hunter-first-...`). Do not replan, regenerate
+  or review the two druid guides until the user says so (backlog `plan-the-two-hardcore-druid-guides-again-...` is the task for later).
 - **There is no deadline tied to the beta or to launch day.** Do not push the user to do things "before the beta closes"; development
   continues after launch. The user can only play in short sessions: keep in-game requests short and say what each one is for.
 - **A friend will play a druid on hardcore and run the addon in the background for data collection.** The recorder must be safe to

@@ -1644,5 +1644,156 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(engine.slug("Shen'dralas"), "shen-dralas")
 
 
+class StopsTogetherTest(PlannerCase):
+    """The Skyborne opening (the user's first fresh-character test, 2026-10-21): two quests handed out at one giver whose kill spots are 66 yards
+    apart but in different hubs, and a hand-in 126 yards from the pick-up, also in another hub, were done as separate trips. The fixture's map is 1000
+    yards wide and 2000 tall (1% of x is 10 yards, 1% of y is 20), the giver is at 40,40."""
+
+    MOBS = {
+        3101: {"n": "Harmony Mob", "p": [[10, 40, 46]], "side": "none"},  # 120 yards south of the giver: the giver's hub
+        3102: {"n": "Infestation Mob", "p": [[10, 40, 49.3]], "side": "none"},  # 66 yards from the Harmony mob, 186 from the giver: the next hub
+        3103: {"n": "Roamer", "p": [[10, 40, 44], [10, 40, 52.5]], "side": "none"},  # a spot in each hub
+        1004: {"n": "Ender", "p": [[10, 41, 49.3]], "side": "Horde"},  # beside the Infestation mob: the next hub
+        1005: {"n": "Far Ender", "p": [[10, 40, 57.5]], "side": "Horde"},  # 134 yards from the Ender, its own hub
+        3104: {"n": "Far Mob", "p": [[10, 40, 60]], "side": "none"},
+    }
+    KILLS = {
+        401: {"n": "Harmony", "r": 1, "l": 1, "o": [{"id": 3101, "k": "kill"}], **HOME},
+        402: {"n": "Infestation", "r": 1, "l": 1, "o": [{"id": 3102, "k": "kill"}], **HOME},
+        403: {"n": "Message", "r": 1, "l": 1, "s": START, "e": {"npc": [1004]}, "side": "Horde"},
+        404: {"n": "Report", "r": 1, "l": 1, "s": START, "e": {"npc": [1003]}, "side": "Horde"},  # handed in 670 yards away
+    }
+    SPOTS = {
+        402: KILLS[402],
+        403: KILLS[403],  # (a zone needs a few quests of the character's side to be its territory: these two and 404 keep the fixture in it)
+        404: KILLS[404],
+        410: {"n": "Two Spots", "r": 1, "l": 1, "o": [{"id": 3103, "k": "kill"}], **HOME},
+    }
+
+    def world(self, quests, **settings):
+        return self.planner(quests=quests, npcs={**NPCS, **self.MOBS}, **settings)
+
+    def opening(self, **settings):
+        pl = self.world(self.KILLS, **settings)
+        return pl, pl.quests[401].start_hubs[0]
+
+    @staticmethod
+    def kinds(visit, kind):
+        return {a.quest for a in visit.actions if a.kind == kind}
+
+    def test_the_fixture_has_the_shape_of_the_case(self):
+        pl, giver = self.opening(stop_yards=0, share_yards=0)
+        near, far = pl.quests[401].objectives[0].spots[0], pl.quests[402].objectives[0].spots[0]
+        self.assertEqual(pl.hub_of[(near.map, near.x, near.y)], giver)  # one kill is in the giver's hub...
+        self.assertNotEqual(pl.hub_of[(far.map, far.x, far.y)], giver)  # ...the other is not
+        self.assertAlmostEqual(pl._yards(near, far), 66, delta=3)
+        self.assertNotEqual(pl.quests[403].end_hubs[0], giver)
+
+    def test_without_the_rules_the_second_kill_and_the_hand_in_are_separate_trips(self):
+        pl, giver = self.opening(stop_yards=0, share_yards=0)
+        first = pl.visit(pl.start(giver), giver)
+        self.assertEqual(self.kinds(first.visit, "complete"), {401})
+        self.assertIn(402, first.active)
+        self.assertEqual(self.kinds(first.visit, "turnin") & {403}, set())
+
+    def test_a_kill_beside_another_quests_spot_is_worked_in_the_same_stop_even_across_a_hub_boundary(self):
+        pl, giver = self.opening(stop_yards=0, share_yards=100)
+        first = pl.visit(pl.start(giver), giver)
+        self.assertEqual(self.kinds(first.visit, "complete"), {401, 402})
+        spot = next(a.place for a in first.visit.actions if a.kind == "complete" and a.quest == 402)
+        self.assertEqual((spot.x, spot.y), (40, 49.3))  # (at its own spot: the step's pin is there)
+        self.assertNotIn(402, first.active)
+
+    def test_it_stops_at_the_radius(self):
+        pl, giver = self.opening(stop_yards=0, share_yards=50)  # the spots are 66 yards apart
+        self.assertEqual(self.kinds(pl.visit(pl.start(giver), giver).visit, "complete"), {401})
+
+    def test_the_hand_in_of_a_hub_within_the_stop_is_part_of_the_visit(self):
+        pl, giver = self.opening(stop_yards=150, share_yards=0)
+        first = pl.visit(pl.start(giver), giver)
+        self.assertIn(403, self.kinds(first.visit, "turnin"))  # picked up here, handed in at the Ender's place 126 yards away
+        self.assertNotIn(404, self.kinds(first.visit, "turnin"))  # (the Second Giver is 670 yards away: another trip)
+        self.assertEqual(pl.extras(giver)[0].x, 41)
+        off = self.world(self.KILLS, stop_yards=0, share_yards=0)
+        self.assertEqual(off.extras(giver), [])
+
+    def test_the_opening_is_one_stop_with_the_rules_on_by_default(self):
+        s = engine.Settings()
+        self.assertEqual((s.stop_yards, s.share_yards, s.share_trip), (150.0, 100.0, 30.0))
+        pl, giver = self.opening()
+        first = pl.plan("greedy", giver).visits[0]
+        self.assertEqual(self.kinds(first, "complete"), {401, 402})
+        self.assertEqual(self.kinds(first, "turnin"), {401, 402, 403})  # hand in before anything else
+        self.assertEqual(self.kinds(first, "accept"), {401, 402, 403, 404})  # everything offered here is taken in the same visit
+
+    def test_an_objective_with_a_spot_in_each_hub_is_worked_where_another_quest_is(self):
+        pl = self.world(self.SPOTS, stop_yards=0, share_yards=100, share_trip=60.0)
+        giver = pl.quests[402].start_hubs[0]
+        first = pl.visit(pl.start(giver), giver)
+        self.assertNotIn(410, self.kinds(first.visit, "complete"))  # its spot here has no other objective near; the other spot has the Infestation mob
+        second = pl.visit(first, pl.quests[402].objectives[0].hubs[0])
+        self.assertEqual(self.kinds(second.visit, "complete"), {410, 402})
+        plain = self.world(self.SPOTS, stop_yards=0, share_yards=0)
+        self.assertIn(410, self.kinds(plain.visit(plain.start(giver), giver).visit, "complete"))  # (the first spot reached, as before)
+
+    def test_it_does_not_walk_back_to_where_it_came_from_for_a_better_spot(self):
+        pl = self.world({**self.KILLS, 410: self.SPOTS[410]}, stop_yards=0, share_yards=100, share_trip=60.0)
+        giver, there = pl.quests[401].start_hubs[0], pl.quests[402].objectives[0].hubs[0]
+        roamer = pl.quests[410]
+        here = roamer.objectives[0].spots[1]  # the spot in the next hub, where the Infestation quest has just been done: nothing else is near it now
+        active = {qid: {o.index for o in pl.quests[qid].objectives} for qid in (401, 410)}  # (the Harmony mob is near the other spot, in the giver's hub)
+        args = (roamer, roamer.objectives[0], here, there)
+        self.assertTrue(pl._defer(*args, None, 1, {402}, active, set()))  # the other spot has more near it: it would be worked there...
+        self.assertFalse(pl._defer(*args, giver, 1, {402}, active, set()))  # ...but not when the route has just come from there (no ping-pong)
+
+    def test_a_completeness_stop_is_not_moved_past_a_visit_that_needs_it_first(self):
+        pl = self.world(self.KILLS, stop_yards=150, share_yards=0)
+        a, b, c = pl.quests[401].start_hubs[0], pl.quests[403].end_hubs[0], pl.quests[404].end_hubs[0]
+        plan = types.SimpleNamespace(visits=[engine.Visit(h, [], 0.0, 0.0) for h in (a, b, c)])
+        # quest 403 is picked up at a and handed in at b (126 yards away): the stop for it comes before the visit that would hand it in unfinished
+        self.assertEqual(pl._after_cluster(plan, {0: [c]}, {0: {403}}), {0: [c]})
+        self.assertEqual(pl._after_cluster(plan, {0: [c]}, {0: {401}}), {1: [c]})  # (401 is given, worked and handed in at a: the run goes on)
+        capped = types.SimpleNamespace(visits=[engine.Visit(a, [], 0.0, 0.0), engine.Visit(b, [], 0.0, 0.0, level=pl.s.cap), engine.Visit(c, [], 0.0, 0.0)])
+        self.assertEqual(pl._after_cluster(capped, {0: [c]}), {0: [c]})  # b reaches the cap: that visit would skip the objectives
+
+    def test_the_run_is_measured_from_the_pick_up_and_not_from_the_last_visit(self):
+        quests = {**self.KILLS, 405: {"n": "Drift", "r": 1, "l": 1, "s": START, "e": {"npc": [1005]}, "side": "Horde"}}
+        pl = self.world(quests, stop_yards=200, share_yards=0)
+        a, b, d, c = pl.quests[401].start_hubs[0], pl.quests[403].end_hubs[0], pl.quests[405].end_hubs[0], pl.quests[404].end_hubs[0]
+        self.assertGreater(pl._yards(pl.hubs[a].center, pl.hubs[d].center), 200)  # d is further from the pick-up than the stop reaches...
+        self.assertLessEqual(pl._yards(pl.hubs[b].center, pl.hubs[d].center), 200)  # ...though only a short walk from b
+        plan = types.SimpleNamespace(visits=[engine.Visit(h, [], 0.0, 0.0) for h in (a, b, d)])
+        self.assertEqual(pl._after_cluster(plan, {0: [c]}), {1: [c]})
+
+    def test_a_quest_whose_near_objective_is_done_does_not_count_as_shared(self):
+        quests = {**self.SPOTS, 406: {"n": "Two Parts", "r": 1, "l": 1, "o": [{"id": 3102, "k": "kill"}, {"id": 3104, "k": "kill"}], **HOME}}
+        pl = self.world(quests, stop_yards=0, share_yards=100)
+        roamer, two = pl.quests[410], pl.quests[406]
+        spot = roamer.objectives[0].spots[1]  # beside the Infestation mob (64 yards); the second objective of 406 is 150 yards further
+        near, far = (o.index for o in two.objectives)
+        self.assertEqual(pl._shared(roamer, spot, 1, {402}, {406: {near, far}}, set()), 1)
+        self.assertEqual(pl._shared(roamer, spot, 1, {402}, {406: {far}}, set()), 0)  # the near objective is done: nothing is left to share there
+
+    def test_nothing_is_held_back_in_a_tidy_replay(self):
+        pl = self.world({**self.KILLS, 410: self.SPOTS[410]}, stop_yards=0, share_yards=100, share_trip=60.0)
+        giver, there = pl.quests[401].start_hubs[0], pl.quests[402].objectives[0].hubs[0]
+        roamer = pl.quests[410]
+        here = roamer.objectives[0].spots[1]
+        active = {qid: {o.index for o in pl.quests[qid].objectives} for qid in (401, 410)}
+        args = (roamer, roamer.objectives[0], here, there, None, 1, {402}, active, set())
+        self.assertTrue(pl._defer(*args))
+        pl.forbidden = {999}  # a tidy replay walks the hubs the route had: the visit that would take the objective is not coming
+        self.assertFalse(pl._defer(*args))
+
+    def test_a_completeness_stop_goes_after_the_nearby_visits_that_follow_the_pick_up(self):
+        pl = self.world(self.KILLS, stop_yards=150, share_yards=0)
+        a, b, c = pl.quests[401].start_hubs[0], pl.quests[403].end_hubs[0], pl.quests[404].end_hubs[0]
+        plan = types.SimpleNamespace(visits=[engine.Visit(h, [], 0.0, 0.0) for h in (a, b, c)])
+        self.assertEqual(pl._after_cluster(plan, {0: [c]}), {1: [c]})  # b is 126 yards from a: still the stop the route stands in; c is 670
+        tight = self.world(self.KILLS, stop_yards=100, share_yards=0)
+        self.assertEqual(tight._after_cluster(plan, {0: [c]}), {0: [c]})
+        self.assertEqual(pl._after_cluster(plan, {1: [c]}), {1: [c]})
+
+
 if __name__ == "__main__":
     unittest.main()

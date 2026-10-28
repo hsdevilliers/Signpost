@@ -307,6 +307,9 @@ def build_job(options, project: guidefile.Project, guide: guidefile.Guide, out: 
         chapter_min_steps=options.chapter_steps,
         completeness=options.completeness,
         completeness_trip=options.completeness_trip,
+        stop_yards=options.stop_yards,
+        share_yards=options.share_yards,
+        share_trip=options.share_trip,
         walk_by_map=options.walk_by_map,
         instant_quests=options.instant_quests,
         skip_unprofitable=not options.no_skip,
@@ -1136,6 +1139,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--completeness-trip", type=float, default=engine.Settings.completeness_trip, metavar="SECONDS",
                         help="the longest walk from where a quest was picked up to its objectives, and (unless the route goes there anyway) to where it is "
                              "handed in, that --completeness will make (default %(default)g, the user's choice of 2026-10-21)")
+    parser.add_argument("--stop-yards", type=float, default=engine.Settings.stop_yards, metavar="YARDS",
+                        help="the quest givers and enders within this many yards of a hub are one stop with it (hand in, take everything offered, then go), and a "
+                             "completeness stop goes after the nearby visits that follow the pick-up; 0 switches it off (default %(default)g)")
+    parser.add_argument("--share-yards", type=float, default=engine.Settings.share_yards, metavar="YARDS",
+                        help="while an objective is worked, the other open objectives with a spot within this many yards are worked there too, and an objective "
+                             "with spots in several hubs is worked at the spot near the most others when it is at most --share-trip seconds away; 0 switches "
+                             "it off (default %(default)g)")
+    parser.add_argument("--share-trip", type=float, default=engine.Settings.share_trip, metavar="SECONDS", help="see --share-yards (default %(default)g)")
     parser.add_argument("--walk-by-map", action="store_true",
                         help="charge the walk between the places of one hub by the map's distance, not a flat 8 s (Settings.local_walk) for each change of place "
                              "(an experiment: docs/PLANNER.md, Measurements)")
